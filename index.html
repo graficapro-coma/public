@@ -1,0 +1,1589 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GraficaPro</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;font-size:13px;color:#1a1a1a;background:#f5f5f3;min-height:100vh}
+.app{display:flex;min-height:100vh}
+
+/* SIDEBAR */
+.sb{width:200px;flex-shrink:0;background:#fff;border-right:0.5px solid rgba(0,0,0,.12);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.sb-logo{padding:13px 14px 10px;border-bottom:0.5px solid rgba(0,0,0,.1);font-size:13px;font-weight:500}
+.sb-logo small{display:block;font-size:10px;color:#888;font-weight:400;margin-top:1px}
+.ns{padding:7px 8px 2px;font-size:10px;font-weight:600;color:#aaa;text-transform:uppercase;letter-spacing:.07em;margin-top:4px}
+.ni{display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:6px;cursor:pointer;color:#666;font-size:12px;margin:1px 5px;transition:background .12s;user-select:none}
+.ni:hover{background:#f0f0ee;color:#1a1a1a}
+.ni.on{background:#e6f1fb;color:#185fa5;font-weight:500}
+.ni i{font-size:14px;flex-shrink:0}
+
+/* MAIN */
+.main{flex:1;overflow-y:auto;padding:20px;min-width:0;max-height:100vh}
+
+/* GENERAL */
+button{font-family:inherit;font-size:12px;cursor:pointer;border:0.5px solid rgba(0,0,0,.25);background:transparent;color:#1a1a1a;padding:5px 11px;border-radius:8px;display:inline-flex;align-items:center;gap:5px;transition:background .12s;white-space:nowrap}
+button:hover{background:#f0f0ee}
+button:disabled{opacity:.4;cursor:not-allowed}
+.bp{background:#185fa5;color:#fff;border-color:#185fa5}.bp:hover{background:#0c447c}
+.bs{background:#3b6d11;color:#fff;border-color:#3b6d11}.bs:hover{background:#27500a}
+.bd{background:#a32d2d;color:#fff;border-color:#a32d2d}.bd:hover{background:#791f1f}
+.ph{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.pt{font-size:18px;font-weight:500}.ps{font-size:11px;color:#666;margin-top:2px}
+.card{background:#fff;border:0.5px solid rgba(0,0,0,.1);border-radius:12px;padding:14px;margin-bottom:12px}
+.cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.mc{border-radius:8px;padding:11px}.mc .ml{font-size:11px;color:#666;margin-bottom:4px}.mc .mv{font-size:20px;font-weight:500}.mc .ms{font-size:10px;color:#666;margin-top:2px}
+.mi{background:#e6f1fb}.ms2{background:#eaf3de}.mw{background:#faeeda}.md{background:#fcebeb}.mg{background:#f0f0ee}
+.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:500}
+.bi{background:#b5d4f4;color:#0c447c}.bg2{background:#c0dd97;color:#27500a}.ba{background:#fac775;color:#633806}.br{background:#f7c1c1;color:#791f1f}.bgr{background:#d3d1c7;color:#444}.bt{background:#9fe1cb;color:#085041}.bp2{background:#cecbf6;color:#3c3489}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:6px 8px;font-size:11px;font-weight:500;color:#666;border-bottom:0.5px solid rgba(0,0,0,.1)}
+td{padding:6px 8px;border-bottom:0.5px solid rgba(0,0,0,.05);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f5f5f3}
+.empty{text-align:center;padding:30px;color:#888}
+.empty i{font-size:34px;display:block;margin-bottom:8px;color:#ccc}
+.alert{padding:8px 12px;border-radius:7px;font-size:12px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.aw{background:#faeeda;color:#854f0b}
+.as{background:#eaf3de;color:#3b6d11}
+.tabs{display:flex;gap:2px;background:#f0f0ee;border-radius:7px;padding:3px;margin-bottom:12px;flex-wrap:wrap}
+.tab{padding:4px 11px;border-radius:5px;cursor:pointer;font-size:12px;color:#666;border:none;background:transparent;font-family:inherit;transition:all .12s}
+.tab.on{background:#fff;color:#1a1a1a;font-weight:500}
+.pag{display:flex;align-items:center;gap:6px;justify-content:flex-end;margin-top:10px;font-size:12px;color:#666}
+mark{background:#fff3a0;border-radius:2px;padding:0 1px;color:inherit}
+.sep{padding:3px 8px;font-size:10px;font-weight:600;color:#888;background:#f5f5f3;letter-spacing:.05em;border-bottom:0.5px solid rgba(0,0,0,.08)}
+.sw{position:relative;margin-bottom:8px}
+.sw input{width:100%;padding:8px 36px 8px 12px;font-size:13px;border:1.5px solid rgba(0,0,0,.2);border-radius:8px;background:#fff;color:#1a1a1a;font-family:inherit}
+.sw input:focus{outline:none;border-color:#185fa5;box-shadow:0 0 0 3px rgba(24,95,165,.1)}
+.sw .si{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#aaa;font-size:16px;pointer-events:none}
+.sh{font-size:11px;color:#888;margin-bottom:8px;min-height:14px}
+
+/* MODAL */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.42);display:flex;align-items:center;justify-content:center;z-index:999}
+.mod{background:#fff;border-radius:12px;padding:18px;width:95%;max-width:600px;max-height:90vh;overflow-y:auto;border:0.5px solid rgba(0,0,0,.1)}
+.mod.wide{max-width:720px}
+.mt2{font-size:15px;font-weight:500;margin-bottom:14px}
+.mf{display:flex;gap:7px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+.fr{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:8px}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fg label{font-size:11px;color:#666;font-weight:500}
+input,select,textarea{font-family:inherit;font-size:12px;padding:6px 9px;border:0.5px solid rgba(0,0,0,.25);border-radius:7px;background:#fff;color:#1a1a1a;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#185fa5;box-shadow:0 0 0 2px rgba(24,95,165,.1)}
+textarea{resize:vertical;min-height:56px}
+.kv{display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:0.5px solid rgba(0,0,0,.05)}
+.kv:last-child{border-bottom:none}
+.kk{color:#666}.kval{font-weight:500;text-align:right;max-width:65%;overflow:hidden;text-overflow:ellipsis}
+.kval a{color:#185fa5;text-decoration:none}
+.sec-t{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.06em;padding:7px 0 4px;border-bottom:1px solid rgba(0,0,0,.1);margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.kv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 16px}
+
+/* AUTOCOMPLETE */
+.acw{position:relative}
+.aci{width:100%;padding:6px 9px;font-size:12px;border:0.5px solid rgba(0,0,0,.25);border-radius:7px 7px 0 0;background:#fff;color:#1a1a1a;font-family:inherit}
+.aci:focus{outline:none;border-color:#185fa5}
+.acd{position:absolute;top:100%;left:0;right:0;background:#fff;border:0.5px solid #185fa5;border-top:none;border-radius:0 0 7px 7px;max-height:160px;overflow-y:auto;z-index:300;display:none}
+.acd.open{display:block}
+.aco{padding:6px 9px;font-size:12px;cursor:pointer;border-bottom:0.5px solid rgba(0,0,0,.05)}
+.aco:last-child{border-bottom:none}
+.aco:hover{background:#e6f1fb}
+.aco small{color:#888;font-size:10px;margin-left:4px}
+
+/* COSTOS */
+.costo-row{display:grid;grid-template-columns:2fr 1fr 2fr 24px;gap:6px;align-items:center;padding:5px 0;border-bottom:0.5px solid rgba(0,0,0,.05)}
+.costo-row:last-child{border-bottom:none}
+
+/* FICHA */
+.ficha-hdr{background:#185fa5;color:#fff;padding:14px 16px;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px}
+.monto-box{background:#f5f5f3;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.monto-item{text-align:center}
+.monto-label{font-size:10px;color:#666;margin-bottom:2px}
+.monto-val{font-size:15px;font-weight:700}
+.entrega-box{background:#eff6ff;border:0.5px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:8px}
+.tag{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;margin:1px}
+.tag.g{background:#dcfce7;color:#166534;border:0.5px solid #86efac}
+.tag.a{background:#fef9c3;color:#854d0e;border:0.5px solid #fde047}
+
+/* PLANIFICACION */
+.maq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px}
+.maq-card{background:#fff;border:0.5px solid rgba(0,0,0,.1);border-radius:10px;padding:12px;cursor:pointer;transition:box-shadow .15s,border-color .15s}
+.maq-card:hover,.maq-card.on{border-color:#185fa5;box-shadow:0 2px 8px rgba(24,95,165,.12)}
+.maq-card.on{background:#e6f1fb}
+.cal-wrap{overflow-x:auto}
+.cal-table{border-collapse:collapse;min-width:560px;width:100%;font-size:11px}
+.cal-table th{padding:5px 4px;text-align:center;border:0.5px solid rgba(0,0,0,.1);background:#f5f5f3;font-weight:600;white-space:nowrap}
+.cal-table th.hc{width:46px;min-width:46px}
+.cal-table td{border:0.5px solid rgba(0,0,0,.1);padding:2px;vertical-align:top;height:26px;cursor:pointer;transition:background .1s}
+.cal-table td:hover{background:rgba(24,95,165,.06)}
+.cal-table td.hcel{background:#f5f5f3;text-align:right;padding:2px 6px;color:#888;cursor:default;font-size:10px}
+.cal-table td.hcel:hover{background:#f5f5f3}
+.cal-table td.alm{background:repeating-linear-gradient(45deg,#f0f0ee,#f0f0ee 3px,#f5f5f3 3px,#f5f5f3 6px);cursor:default;font-size:9px;text-align:center;padding:2px;color:#aaa}
+.cal-table td.alm:hover{background:repeating-linear-gradient(45deg,#f0f0ee,#f0f0ee 3px,#f5f5f3 3px,#f5f5f3 6px)}
+.cal-table td.fuer{background:#f5f5f3;cursor:default}
+.bloque{border-radius:4px;padding:2px 5px;font-size:10px;font-weight:500;overflow:hidden;cursor:pointer;position:relative}
+.bloque:hover{filter:brightness(.92)}
+.bloque .bx{position:absolute;top:1px;right:2px;font-size:10px;opacity:.5;cursor:pointer;line-height:1;background:none;border:none;padding:0;min-width:0}
+.bloque .bx:hover{opacity:1}
+.ot-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:12px;font-size:11px;font-weight:500;margin:2px;cursor:pointer}
+.rtag{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:12px;font-size:10px;font-weight:500;margin:2px;border:0.5px solid transparent}
+.rtag.maq{background:#f0ebff;color:#4a308c;border-color:#cecbf6}
+.rtag.ext{background:#eaf3de;color:#27500a;border-color:#c0dd97}
+.res-item{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;background:#f5f5f3;border-radius:6px;margin-bottom:4px;font-size:12px}
+.c0{background:#dbeafe;color:#1e40af}.c1{background:#dcfce7;color:#166534}.c2{background:#fef9c3;color:#854d0e}.c3{background:#fce7f3;color:#9d174d}.c4{background:#ede9fe;color:#4c1d95}.c5{background:#ffedd5;color:#9a3412}.c6{background:#e0f2fe;color:#0c4a6e}.c7{background:#ecfdf5;color:#064e3b}
+.sdot{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0;border:2px solid rgba(0,0,0,.1)}
+.sdot.done{background:#c0dd97;border-color:#3b6d11;color:#27500a}.sdot.active{background:#b5d4f4;border-color:#185fa5;color:#0c447c}.sdot.pending{background:#f5f5f3}
+.eq{height:18px;border-radius:4px;display:flex;align-items:center;padding:0 7px;font-size:10px;font-weight:500;color:#fff;white-space:nowrap;transition:width .4s}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="sb">
+  <div class="sb-logo"><i class="ti ti-printer"></i> GraficaPro<small>Sistema de gestión gráfica</small></div>
+  <div class="ni" onclick="nav('dash')"><i class="ti ti-layout-dashboard"></i>Panel de control</div>
+  <div class="ns">Comercial</div>
+  <div class="ni" onclick="nav('cli')"><i class="ti ti-users"></i>Clientes</div>
+  <div class="ni" onclick="nav('prov')"><i class="ti ti-building-store"></i>Proveedores</div>
+  <div class="ni" onclick="nav('cot')"><i class="ti ti-file-invoice"></i>Cotizaciones</div>
+  <div class="ni" onclick="nav('ficha')"><i class="ti ti-file-description"></i>Fichas de OT</div>
+  <div class="ns">Producción</div>
+  <div class="ni" onclick="nav('ot')"><i class="ti ti-clipboard-list"></i>Órdenes de trabajo</div>
+  <div class="ni" onclick="nav('plan')"><i class="ti ti-calendar-event"></i>Planificación</div>
+  <div class="ni" onclick="nav('rem')"><i class="ti ti-truck-delivery"></i>Remitos internos</div>
+  <div class="ns">Análisis</div>
+  <div class="ni" onclick="nav('analot')"><i class="ti ti-chart-bar"></i>Análisis OT x OT</div>
+  <div class="ni" onclick="nav('gas')"><i class="ti ti-building"></i>Gastos estructura</div>
+  <div class="ni" onclick="nav('balmes')"><i class="ti ti-calendar-stats"></i>Balance mensual</div>
+  <div class="ni" onclick="nav('balaño')"><i class="ti ti-chart-line"></i>Balance anual</div>
+</div>
+<div class="main" id="pg"></div>
+</div>
+<script>
+const Q=id=>document.getElementById(id);
+let curPg='dash';
+// Search states
+let bCli='',bProv='',pCli=1,pProv=1,fCot='',fOT='',fichaTab='lista',fichaVerID=null,bFicha='';
+// Planificacion
+let planMaq=null,planOffset=0;
+const PER=25;
+
+// ---- STORAGE ----
+// ---- FIREBASE CONFIG ----
+const firebaseConfig = {
+  apiKey: "AIzaSyBknhCg3HU7x1qa1hEgpSpt8yeA3QSBf9g",
+  authDomain: "graficapro-coma.firebaseapp.com",
+  projectId: "graficapro-coma",
+  storageBucket: "graficapro-coma.firebasestorage.app",
+  messagingSenderId: "439415860272",
+  appId: "1:439415860272:web:f3b8860f6e5457111291f5"
+};
+
+// Firebase SDK (cargado via CDN en el <head>)
+let db;
+async function initFirebase(){
+  const {initializeApp} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const {getFirestore,doc,getDoc,setDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  const app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+  window._fsDoc = doc;
+  window._fsGet = getDoc;
+  window._fsSet = setDoc;
+}
+
+async function ld(k){
+  try{
+    const d = await window._fsGet(window._fsDoc(db,'graficapro',k));
+    return d.exists() ? d.data().value : null;
+  }catch(e){console.warn('ld error',k,e);return null;}
+}
+async function sv(k,v){
+  try{
+    await window._fsSet(window._fsDoc(db,'graficapro',k),{value:v},{merge:false});
+  }catch(e){console.warn('sv error',k,e);}
+}
+
+let S={
+  clientes:[],proveedores:[],cotizaciones:[],ordenes:[],remitos:[],facturas:[],cobranzas:[],gastos:[],fichas:[],
+  procesos:['Troquelado','Hot Stamping','Laminado','Laca UV','Laca UV sectorizada','Barniz','Plastificado mate','Plastificado brillo','Estampado','Relieve','Serigrafía'],
+  maquinas:['Pre-prensa','SM52','SM74','Xerox','Guillotina','Troqueladora interna'],
+  externos:['Marcelo (Troquelado)','Víctor (Troquelado)','Oscar (Troquelado)','Laminador externo'],
+  fletes:['Master / Javier','Fiorino / Edu'],
+  planificacion:{},
+  ids:{cot:1,ot:1,rem:1,fac:1,cob:1,ficha:1}
+};
+
+async function init(){
+  Q('pg').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;gap:16px"><div style="font-size:40px">🔥</div><div style="font-size:16px;font-weight:500;color:#185fa5">Conectando con Firebase...</div><div style="font-size:12px;color:#888">Cargando datos de GraficaPro - COMA</div></div>`;
+  await initFirebase();
+  const keys=['clientes','proveedores','cotizaciones','ordenes','remitos','gastos','fichas','procesos','maquinas','externos','fletes','planificacion','ids'];
+  for(const k of keys){const v=await ld(k);if(v!==null)S[k]=v;}
+  if(!S.ids)S.ids={cot:1,ot:1,rem:1,fac:1,cob:1,ficha:1};
+  if(!S.planificacion)S.planificacion={};
+  if(!S.fichas)S.fichas=[];
+  if(!S.maquinas||!S.maquinas.length)S.maquinas=['Pre-prensa','SM52','SM74','Xerox','Guillotina','Troqueladora interna'];
+  if(!S.externos||!S.externos.length)S.externos=['Marcelo (Troquelado)','Víctor (Troquelado)','Oscar (Troquelado)','Laminador externo'];
+  if(!S.fletes||!S.fletes.length)S.fletes=['Master / Javier','Fiorino / Edu'];
+  if(!S.procesos||!S.procesos.length)S.procesos=['Troquelado','Hot Stamping','Laminado','Laca UV','Laca UV sectorizada','Barniz','Plastificado mate','Plastificado brillo'];
+  if(S.clientes.length===0)seed();
+  nav('dash');
+}
+async function sk(k){await sv(k,S[k]);}
+function nid(t){S.ids[t]=(S.ids[t]||1);const i=S.ids[t]++;sk('ids');return i;}
+
+function seed(){
+  S.clientes=[
+    {id:1,nombre:'Consumidor Final',cuit:'',iva:'CF',dom:'',loc:'',prov:'',email:'',tel:'',saldo:0},
+    {id:2,nombre:'JOHN MARTIN S.R.L.',cuit:'30-60932246-9',iva:'RI',dom:'Timoteo Gordillo 2460 (CABA)',loc:'Capital Federal',prov:'CABA',email:'cristian.toscani@john-martin.com.ar',tel:'4687-6128',saldo:0},
+    {id:3,nombre:'INTERBIOL SRL',cuit:'30-63774003-9',iva:'RI',dom:'SANTA ROSA 4110 PB',loc:'Victoria',prov:'Buenos Aires',email:'interbiolsrl@gmail.com',tel:'4714-7037',saldo:0},
+    {id:4,nombre:'LAVISMIL HNOS SRL',cuit:'30-71581140-1',iva:'RI',dom:'LUZURIAGA 436',loc:'Valentín Alsina',prov:'Buenos Aires',email:'',tel:'',saldo:0},
+    {id:5,nombre:'MILLAMEL COSMETICA SRL',cuit:'30-70846010-5',iva:'RI',dom:'Rouco 1550',loc:'San Martín',prov:'Buenos Aires',email:'administracion@coma-grupoimpresor.com.ar',tel:'4753-7545',saldo:0},
+    {id:6,nombre:'VULCANO SA',cuit:'30-55536556-6',iva:'RI',dom:'Gral. Belgrano 2977',loc:'Don Torcuato',prov:'Buenos Aires',email:'noelia.biotti@vulcano-sa.com',tel:'',saldo:0}
+  ];
+  S.proveedores=[
+    {id:1,nombre:'CASA HUTTON SAU',cuit:'30-52551709-4',iva:'RI',dom:'48 (EX ESTRADA) 1921',loc:'San Martín',email:'rseidale@hutton.com.ar',tel:'4724-8008'},
+    {id:2,nombre:'DIMAGRAF SACIF',cuit:'30-51636960-0',iva:'RI',dom:'DIAZ COLODRERO 3127',loc:'Capital Federal',email:'',tel:'4546-4554'},
+    {id:3,nombre:'GSM PACK SRL',cuit:'30-71570635-7',iva:'RI',dom:'MITRE AV. 122',loc:'Villa Martelli',email:'',tel:'4760-5888'},
+    {id:4,nombre:'Marcelo (Troquelado)',cuit:'',iva:'MT',dom:'',loc:'',email:'',tel:''},
+    {id:5,nombre:'Víctor (Troquelado)',cuit:'',iva:'MT',dom:'',loc:'',email:'',tel:''},
+    {id:6,nombre:'Oscar (Troquelado)',cuit:'',iva:'MT',dom:'',loc:'',email:'',tel:''}
+  ];
+  S.ordenes=[
+    {id:1,num:'OT-0001',cotId:null,clienteId:2,fecha:'2024-06-01',entrega:'2024-06-15',descripcion:'Estuches Tónico Total Cats 3000u',estado:'en_produccion',asignaciones:{},notas:'',pasos:[
+      {nombre:'Preprensa',estado:'done',fecha:'2024-06-01',nota:'Archivos OK, chapas listas'},
+      {nombre:'Papel / Insumos',estado:'done',fecha:'2024-06-02',nota:'Cartulina cortada'},
+      {nombre:'Impresión',estado:'active',fecha:'',nota:''},
+      {nombre:'Proceso externo',estado:'pending',fecha:'',nota:''},
+      {nombre:'Control calidad',estado:'pending',fecha:'',nota:''},
+      {nombre:'Entrega',estado:'pending',fecha:'',nota:''}
+    ]},
+    {id:2,num:'OT-0002',cotId:null,clienteId:3,fecha:'2024-06-03',entrega:'2024-06-20',descripcion:'Cajas packaging 500u',estado:'pendiente',asignaciones:{},notas:'',pasos:[
+      {nombre:'Preprensa',estado:'pending',fecha:'',nota:''},
+      {nombre:'Papel / Insumos',estado:'pending',fecha:'',nota:''},
+      {nombre:'Impresión',estado:'pending',fecha:'',nota:''},
+      {nombre:'Control calidad',estado:'pending',fecha:'',nota:''},
+      {nombre:'Entrega',estado:'pending',fecha:'',nota:''}
+    ]}
+  ];
+  S.gastos=[
+    {id:1,concepto:'Alquiler taller',monto:120000,tipo:'fijo',mes:'2024-06'},
+    {id:2,concepto:'Sueldos personal',monto:280000,tipo:'fijo',mes:'2024-06'},
+    {id:3,concepto:'Servicios',monto:35000,tipo:'fijo',mes:'2024-06'},
+    {id:4,concepto:'Mantenimiento máquinas',monto:18000,tipo:'variable',mes:'2024-06'}
+  ];
+  S.fichas=[{
+    id:1,num:'F-0001',otId:1,fecha:'2024-05-24',nPedido:'34986',
+    descripcion:'TONICO TOTAL CATS — 3000 ESTUCHES 5.40x12.10x5.40 cm a 2/0 colores + BARNIZ BRILLANTE en CARTULINA TRIPLEX ZENITH 270g. Troquelados y pegados. Incluye planchas C.T.P.',
+    entregaSolicitada:'2024-07-17',entregaAprox:true,observacionesTrabajo:'Aceptan demasías hasta 10% al 50% del valor unitario.',
+    agf:445000,garbarinoComision:20750,otrasComisiones:0,total:465750,iva:0.21,
+    vendedor:'',comisionVendedor:0,
+    facRazonSocial:'JOHN MARTIN S.R.L.',facDomicilio:'Timoteo Gordillo 2460 (CABA)',
+    facCuit:'30609322469',facCondIva:'RI',facContacto:'CRISTIAN TOSCANI',facTelefono:'4687-6128 INT.122',
+    facEmail1:'cristian.toscani@john-martin.com.ar',facEmail2:'proveedores@john-martin.com.ar',
+    ordenCompra:true,nOrdenCompra:'0024/159',observacionesFac:'',
+    cobCondPago:'ANT 50% + SALDO 50%',
+    cobDetalle:'Anticipo: 50% — Echeqs diferidos 30/60 días\nSaldo: 50% — Echeqs diferidos 30 días F.F.',
+    cobFormaPago:'cheque',cobDiasHorarios:'MA y JU de 10 a 12 hs',
+    cobContacto:'Natalia Barge',cobTelefono:'4687-6128',cobEmail:'proveedores@john-martin.com.ar',
+    observacionesCob:'Consultas y pagos = MA y JU de 10 a 12 hs. Se puede arreglar para transferir.',
+    ent1Dir:'Timoteo Gordillo 2460 (CABA)',ent1Cantidad:'3000 estuches',ent1Horario:'8:00 a 12 hs',
+    ent1PedirTurno:false,ent1Recibe:'CRISTIAN TOSCANI',ent1Tel:'4687-6128 INT.122',
+    ent1Email:'cristian.toscani@john-martin.com.ar',ent1Muestras:false,ent1CantMuestras:0,ent1Obs:'',
+    ent2Dir:'',ent2Cantidad:'',ent2Horario:'',ent2PedirTurno:false,ent2Recibe:'',
+    ent2Tel:'',ent2Email:'',ent2Muestras:false,ent2CantMuestras:0,ent2Obs:'',estado:'activa'
+  }];
+  S.ids={cot:1,ot:3,rem:1,fac:1,cob:1,ficha:2};
+  Object.keys(S).forEach(k=>sk(k));
+}
+
+// ---- HELPERS ----
+const $m=n=>'$'+Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0});
+function cNom(id){const c=S.clientes.find(x=>x.id==id);return c?c.nombre:'-';}
+function pNom(id){if(!id)return'—';const p=S.proveedores.find(x=>x.id==id);return p?p.nombre:'—';}
+function alfa(a){return[...a].sort((x,y)=>x.nombre.localeCompare(y.nombre,'es',{sensitivity:'base'}));}
+function esc(q){return q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
+function hl(txt,q){if(!q||!txt)return txt||'';return txt.replace(new RegExp('('+esc(q)+')','gi'),'<mark>$1</mark>');}
+function ivaBadge(v){const m={RI:'bi',MT:'ba',EX:'bt',CF:'bgr'};const l={RI:'R.Inscripto',MT:'Monotributista',EX:'Exento',CF:'Cons.Final'};return v?`<span class="badge ${m[v]||'bgr'}">${l[v]||v}</span>`:''}
+function stBadge(e){
+  const m={borrador:'bgr',enviada:'bi',aprobada:'bg2',rechazada:'br',pendiente:'ba',en_produccion:'bi',externo:'bp2',lista:'bt',entregada:'bg2',cancelada:'br',emitida:'bi',pagada:'bg2',emitido:'bi',entregado:'bg2',activa:'bg2'};
+  const l={borrador:'Borrador',enviada:'Enviada',aprobada:'Aprobada',rechazada:'Rechazada',pendiente:'Pendiente',en_produccion:'En producción',externo:'En externo',lista:'Lista',entregada:'Entregada',cancelada:'Cancelada',emitida:'Emitida',pagada:'Pagada',emitido:'Emitido',entregado:'Entregado',activa:'Activa'};
+  return `<span class="badge ${m[e]||'bgr'}">${l[e]||e}</span>`;
+}
+const OT_COLORS=['c0','c1','c2','c3','c4','c5','c6','c7'];
+function otCol(id){return OT_COLORS[(id-1)%OT_COLORS.length];}
+
+// ---- NAV ----
+function nav(p){
+  curPg=p;
+  document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('on',n.getAttribute('onclick')===`nav('${p}')`));
+  render();
+}
+function render(){
+  const fns={dash:rDash,cli:rCli,prov:rProv,cot:rCot,ot:rOT,plan:rPlan,ficha:rFicha,rem:rRem,gas:rGas,analot:rAnalOT,balmes:rBalMes,balaño:rBalAño};
+  if(fns[curPg])Q('pg').innerHTML=fns[curPg]();
+  if(curPg==='cli'){updateCliTable();}
+  if(curPg==='prov'){updateProvTable();}
+}
+
+// ---- SEARCH helpers ----
+function searchCli(v){bCli=v;pCli=1;updateCliTable();}
+function searchProv(v){bProv=v;pProv=1;updateProvTable();}
+
+function updateCliTable(){
+  const f=bCli.trim().toLowerCase();
+  const sorted=alfa(S.clientes);
+  const rows=f?sorted.filter(c=>c.nombre.toLowerCase().includes(f)||(c.cuit||'').includes(f)||(c.email||'').toLowerCase().includes(f)||(c.loc||'').toLowerCase().includes(f)):sorted;
+  const tot=rows.length,pgs=Math.ceil(tot/PER)||1;
+  if(pCli>pgs)pCli=1;
+  const sl=rows.slice((pCli-1)*PER,pCli*PER);
+  const sub=Q('cli-sub');if(sub)sub.textContent=`${tot} resultado${tot!==1?'s':''} de ${S.clientes.length}`;
+  const hint=Q('cli-hint');
+  if(hint)hint.innerHTML=f?`<i class="ti ti-info-circle"></i> ${rows.length} coincidencia${rows.length!==1?'s':''} · <a href="#" onclick="bCli='';Q('sci').value='';updateCliTable();return false" style="color:#185fa5">limpiar</a>`:'Ordenado A→Z · Escribí para filtrar';
+  let trs='';
+  if(!f){let ll='';for(const c of sl){const l=(c.nombre[0]||'#').toUpperCase();if(l!==ll){trs+=`<tr><td colspan="5" class="sep">${l}</td></tr>`;ll=l;}trs+=`<tr><td><strong style="font-weight:500">${c.nombre}</strong></td><td style="font-family:monospace;font-size:11px">${c.cuit||'—'}</td><td>${ivaBadge(c.iva)}</td><td>${c.loc||'—'}</td><td><button onclick="om('vc',${c.id})"><i class="ti ti-eye"></i></button></td></tr>`;}}
+  else{if(!sl.length)trs=`<tr><td colspan="5"><div class="empty"><i class="ti ti-search"></i>Sin resultados para "${f}"</div></td></tr>`;for(const c of sl)trs+=`<tr><td><strong style="font-weight:500">${hl(c.nombre,f)}</strong></td><td style="font-family:monospace;font-size:11px">${c.cuit||'—'}</td><td>${ivaBadge(c.iva)}</td><td>${hl(c.loc||'—',f)}</td><td><button onclick="om('vc',${c.id})"><i class="ti ti-eye"></i></button></td></tr>`;}
+  const tbody=Q('cli-tbody');if(tbody)tbody.innerHTML=trs;
+  const pagDiv=Q('cli-pag');if(pagDiv)pagDiv.innerHTML=pgs>1?`<span>${(pCli-1)*PER+1}–${Math.min(pCli*PER,tot)} de ${tot}</span><button onclick="pCli=Math.max(1,pCli-1);updateCliTable()" ${pCli===1?'disabled':''}>‹</button><span>${pCli}/${pgs}</span><button onclick="pCli=Math.min(${pgs},pCli+1);updateCliTable()" ${pCli===pgs?'disabled':''}>›</button>`:'';
+}
+function updateProvTable(){
+  const f=bProv.trim().toLowerCase();
+  const sorted=alfa(S.proveedores);
+  const rows=f?sorted.filter(p=>p.nombre.toLowerCase().includes(f)||(p.cuit||'').includes(f)||(p.loc||'').toLowerCase().includes(f)):sorted;
+  const tot=rows.length,pgs=Math.ceil(tot/PER)||1;
+  if(pProv>pgs)pProv=1;
+  const sl=rows.slice((pProv-1)*PER,pProv*PER);
+  const sub=Q('prov-sub');if(sub)sub.textContent=`${tot} de ${S.proveedores.length}`;
+  const hint=Q('prov-hint');if(hint)hint.innerHTML=f?`${rows.length} coincidencias · <a href="#" onclick="bProv='';Q('spi').value='';updateProvTable();return false" style="color:#185fa5">limpiar</a>`:'Ordenado A→Z · Escribí para filtrar';
+  let trs='';
+  if(!f){let ll='';for(const p of sl){const l=(p.nombre[0]||'#').toUpperCase();if(l!==ll){trs+=`<tr><td colspan="6" class="sep">${l}</td></tr>`;ll=l;}trs+=`<tr><td><strong style="font-weight:500">${p.nombre}</strong></td><td style="font-family:monospace;font-size:11px">${p.cuit||'—'}</td><td>${ivaBadge(p.iva)}</td><td>${p.loc||'—'}</td><td style="font-size:11px">${p.tel||'—'}</td><td><button onclick="om('vp',${p.id})"><i class="ti ti-eye"></i></button></td></tr>`;}}
+  else{if(!sl.length)trs=`<tr><td colspan="6"><div class="empty">Sin resultados</div></td></tr>`;for(const p of sl)trs+=`<tr><td><strong style="font-weight:500">${hl(p.nombre,f)}</strong></td><td style="font-family:monospace;font-size:11px">${p.cuit||'—'}</td><td>${ivaBadge(p.iva)}</td><td>${hl(p.loc||'—',f)}</td><td style="font-size:11px">${p.tel||'—'}</td><td><button onclick="om('vp',${p.id})"><i class="ti ti-eye"></i></button></td></tr>`;}
+  const tbody=Q('prov-tbody');if(tbody)tbody.innerHTML=trs;
+  const pagDiv=Q('prov-pag');if(pagDiv)pagDiv.innerHTML=pgs>1?`<span>${(pProv-1)*PER+1}–${Math.min(pProv*PER,tot)} de ${tot}</span><button onclick="pProv=Math.max(1,pProv-1);updateProvTable()" ${pProv===1?'disabled':''}>‹</button><span>${pProv}/${pgs}</span><button onclick="pProv=Math.min(${pgs},pProv+1);updateProvTable()" ${pProv===pgs?'disabled':''}>›</button>`:'';
+}
+
+// ---- PAGES ----
+function rDash(){
+  const hoy=new Date();hoy.setHours(0,0,0,0);
+  const fmtD=d=>d?new Date(d+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}):'—';
+  const diasRestantes=ent=>{if(!ent)return null;const d=new Date(ent+'T00:00:00');return Math.round((d-hoy)/(1000*60*60*24));};
+
+  const activas=S.ordenes.filter(o=>o.estado!=='entregada'&&o.estado!=='cancelada');
+  const atrasadas=activas.filter(o=>o.entrega&&diasRestantes(o.entrega)<0);
+  const urgentes=activas.filter(o=>o.entrega&&diasRestantes(o.entrega)>=0&&diasRestantes(o.entrega)<=3);
+  const enProd=activas.filter(o=>o.estado==='en_produccion');
+  const pendientes=activas.filter(o=>o.estado==='pendiente');
+  const listas=activas.filter(o=>o.estado==='lista');
+
+  let h=`<div class="ph"><div><div class="pt">Panel de control</div><div class="ps">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div></div></div>`;
+
+  // ALERTAS de atraso
+  if(atrasadas.length){
+    h+=`<div style="background:#fcebeb;border:1px solid #f7c1c1;border-radius:10px;padding:12px 14px;margin-bottom:12px">`;
+    h+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><i class="ti ti-alert-triangle" style="color:#a32d2d;font-size:16px"></i><strong style="color:#a32d2d;font-size:13px">${atrasadas.length} trabajo${atrasadas.length!==1?'s':''} atrasado${atrasadas.length!==1?'s':''}</strong></div>`;
+    atrasadas.forEach(o=>{
+      const dias=Math.abs(diasRestantes(o.entrega));
+      h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid rgba(163,45,45,.15);cursor:pointer" onclick="om('vot',${o.id})"><div><span style="font-size:12px;font-weight:600">${o.num}</span> <span style="font-size:12px;color:#444">— ${o.descripcion}</span><div style="font-size:11px;color:#888">${cNom(o.clienteId)}</div></div><div style="text-align:right"><span style="background:#f7c1c1;color:#791f1f;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600">${dias} día${dias!==1?'s':''} de atraso</span><div style="font-size:10px;color:#888;margin-top:2px">Entrega: ${fmtD(o.entrega)}</div></div></div>`;
+    });
+    h+=`</div>`;
+  }
+
+  // URGENTES (vencen en 0-3 días)
+  if(urgentes.length){
+    h+=`<div style="background:#faeeda;border:1px solid #fac775;border-radius:10px;padding:12px 14px;margin-bottom:12px">`;
+    h+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><i class="ti ti-clock" style="color:#ba7517;font-size:16px"></i><strong style="color:#ba7517;font-size:13px">${urgentes.length} entrega${urgentes.length!==1?'s':''} próxima${urgentes.length!==1?'s':''} (0–3 días)</strong></div>`;
+    urgentes.forEach(o=>{
+      const dias=diasRestantes(o.entrega);
+      h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid rgba(186,117,23,.15);cursor:pointer" onclick="om('vot',${o.id})"><div><span style="font-size:12px;font-weight:600">${o.num}</span> <span style="font-size:12px;color:#444">— ${o.descripcion}</span><div style="font-size:11px;color:#888">${cNom(o.clienteId)}</div></div><div style="text-align:right"><span style="background:#fac775;color:#633806;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600">${dias===0?'Hoy':dias===1?'Mañana':dias+' días'}</span><div style="font-size:10px;color:#888;margin-top:2px">Entrega: ${fmtD(o.entrega)}</div></div></div>`;
+    });
+    h+=`</div>`;
+  }
+
+  // MÉTRICAS operativas
+  h+=`<div class="cg">
+<div class="mc md" style="cursor:pointer" onclick="nav('ot')"><div class="ml"><i class="ti ti-alert-circle" style="font-size:11px"></i> Atrasadas</div><div class="mv" style="color:#a32d2d">${atrasadas.length}</div></div>
+<div class="mc mi" style="cursor:pointer" onclick="fOT='en_produccion';nav('ot')"><div class="ml"><i class="ti ti-printer" style="font-size:11px"></i> En producción</div><div class="mv">${enProd.length}</div></div>
+<div class="mc mw" style="cursor:pointer" onclick="fOT='pendiente';nav('ot')"><div class="ml"><i class="ti ti-clock" style="font-size:11px"></i> Pendientes</div><div class="mv">${pendientes.length}</div></div>
+<div class="mc ms2" style="cursor:pointer" onclick="fOT='lista';nav('ot')"><div class="ml"><i class="ti ti-circle-check" style="font-size:11px"></i> Listas para entregar</div><div class="mv">${listas.length}</div></div>
+</div>`;
+
+  // TABLA: trabajos activos ordenados por urgencia
+  h+=`<div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">`;
+  h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,.08)"><strong>Órdenes activas</strong><button onclick="nav('ot')" style="font-size:11px">Ver todas</button></div>`;
+  if(!activas.length){h+=`<div class="empty"><i class="ti ti-clipboard-list"></i>No hay órdenes activas</div>`;}
+  else{
+    // ordenar: atrasadas primero, luego por días restantes
+    const sorted=[...activas].sort((a,b)=>{
+      const da=diasRestantes(a.entrega)??999,db=diasRestantes(b.entrega)??999;
+      return da-db;
+    });
+    h+=`<table><thead><tr><th>OT</th><th>Descripción</th><th>Cliente</th><th>Entrega</th><th>Estado</th><th>Avance</th><th></th></tr></thead><tbody>`;
+    sorted.forEach(o=>{
+      const dias=diasRestantes(o.entrega);
+      const dn=o.pasos?o.pasos.filter(p=>p.estado==='done').length:0;
+      const pt=o.pasos?o.pasos.length:1;
+      const pc=Math.round((dn/pt)*100);
+      let entregaCell='—';
+      if(o.entrega){
+        if(dias<0) entregaCell=`<span style="color:#a32d2d;font-weight:600">${fmtD(o.entrega)}<br><span style="font-size:10px">${Math.abs(dias)}d atraso</span></span>`;
+        else if(dias<=3) entregaCell=`<span style="color:#ba7517;font-weight:600">${fmtD(o.entrega)}<br><span style="font-size:10px">${dias===0?'Hoy':dias===1?'Mañana':dias+'d'}</span></span>`;
+        else entregaCell=`${fmtD(o.entrega)}<br><span style="font-size:10px;color:#888">${dias}d</span>`;
+      }
+      h+=`<tr><td><strong>${o.num}</strong></td><td style="max-width:160px">${o.descripcion}</td><td>${cNom(o.clienteId)}</td><td style="white-space:nowrap;font-size:11px">${entregaCell}</td><td>${stBadge(o.estado)}</td><td style="min-width:80px"><div style="background:#f5f5f3;border-radius:3px;height:5px;overflow:hidden;margin-bottom:2px"><div style="height:100%;width:${pc}%;background:${pc===100?'#3b6d11':'#185fa5'};border-radius:3px"></div></div><span style="font-size:10px;color:#888">${dn}/${pt}</span></td><td><button onclick="om('vot',${o.id})"><i class="ti ti-eye"></i></button></td></tr>`;
+    });
+    h+=`</tbody></table>`;
+  }
+  h+=`</div>`;
+
+  // Próximas entregas (7 días)
+  const prox=activas.filter(o=>o.entrega&&diasRestantes(o.entrega)>=0&&diasRestantes(o.entrega)<=7).sort((a,b)=>diasRestantes(a.entrega)-diasRestantes(b.entrega));
+  h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">`;
+  h+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong>Próximas entregas (7 días)</strong></div>`;
+  if(!prox.length)h+=`<div class="empty" style="padding:12px"><i class="ti ti-calendar-check"></i>Sin entregas esta semana</div>`;
+  prox.forEach(o=>{
+    const dias=diasRestantes(o.entrega);
+    h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:0.5px solid rgba(0,0,0,.05);cursor:pointer" onclick="om('vot',${o.id})"><div><div style="font-size:12px;font-weight:500">${o.num} — ${o.descripcion.substring(0,28)}${o.descripcion.length>28?'…':''}</div><div style="font-size:10px;color:#888">${cNom(o.clienteId)}</div></div><span style="background:${dias<=1?'#fac775':dias<=3?'#faeeda':'#eaf3de'};color:${dias<=1?'#633806':dias<=3?'#854d0e':'#27500a'};padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap">${dias===0?'Hoy':dias===1?'Mañana':fmtD(o.entrega)}</span></div>`;
+  });
+  h+=`</div>`;
+
+  // Fichas recientes
+  h+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong>Fichas recientes</strong><button onclick="nav('ficha')" style="font-size:11px">Ver todas</button></div>`;
+  if(!S.fichas.length)h+=`<div class="empty" style="padding:12px"><i class="ti ti-file-description"></i>Sin fichas</div>`;
+  S.fichas.slice(-5).reverse().forEach(f=>{h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid rgba(0,0,0,.05);cursor:pointer" onclick="fichaTab='ver';fichaVerID=${f.id};nav('ficha')"><div><div style="font-size:12px;font-weight:500">${f.num}<span style="font-weight:400;color:#888"> — ${f.facRazonSocial}</span></div><div style="font-size:10px;color:#aaa">${f.descripcion.substring(0,40)}…</div></div>${stBadge(f.estado)}</div>`;});
+  h+=`</div></div>`;
+
+  return h;
+}
+
+function rCli(){
+  return `<div class="ph"><div><div class="pt">Clientes / CRM</div><div class="ps" id="cli-sub"></div></div><button class="bp" onclick="om('nc')"><i class="ti ti-plus"></i>Nuevo</button></div>
+<div class="sw"><input id="sci" type="text" placeholder="Buscar por nombre, CUIT, email, localidad..." autocomplete="off" spellcheck="false" oninput="searchCli(this.value)" value="${bCli}"><i class="ti ti-search si"></i></div>
+<div class="sh" id="cli-hint"></div>
+<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Nombre</th><th>CUIT</th><th>Cond. IVA</th><th>Localidad</th><th></th></tr></thead><tbody id="cli-tbody"></tbody></table></div>
+<div class="pag" id="cli-pag"></div>`;
+}
+function rProv(){
+  return `<div class="ph"><div><div class="pt">Proveedores</div><div class="ps" id="prov-sub"></div></div><button class="bp" onclick="om('np')"><i class="ti ti-plus"></i>Nuevo</button></div>
+<div class="sw"><input id="spi" type="text" placeholder="Buscar por nombre, CUIT, localidad..." autocomplete="off" spellcheck="false" oninput="searchProv(this.value)" value="${bProv}"><i class="ti ti-search si"></i></div>
+<div class="sh" id="prov-hint"></div>
+<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Nombre</th><th>CUIT</th><th>Cond. IVA</th><th>Localidad</th><th>Tel.</th><th></th></tr></thead><tbody id="prov-tbody"></tbody></table></div>
+<div class="pag" id="prov-pag"></div>`;
+}
+
+function rCot(){
+  const rows=fCot?S.cotizaciones.filter(c=>c.estado===fCot):S.cotizaciones;
+  let h=`<div class="ph"><div><div class="pt">Cotizaciones</div><div class="ps">${S.cotizaciones.length} registradas</div></div><button class="bp" onclick="om('nc2')"><i class="ti ti-plus"></i>Nueva</button></div>`;
+  h+=`<div class="tabs">${['','borrador','enviada','aprobada','rechazada'].map(f=>`<button class="tab ${fCot===f?'on':''}" onclick="fCot='${f}';render()">${f||'Todas'}</button>`).join('')}</div>`;
+  h+=`<div class="card" style="padding:0"><table><thead><tr><th>Nro.</th><th>Cliente</th><th>Fecha</th><th>Total venta</th><th>Costo</th><th>Margen</th><th>Estado</th><th></th></tr></thead><tbody>`;
+  if(!rows.length)h+=`<tr><td colspan="8"><div class="empty"><i class="ti ti-file-invoice"></i>Sin cotizaciones</div></td></tr>`;
+  else rows.forEach(c=>{
+    const ct=c.costoTotal||0;const mg=c.total>0?((c.total-ct)/c.total*100).toFixed(1):0;
+    const hasOT=S.ordenes.find(o=>o.cotId===c.id);
+    h+=`<tr><td><strong>${c.num}</strong></td><td>${cNom(c.clienteId)}</td><td>${c.fecha}</td><td>${$m(c.total)}</td><td>${$m(ct)}</td><td style="color:${mg>=20?'#3b6d11':mg>=10?'#ba7517':'#a32d2d'};font-weight:500">${mg}%</td><td>${stBadge(c.estado)}</td><td style="white-space:nowrap"><button onclick="om('vc2',${c.id})"><i class="ti ti-eye"></i></button>${c.estado==='aprobada'&&!hasOT?`<button class="bs" onclick="genOT(${c.id})"><i class="ti ti-clipboard-plus"></i>OT</button>`:''}</td></tr>`;
+  });
+  h+=`</tbody></table></div>`;return h;
+}
+
+function rOT(){
+  const rows=fOT?S.ordenes.filter(o=>o.estado===fOT):S.ordenes;
+  let h=`<div class="ph"><div><div class="pt">Órdenes de trabajo</div><div class="ps">${S.ordenes.length} órdenes</div></div><button class="bp" onclick="om('not')"><i class="ti ti-plus"></i>Nueva OT</button></div>`;
+  h+=`<div class="tabs">${['','pendiente','en_produccion','lista','entregada'].map(f=>`<button class="tab ${fOT===f?'on':''}" onclick="fOT='${f}';render()">${f||'Todas'}</button>`).join('')}</div>`;
+  if(!rows.length)h+=`<div class="empty"><i class="ti ti-clipboard-list"></i>Sin órdenes</div>`;
+  rows.forEach(o=>{
+    const dn=o.pasos.filter(p=>p.estado==='done').length;
+    const pc=o.pasos.length>0?Math.round((dn/o.pasos.length)*100):0;
+    const a=o.asignaciones||{};
+    const tags=Object.entries(a).filter(([,v])=>v&&v.nombre).map(([k,v])=>`<span class="rtag ${v.tipo==='maq'?'maq':v.tipo==='fle'?'ext':'ext'}"><i class="ti ti-${v.tipo==='maq'?'tool':v.tipo==='fle'?'truck-delivery':'user'}" style="font-size:9px"></i> ${v.nombre}</span>`).join('');
+    h+=`<div class="card"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:9px"><div><div style="font-size:13px;font-weight:500">${o.num} <span style="font-weight:400;color:#888">— ${o.descripcion}</span></div><div style="font-size:11px;color:#888;margin-top:2px">${cNom(o.clienteId)} · Entrega: ${o.entrega||'—'}</div>${tags?`<div style="margin-top:4px">${tags}</div>`:''}</div><div style="display:flex;gap:5px;align-items:center">${stBadge(o.estado)}<button onclick="om('vot',${o.id})"><i class="ti ti-eye"></i></button><button onclick="om('asgn',${o.id})" style="font-size:11px"><i class="ti ti-cpu"></i>Asignar</button></div></div><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;background:#f5f5f3;border-radius:3px;height:5px;overflow:hidden"><div style="height:100%;width:${pc}%;background:${pc===100?'#3b6d11':'#185fa5'};border-radius:3px"></div></div><span style="font-size:11px;color:#888">${dn}/${o.pasos.length} — ${pc}%</span></div></div>`;
+  });
+  return h;
+}
+
+function rPlan(){
+  const tab=window._planTab||'prod';
+  let h=`<div class="ph"><div><div class="pt">Planificación</div></div><button onclick="om('recursos')" style="font-size:11px"><i class="ti ti-settings"></i>Gestionar recursos</button></div>`;
+  h+=`<div class="tabs"><button class="tab ${tab==='prod'?'on':''}" onclick="window._planTab='prod';render()"><i class="ti ti-printer"></i> Producción</button><button class="tab ${tab==='ent'?'on':''}" onclick="window._planTab='ent';render()"><i class="ti ti-truck-delivery"></i> Entregas / Fletes</button></div>`;
+
+  if(tab==='prod'){
+    // --- Máquinas internas ---
+    h+=`<div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px"><i class="ti ti-tool" style="font-size:11px"></i> Máquinas internas</div>`;
+    h+=`<div class="maq-grid">`;
+    S.maquinas.forEach(m=>{
+      const cnt=S.ordenes.filter(o=>Object.values(o.asignaciones||{}).some(v=>v&&v.nombre===m)).length;
+      const pm=S.planificacion[m]||{};const bsem=Object.values(pm).reduce((a,d)=>a+Object.keys(d).length,0);
+      h+=`<div class="maq-card ${planMaq===m?'on':''}" onclick="planMaq='${m.replace(/'/g,"\\'")}';planOffset=0;render()"><div style="font-size:10px;color:#888;margin-bottom:3px"><i class="ti ti-tool" style="font-size:11px"></i> Máquina</div><div style="font-size:13px;font-weight:600">${m}</div><div style="font-size:10px;color:${cnt>0?'#185fa5':'#aaa'}">${cnt} OT${cnt!==1?'s':''} asignada${cnt!==1?'s':''}</div>${bsem>0?`<div style="font-size:10px;color:#3b6d11">${bsem} bloque${bsem!==1?'s':''} esta semana</div>`:''}</div>`;
+    });
+    h+=`</div>`;
+    // --- Externos ---
+    h+=`<div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;margin-top:4px"><i class="ti ti-user" style="font-size:11px"></i> Externos</div>`;
+    h+=`<div class="maq-grid">`;
+    S.externos.forEach(e=>{
+      const pe=S.planificacion[e]||{};const bsem=Object.values(pe).reduce((a,d)=>a+Object.keys(d).length,0);
+      h+=`<div class="maq-card ${planMaq===e?'on':''}" onclick="planMaq='${e.replace(/'/g,"\\'")}';planOffset=0;render()" style="border-left:3px solid #9fe1cb"><div style="font-size:10px;color:#888;margin-bottom:3px"><i class="ti ti-user" style="font-size:11px"></i> Externo</div><div style="font-size:13px;font-weight:600">${e}</div>${bsem>0?`<div style="font-size:10px;color:#3b6d11">${bsem} bloque${bsem!==1?'s':''}</div>`:''}</div>`;
+    });
+    h+=`</div>`;
+    if(planMaq)h+=rCalSemanal(planMaq);
+
+  } else {
+    // --- ENTREGAS / FLETES ---
+    h+=rEntregas();
+  }
+  return h;
+}
+
+// offset semanal para la vista de entregas (independiente del de máquinas)
+let entOffset=0;
+// flete seleccionado para ver su planilla diaria
+let entFleteSel=null;
+
+function rEntregas(){
+  const MESES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+  // calcular semana
+  const lun=getLunes(entOffset);
+  const semDias=[];
+  for(let i=0;i<6;i++){const d=new Date(lun);d.setDate(lun.getDate()+i);semDias.push(d);}
+  const fmtIso=d=>{const m=d.getMonth()+1,dd=d.getDate();return d.getFullYear()+'-'+String(m).padStart(2,'0')+'-'+String(dd).padStart(2,'0');}
+  const fmtCorto=d=>DIAS[d.getDay()]+' '+d.getDate()+'/'+MESES[d.getMonth()];
+  const isHoyD=d=>fmtIso(d)===fmtIso(new Date());
+
+  const fleOpts=`<option value="">— Sin flete —</option>`+S.fletes.map(f=>`<option value="${f}">${f}</option>`).join('');
+  const otsActivas=S.ordenes.filter(o=>o.estado!=='entregada'&&o.estado!=='cancelada');
+
+  let h=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">`;
+  h+=`<button onclick="entOffset--;render()"><i class="ti ti-chevron-left"></i></button>`;
+  h+=`<strong style="font-size:13px">${semDias[0].getDate()}/${MESES[semDias[0].getMonth()]} — ${semDias[5].getDate()}/${MESES[semDias[5].getMonth()]}</strong>`;
+  h+=`<button onclick="entOffset++;render()"><i class="ti ti-chevron-right"></i></button>`;
+  h+=`<button onclick="entOffset=0;render()" style="font-size:11px">Hoy</button>`;
+  h+=`</div>`;
+
+  // ---- VISTA SEMANAL DE ENTREGAS ----
+  h+=`<div class="cal-wrap" style="margin-bottom:16px"><table class="cal-table"><thead><tr><th class="hc">Flete</th>`;
+  semDias.forEach(d=>{h+=`<th${isHoyD(d)?' style="background:#e6f1fb;color:#185fa5"':''}>${fmtCorto(d)}</th>`;});
+  h+=`</tr></thead><tbody>`;
+
+  // Fila "Sin flete" — OTs sin flete asignado
+  h+=`<tr><td class="hcel" style="text-align:left;padding:4px 8px;font-size:11px;color:#aaa;font-style:italic">Sin asignar</td>`;
+  semDias.forEach(d=>{
+    const fecha=fmtIso(d);
+    const delDia=otsActivas.filter(o=>o.entrega===fecha&&!o.fleteAsignado);
+    h+=`<td style="padding:3px;vertical-align:top;min-height:32px">`;
+    delDia.forEach(o=>{
+      h+=`<div style="background:#f0f0ee;border-radius:5px;padding:3px 6px;margin-bottom:2px;font-size:10px;cursor:pointer" onclick="om('editEntrega',${o.id})">`;
+      h+=`<div style="font-weight:600">${o.num}</div>`;
+      h+=`<div style="opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px">${o.descripcion}</div>`;
+      h+=`</div>`;
+    });
+    h+=`</td>`;
+  });
+  h+=`</tr>`;
+
+  // Una fila por flete
+  S.fletes.forEach(f=>{
+    const activo=entFleteSel===f;
+    h+=`<tr>`;
+    h+=`<td style="padding:4px 8px;vertical-align:top;cursor:pointer;white-space:nowrap${activo?';background:#e6f1fb;font-weight:600':''}" onclick="entFleteSel=entFleteSel==='${f.replace(/'/g,"\\'")}' ? null : '${f.replace(/'/g,"\\'")}';render()">`;
+    h+=`<i class="ti ti-truck-delivery" style="font-size:11px;margin-right:3px"></i>${f}`;
+    const totalSem=otsActivas.filter(o=>o.fleteAsignado===f&&semDias.some(d=>fmtIso(d)===o.entrega)).length;
+    if(totalSem>0)h+=`<div style="font-size:10px;color:#3b6d11;font-weight:400">${totalSem} viaje${totalSem!==1?'s':''}</div>`;
+    h+=`</td>`;
+    semDias.forEach(d=>{
+      const fecha=fmtIso(d);
+      const delDia=otsActivas.filter(o=>o.entrega===fecha&&o.fleteAsignado===f);
+      const esHoy=isHoyD(d);
+      h+=`<td style="padding:3px;vertical-align:top;min-height:32px${esHoy?';background:rgba(24,95,165,.04)':''}">`;
+      delDia.forEach(o=>{
+        h+=`<div class="${otCol(o.id)}" style="border-radius:5px;padding:3px 6px;margin-bottom:2px;font-size:10px;cursor:pointer;border:0.5px solid rgba(0,0,0,.08)" onclick="om('editEntrega',${o.id})">`;
+        h+=`<div style="font-weight:600">${o.num}</div>`;
+        h+=`<div style="opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px">${cNom(o.clienteId)}</div>`;
+        if(o.fleteObs)h+=`<div style="opacity:.6;font-style:italic">${o.fleteObs}</div>`;
+        h+=`</div>`;
+      });
+      // Zona de drop vacía clickeable para asignar
+      h+=`</td>`;
+    });
+    h+=`</tr>`;
+  });
+  h+=`</tbody></table></div>`;
+
+  // ---- PLANILLA DIARIA DEL FLETE SELECCIONADO ----
+  if(entFleteSel){
+    h+=`<div class="card">`;
+    h+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">`;
+    h+=`<div style="font-size:14px;font-weight:600"><i class="ti ti-truck-delivery" style="margin-right:6px"></i>Planilla: ${entFleteSel}</div>`;
+    h+=`<button onclick="entFleteSel=null;render()" style="font-size:11px"><i class="ti ti-x"></i>Cerrar</button>`;
+    h+=`</div>`;
+    // Tabla: filas = días de la semana, columnas = datos del viaje
+    h+=`<table><thead><tr><th>Día</th><th>OT</th><th>Cliente</th><th>Descripción</th><th>Dirección entrega</th><th>Obs.</th><th>Estado</th></tr></thead><tbody>`;
+    let hayViajes=false;
+    semDias.forEach(d=>{
+      const fecha=fmtIso(d);
+      const viajes=otsActivas.filter(o=>o.entrega===fecha&&o.fleteAsignado===entFleteSel);
+      if(!viajes.length)return;
+      hayViajes=true;
+      viajes.forEach((o,idx)=>{
+        const dir=o.material?.dir||o.fichaDir||(()=>{const fi=S.fichas.find(f=>f.otId===o.id);return fi?fi.ent1Dir:'';})();
+        h+=`<tr${isHoyD(d)?' style="background:#fffbf0"':''}>`;
+        if(idx===0)h+=`<td rowspan="${viajes.length}" style="font-weight:600;vertical-align:top;white-space:nowrap">${fmtCorto(d)}</td>`;
+        h+=`<td><strong>${o.num}</strong></td>`;
+        h+=`<td>${cNom(o.clienteId)}</td>`;
+        h+=`<td style="max-width:150px">${o.descripcion}</td>`;
+        h+=`<td style="font-size:11px">${dir||'—'}</td>`;
+        h+=`<td><input value="${o.fleteObs||''}" placeholder="Obs..." style="font-size:11px;padding:3px 7px;min-width:80px" onchange="setFleteObs(${o.id},this.value)"></td>`;
+        h+=`<td>${stBadge(o.estado)}</td>`;
+        h+=`</tr>`;
+      });
+    });
+    if(!hayViajes)h+=`<tr><td colspan="7"><div class="empty" style="padding:14px"><i class="ti ti-calendar-off"></i>Sin viajes esta semana</div></td></tr>`;
+    h+=`</tbody></table>`;
+    h+=`</div>`;
+  }
+
+  // ---- OTs SIN FECHA ASIGNADA ----
+  const sinFecha=otsActivas.filter(o=>!o.entrega);
+  if(sinFecha.length){
+    h+=`<div class="card" style="margin-top:4px"><div style="font-size:12px;font-weight:500;color:#888;margin-bottom:8px"><i class="ti ti-calendar-question"></i> Sin fecha de entrega (${sinFecha.length})</div>`;
+    sinFecha.forEach(o=>{
+      h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid rgba(0,0,0,.05)">`;
+      h+=`<div><div style="font-size:12px;font-weight:500">${o.num} — ${o.descripcion}</div><div style="font-size:10px;color:#888">${cNom(o.clienteId)}</div></div>`;
+      h+=`<button onclick="om('editEntrega',${o.id})" style="font-size:11px"><i class="ti ti-edit"></i>Asignar</button>`;
+      h+=`</div>`;
+    });
+    h+=`</div>`;
+  }
+
+  return h;
+}
+
+function setFlete(otId,val){
+  const o=S.ordenes.find(x=>x.id===otId);if(!o)return;
+  o.fleteAsignado=val;sk('ordenes');
+}
+function setFleteObs(otId,val){
+  const o=S.ordenes.find(x=>x.id===otId);if(!o)return;
+  o.fleteObs=val;sk('ordenes');
+}
+function setEntregaFecha(otId,val){
+  const o=S.ordenes.find(x=>x.id===otId);if(!o)return;
+  o.entrega=val;sk('ordenes');cm();render();
+}
+
+// Modal para editar entrega de una OT desde la vista semanal
+function mEditEntrega(id){
+  const o=S.ordenes.find(x=>x.id===id);if(!o)return'';
+  const fleOpts=`<option value="">— Sin flete —</option>`+S.fletes.map(f=>`<option value="${f}"${o.fleteAsignado===f?' selected':''}>${f}</option>`).join('');
+  const fi=S.fichas.find(f=>f.otId===o.id);
+  return `<div class="mt2"><i class="ti ti-truck-delivery" style="margin-right:6px"></i>${o.num} — Entrega</div>`
+  +`<div style="background:#f5f5f3;border-radius:8px;padding:9px;margin-bottom:12px;font-size:12px"><strong>${o.descripcion}</strong><div style="color:#888;margin-top:2px">${cNom(o.clienteId)}</div>${fi?`<div style="margin-top:4px"><i class="ti ti-map-pin" style="font-size:11px"></i> ${fi.ent1Dir}</div>`:''}${fi&&fi.ent1Recibe?`<div style="font-size:11px;color:#888">Recibe: ${fi.ent1Recibe} · ${fi.ent1Tel}</div>`:''}</div>`
+  +`<div class="fr"><div class="fg"><label>Fecha de entrega</label><input id="ee-fecha" type="date" value="${o.entrega||''}"></div><div class="fg"><label>Flete asignado</label><select id="ee-flete">${fleOpts}</select></div></div>`
+  +`<div class="fg" style="margin-bottom:10px"><label>Observaciones</label><input id="ee-obs" value="${o.fleteObs||''}" placeholder="Ej: Llamar antes, pedir turno..."></div>`
+  +`<div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="saveEditEntrega(${o.id})"><i class="ti ti-check"></i>Guardar</button></div>`;
+}
+function saveEditEntrega(id){
+  const o=S.ordenes.find(x=>x.id===id);if(!o)return;
+  o.entrega=Q('ee-fecha')?.value||o.entrega;
+  o.fleteAsignado=Q('ee-flete')?.value||'';
+  o.fleteObs=Q('ee-obs')?.value||'';
+  sk('ordenes');cm();render();
+}
+
+const SLOTS_AM=['09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00'];
+const SLOTS_PM=['13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30'];
+const ALL_SLOTS=[...SLOTS_AM,...SLOTS_PM];
+function getLunes(off){const n=new Date();const d=n.getDay();const diff=d===0?-6:1-d;const l=new Date(n);l.setDate(n.getDate()+diff+off*7);l.setHours(0,0,0,0);return l;}
+function fmtD(d){return d.toISOString().slice(0,10);}
+function isHoy(d){return fmtD(d)===fmtD(new Date());}
+
+function rCalSemanal(maq){
+  const lun=getLunes(planOffset);
+  const dias=[];
+  for(let i=0;i<6;i++){const d=new Date(lun);d.setDate(lun.getDate()+i);dias.push(d);}
+  const pm=S.planificacion[maq]||{};
+  const esExt=S.externos.includes(maq);
+  const esFlete=S.fletes.includes(maq);
+  const iconoCal=esFlete?'truck-delivery':esExt?'user':'tool';
+  const MESES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const otsAct=S.ordenes.filter(o=>o.estado!=='entregada'&&o.estado!=='cancelada');
+  let h=`<div class="card" style="padding:12px">`;
+  h+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">`;
+  h+=`<button onclick="planOffset--;render()"><i class="ti ti-chevron-left"></i></button>`;
+  h+=`<strong style="font-size:13px">${dias[0].getDate()}/${MESES[dias[0].getMonth()]} — ${dias[5].getDate()}/${MESES[dias[5].getMonth()]}</strong>`;
+  h+=`<button onclick="planOffset++;render()"><i class="ti ti-chevron-right"></i></button>`;
+  h+=`<button onclick="planOffset=0;render()" style="font-size:11px">Hoy</button>`;
+  h+=`<span style="font-size:12px;font-weight:500;color:#185fa5"><i class="ti ti-${iconoCal}" style="font-size:12px"></i> ${maq}</span>`;
+  h+=`<button onclick="planMaq=null;render()" style="margin-left:auto;font-size:11px"><i class="ti ti-x"></i>Cerrar</button>`;
+  h+=`</div>`;
+  h+=`<div class="cal-wrap"><table class="cal-table"><thead><tr><th class="hc">Hora</th>`;
+  dias.forEach(d=>{h+=`<th ${isHoy(d)?'style="background:#e6f1fb;color:#185fa5"':''}>${DIAS[d.getDay()]} ${d.getDate()}/${MESES[d.getMonth()]}</th>`;});
+  h+=`</tr></thead><tbody>`;
+  ALL_SLOTS.forEach(slot=>{
+    h+=`<tr><td class="hcel">${slot}</td>`;
+    dias.forEach(d=>{
+      if(d.getDay()===0){h+=`<td class="fuer"></td>`;return;}
+      if(slot==='13:00'){h+=`<td class="alm">🍽️ Almuerzo</td>`;return;}
+      const fecha=fmtD(d);
+      const bl=pm[fecha]&&pm[fecha][slot];
+      if(bl&&!bl.cont){
+        const ot=S.ordenes.find(o=>o.id===bl.otId);
+        const col=ot?otCol(bl.otId):'bgr';
+        const dur=bl.dur||1;
+        h+=`<td style="padding:2px" rowspan="${dur}" onclick="om('editB','${maq}|${fecha}|${slot}')">`;
+        h+=`<div class="bloque ${col}" style="height:${dur*26-4}px"><button class="bx" onclick="event.stopPropagation();delBloque('${maq}','${fecha}','${slot}')">×</button>`;
+        h+=ot?`<div style="font-weight:600">${ot.num}</div><div style="font-size:9px;opacity:.8;overflow:hidden">${ot.descripcion.substring(0,20)}</div>`:'?';
+        if(bl.pasoNombre)h+=`<div style="font-size:9px;opacity:.7;font-style:italic">${bl.pasoNombre}</div>`;
+        h+=`</div></td>`;
+      } else if(bl&&bl.cont){
+        // skip — covered by rowspan
+      } else {
+        h+=`<td onclick="om('newB','${maq}|${fecha}|${slot}')"></td>`;
+      }
+    });
+    h+=`</tr>`;
+  });
+  h+=`</tbody></table></div>`;
+
+  // Panel especial para Pre-prensa: listado de trabajos pendientes
+  if(maq==='Pre-prensa'){
+    const ppPend=S.ordenes.filter(o=>{
+      if(o.estado==='entregada'||o.estado==='cancelada')return false;
+      const p=o.pasos.find(x=>x.nombre==='Preprensa');
+      return p&&p.estado!=='done';
+    }).sort((a,b)=>{
+      const da=a.entrega?new Date(a.entrega+'T00:00:00'):new Date('9999-12-31');
+      const db=b.entrega?new Date(b.entrega+'T00:00:00'):new Date('9999-12-31');
+      return da-db;
+    });
+    const ppDone=S.ordenes.filter(o=>{
+      const p=o.pasos.find(x=>x.nombre==='Preprensa');
+      return p&&p.estado==='done'&&o.estado!=='entregada'&&o.estado!=='cancelada';
+    });
+    h+=`<div class="card" style="margin-top:12px">`;
+    h+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div style="font-size:13px;font-weight:600"><i class="ti ti-layers-subtract" style="margin-right:5px"></i>Trabajos de pre-prensa</div>`;
+    h+=`<span style="background:#fcebeb;color:#a32d2d;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600">${ppPend.length} pendiente${ppPend.length!==1?'s':''}</span>`;
+    h+=`<span style="background:#eaf3de;color:#3b6d11;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600">${ppDone.length} liberado${ppDone.length!==1?'s':''}</span>`;
+    h+=`</div>`;
+    if(!ppPend.length&&!ppDone.length){
+      h+=`<div class="empty" style="padding:14px"><i class="ti ti-circle-check"></i>Todo liberado</div>`;
+    } else {
+      if(ppPend.length){
+        h+=`<div style="font-size:11px;font-weight:700;color:#a32d2d;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Pendientes de liberar</div>`;
+        h+=`<table><thead><tr><th>OT</th><th>Descripción</th><th>Cliente</th><th>Entrega</th><th>Estado paso</th><th></th></tr></thead><tbody>`;
+        ppPend.forEach(o=>{
+          const p=o.pasos.find(x=>x.nombre==='Preprensa');
+          const hoy=new Date();hoy.setHours(0,0,0,0);
+          const dias=o.entrega?Math.round((new Date(o.entrega+'T00:00:00')-hoy)/(1000*60*60*24)):null;
+          const urgColor=dias!==null&&dias<0?'#a32d2d':dias!==null&&dias<=3?'#ba7517':'inherit';
+          h+=`<tr><td><strong>${o.num}</strong></td><td style="max-width:150px">${o.descripcion}</td><td>${cNom(o.clienteId)}</td>`;
+          h+=`<td style="color:${urgColor};font-size:11px;white-space:nowrap">${o.entrega||'—'}${dias!==null?`<br><span style="font-size:10px">${dias<0?Math.abs(dias)+'d atraso':dias===0?'Hoy':dias+'d'}</span>`:''}</td>`;
+          h+=`<td>${p.estado==='pending'?'<span class="badge ba">Pendiente</span>':'<span class="badge bi">En curso</span>'}</td>`;
+          h+=`<td style="white-space:nowrap">`;
+          if(p.estado==='pending') h+=`<button class="bp" onclick="avP(${o.id},'Preprensa');render()" style="font-size:11px"><i class="ti ti-play"></i>Iniciar</button>`;
+          if(p.estado==='active') h+=`<button class="bs" onclick="avP(${o.id},'Preprensa');render()" style="font-size:11px"><i class="ti ti-check"></i>Liberar</button>`;
+          h+=`</td></tr>`;
+        });
+        h+=`</tbody></table>`;
+      }
+      if(ppDone.length){
+        h+=`<div style="font-size:11px;font-weight:700;color:#3b6d11;text-transform:uppercase;letter-spacing:.05em;margin:10px 0 6px">Liberados (esperando impresión)</div>`;
+        h+=`<div style="display:flex;flex-wrap:wrap;gap:5px">`;
+        ppDone.forEach(o=>{h+=`<div class="ot-pill ${otCol(o.id)}" style="font-size:11px"><i class="ti ti-circle-check" style="font-size:10px;color:#3b6d11"></i> <strong>${o.num}</strong> ${o.descripcion.substring(0,20)}${o.descripcion.length>20?'…':''}</div>`;});
+        h+=`</div>`;
+      }
+    }
+    h+=`</div>`;
+  }
+
+  h+=`<div style="margin-top:10px"><div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px">OTs disponibles — click en celda vacía para asignar</div>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;gap:5px">`;
+  otsAct.forEach(o=>{h+=`<div class="ot-pill ${otCol(o.id)}" title="${cNom(o.clienteId)} · Entrega: ${o.entrega||'—'}"><strong>${o.num}</strong> ${o.descripcion.substring(0,22)}${o.descripcion.length>22?'…':''}</div>`;});
+  if(!otsAct.length)h+=`<span style="font-size:12px;color:#888">Sin OTs activas</span>`;
+  h+=`</div></div></div>`;
+  return h;
+}
+
+function rFicha(){
+  if(fichaTab==='nueva')return rFichaNueva();
+  if(fichaTab==='ver'&&fichaVerID!==null)return rFichaVer(fichaVerID);
+  return rFichaLista();
+}
+function rFichaLista(){
+  const f=bFicha.trim().toLowerCase();
+  const rows=f?S.fichas.filter(x=>x.num.toLowerCase().includes(f)||(x.nPedido||'').includes(f)||x.facRazonSocial.toLowerCase().includes(f)||(x.descripcion||'').toLowerCase().includes(f)):S.fichas;
+  let h=`<div class="ph"><div><div class="pt">Fichas de OT</div><div class="ps">Nota de pedido · facturación · entrega · cobranza</div></div><button class="bp" onclick="fichaTab='nueva';render()"><i class="ti ti-plus"></i>Nueva ficha</button></div>`;
+  h+=`<div style="position:relative;margin-bottom:10px"><input type="text" placeholder="Buscar por nro., cliente, trabajo..." style="padding:8px 36px 8px 12px;font-size:13px;border:1.5px solid rgba(0,0,0,.2);border-radius:8px;width:100%;font-family:inherit" oninput="bFicha=this.value;render()" value="${bFicha}"><i class="ti ti-search" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#aaa;font-size:16px;pointer-events:none"></i></div>`;
+  if(!rows.length){h+=`<div class="empty"><i class="ti ti-file-description"></i>${f?`Sin resultados para "${f}"`:'No hay fichas. Creá la primera.'}</div>`;return h;}
+  h+=`<div style="display:flex;flex-direction:column;gap:8px">`;
+  rows.slice().reverse().forEach(f=>{
+    const tot=f.total*(1+f.iva);
+    h+=`<div style="background:#fff;border:0.5px solid rgba(0,0,0,.1);border-radius:10px;padding:12px 14px;cursor:pointer;transition:box-shadow .15s" onclick="fichaTab='ver';fichaVerID=${f.id};render()" onmouseover="this.style.boxShadow='0 2px 8px rgba(24,95,165,.12)'" onmouseout="this.style.boxShadow=''"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px"><div><div style="font-size:14px;font-weight:600">${f.num}${f.nPedido?` <span style="font-size:11px;color:#888;font-weight:400">· Pedido #${f.nPedido}</span>`:''}</div><div style="font-size:12px;color:#888;margin-top:2px">${f.facRazonSocial}</div><div style="font-size:11px;color:#aaa;margin-top:2px;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.descripcion}</div></div><div style="text-align:right"><div style="font-size:15px;font-weight:700;color:#185fa5">${$m(tot)}</div><div style="font-size:10px;color:#888">Total c/IVA</div><div style="margin-top:4px">${stBadge(f.estado)}</div></div></div><div style="display:flex;gap:14px;margin-top:7px;font-size:11px;color:#888"><span><i class="ti ti-calendar-due" style="font-size:11px"></i> Entrega: ${f.entregaSolicitada||'—'}${f.entregaAprox?' (aprox.)':''}</span><span><i class="ti ti-mail" style="font-size:11px"></i> ${f.facEmail1}</span></div></div>`;
+  });
+  h+=`</div>`;return h;
+}
+
+function rFichaVer(id){
+  const f=S.fichas.find(x=>x.id===id);if(!f)return rFichaLista();
+  const tot=f.total*(1+f.iva),iva=f.total*f.iva;
+  let h=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><button onclick="fichaTab='lista';render()"><i class="ti ti-arrow-left"></i>Volver</button><div style="flex:1"><div class="pt">${f.num}${f.nPedido?` — Pedido #${f.nPedido}`:''}</div><div class="ps">${f.facRazonSocial}</div></div><button onclick="om('editFicha',${f.id})"><i class="ti ti-edit"></i>Editar</button><button class="bd" onclick="delFicha(${f.id})"><i class="ti ti-trash"></i></button></div>`;
+  h+=`<div class="ficha-hdr"><div><div style="font-size:11px;opacity:.75;margin-bottom:2px">Ficha de OT</div><div style="font-size:22px;font-weight:700">${f.num}</div><div style="font-size:13px;opacity:.85;margin-top:2px">${f.facRazonSocial}</div></div><div style="text-align:right"><div style="font-size:11px;opacity:.75">Total c/IVA</div><div style="font-size:26px;font-weight:700">${$m(tot)}</div><div style="margin-top:4px">${stBadge(f.estado)}</div></div></div>`;
+  h+=`<div style="background:#fff;border:0.5px solid rgba(0,0,0,.1);border-top:none;border-radius:0 0 12px 12px;padding:14px;margin-bottom:12px">`;
+  // Trabajo
+  h+=`<div style="margin-bottom:14px"><div class="sec-t"><i class="ti ti-clipboard-text"></i>Descripción del trabajo</div><div class="kv-grid">${kv('Fecha pedido',f.fecha)}${kv('Entrega solicitada',f.entregaSolicitada+(f.entregaAprox?' (aprox.)':''))}${f.nPedido?kv('Nro. pedido / ppto',f.nPedido):''}</div><div style="margin-top:8px;background:#f5f5f3;border-radius:7px;padding:10px;font-size:12px;line-height:1.6">${f.descripcion.replace(/\n/g,'<br>')}</div>${f.observacionesTrabajo?`<div style="margin-top:6px;font-size:11px;color:#888"><i class="ti ti-info-circle"></i> ${f.observacionesTrabajo}</div>`:''}</div>`;
+  // Importes
+  h+=`<div style="margin-bottom:14px"><div class="sec-t"><i class="ti ti-calculator"></i>Importes</div><div class="monto-box"><div class="monto-item"><div class="monto-label">Precio neto (AGF)</div><div class="monto-val">${$m(f.agf)}</div></div>${f.garbarinoComision>0?`<div class="monto-item"><div class="monto-label">Comisión Garbarino</div><div class="monto-val" style="color:#854d0e">${$m(f.garbarinoComision)}</div></div>`:''}${f.comisionVendedor>0?`<div class="monto-item"><div class="monto-label">Comisión vendedor${f.vendedor?' ('+f.vendedor+')':''}</div><div class="monto-val" style="color:#854d0e">${$m(f.comisionVendedor)}</div></div>`:''}<div class="monto-item"><div class="monto-label">Subtotal</div><div class="monto-val">${$m(f.total)}</div></div><div class="monto-item"><div class="monto-label">IVA (${(f.iva*100).toFixed(0)}%)</div><div class="monto-val">${$m(iva)}</div></div><div class="monto-item" style="border-left:2px solid #185fa5;padding-left:12px"><div class="monto-label">TOTAL</div><div class="monto-val" style="color:#185fa5;font-size:18px">${$m(tot)}</div></div></div></div>`;
+  // Facturación
+  h+=`<div style="margin-bottom:14px"><div class="sec-t"><i class="ti ti-receipt"></i>Datos de facturación</div><div class="kv-grid">${kv('Razón social',`<strong>${f.facRazonSocial}</strong>`)}${kv('CUIT',`<span style="font-family:monospace">${f.facCuit}</span>`)}${kv('Cond. IVA',f.facCondIva)}${kv('Domicilio',f.facDomicilio)}${kv('Contacto',f.facContacto)}${kv('Teléfono',f.facTelefono)}${kv('E-mail fc 1',`<a href="mailto:${f.facEmail1}">${f.facEmail1}</a>`)}${f.facEmail2?kv('E-mail fc 2',`<a href="mailto:${f.facEmail2}">${f.facEmail2}</a>`):''}${f.ordenCompra?kv('Orden de compra',`<span class="tag g">SÍ</span> ${f.nOrdenCompra}`):''}</div></div>`;
+  // Cobranza
+  h+=`<div style="margin-bottom:14px"><div class="sec-t"><i class="ti ti-cash"></i>Condiciones de cobranza</div><div class="kv-grid">${kv('Condición de pago',`<strong>${f.cobCondPago}</strong>`)}${kv('Forma de pago',f.cobFormaPago)}${kv('Días y horarios',f.cobDiasHorarios)}${kv('Contacto',f.cobContacto)}${kv('Teléfono',f.cobTelefono)}${kv('E-mail',`<a href="mailto:${f.cobEmail}">${f.cobEmail}</a>`)}</div>${f.cobDetalle?`<div style="margin-top:8px;background:#f5f5f3;border-radius:6px;padding:8px 10px;font-size:11px;line-height:1.6">${f.cobDetalle.replace(/\n/g,'<br>')}</div>`:''}${f.observacionesCob?`<div style="margin-top:6px;font-size:11px;color:#888"><i class="ti ti-info-circle"></i> ${f.observacionesCob}</div>`:''}</div>`;
+  // Entrega 1
+  h+=`<div><div class="sec-t"><i class="ti ti-truck-delivery"></i>Datos de entrega</div><div class="entrega-box"><div style="font-size:11px;font-weight:600;color:#1e40af;margin-bottom:7px">Entrega 1</div><div class="kv-grid">${kv('Dirección',f.ent1Dir)}${f.ent1Cantidad?kv('Cantidad',f.ent1Cantidad):''}${kv('Horario',f.ent1Horario)}${kv('Pedir turno',f.ent1PedirTurno?'<span class="tag a">SÍ</span>':'No')}${kv('Recibe',f.ent1Recibe)}${kv('Teléfono',f.ent1Tel)}${kv('E-mail',`<a href="mailto:${f.ent1Email}">${f.ent1Email}</a>`)}${kv('Muestras',f.ent1Muestras?`<span class="tag g">SÍ</span> ${f.ent1CantMuestras} uds.`:'No')}</div>${f.ent1Obs?`<div style="margin-top:5px;font-size:11px;color:#888">${f.ent1Obs}</div>`:''}</div>`;
+  if(f.ent2Dir){h+=`<div class="entrega-box" style="margin-top:8px"><div style="font-size:11px;font-weight:600;color:#1e40af;margin-bottom:7px">Entrega 2</div><div class="kv-grid">${kv('Dirección',f.ent2Dir)}${f.ent2Cantidad?kv('Cantidad',f.ent2Cantidad):''}${kv('Horario',f.ent2Horario)}${kv('Pedir turno',f.ent2PedirTurno?'<span class="tag a">SÍ</span>':'No')}${kv('Recibe',f.ent2Recibe)}${kv('Teléfono',f.ent2Tel)}${f.ent2Email?kv('E-mail',`<a href="mailto:${f.ent2Email}">${f.ent2Email}</a>`):''}${kv('Muestras',f.ent2Muestras?`<span class="tag g">SÍ</span> ${f.ent2CantMuestras} uds.`:'No')}</div>${f.ent2Obs?`<div style="margin-top:5px;font-size:11px;color:#888">${f.ent2Obs}</div>`:''}</div>`;}
+  h+=`</div></div>`;return h;
+}
+function kv(label,val){return `<div class="kv" style="flex-direction:column;border:none;padding:3px 0"><div class="kk">${label}</div><div class="kval" style="text-align:left">${val||'—'}</div></div>`;}
+
+function rRem(){let h=`<div class="ph"><div><div class="pt">Remitos internos</div><div class="ps">${S.remitos.length} emitidos</div></div><button class="bp" onclick="om('nrem')"><i class="ti ti-plus"></i>Nuevo</button></div><div class="card" style="padding:0"><table><thead><tr><th>Nro.</th><th>Cliente</th><th>OT</th><th>Fecha</th><th>Estado</th><th></th></tr></thead><tbody>`;if(!S.remitos.length)h+=`<tr><td colspan="6"><div class="empty"><i class="ti ti-truck-delivery"></i>Sin remitos</div></td></tr>`;else S.remitos.forEach(r=>{h+=`<tr><td><strong>${r.num}</strong></td><td>${cNom(r.clienteId)}</td><td>${r.otNum||'—'}</td><td>${r.fecha}</td><td>${stBadge(r.estado)}</td><td><button onclick="om('vrem',${r.id})"><i class="ti ti-eye"></i></button></td></tr>`;});h+=`</tbody></table></div>`;return h;}
+function rGas(){const tot=S.gastos.reduce((a,g)=>a+(g.monto||0),0),fij=S.gastos.filter(g=>g.tipo==='fijo').reduce((a,g)=>a+(g.monto||0),0);let h=`<div class="ph"><div><div class="pt">Gastos de estructura</div></div><button class="bp" onclick="om('ngas')"><i class="ti ti-plus"></i>Agregar</button></div><div class="cg"><div class="mc md"><div class="ml">Total mensual</div><div class="mv">${$m(tot)}</div></div><div class="mc mw"><div class="ml">Fijos (punto equilibrio)</div><div class="mv">${$m(fij)}</div></div><div class="mc mg"><div class="ml">Variables</div><div class="mv">${$m(tot-fij)}</div></div></div><div class="card" style="padding:0"><table><thead><tr><th>Concepto</th><th>Tipo</th><th>Mes</th><th>Monto</th><th></th></tr></thead><tbody>`;S.gastos.forEach(g=>{h+=`<tr><td>${g.concepto}</td><td><span class="badge ${g.tipo==='fijo'?'br':'ba'}">${g.tipo}</span></td><td>${g.mes}</td><td><strong>${$m(g.monto)}</strong></td><td><button class="bd" onclick="delGas(${g.id})"><i class="ti ti-trash"></i></button></td></tr>`;});h+=`</tbody></table></div>`;return h;}
+
+function rAnalOT(){
+  let h=`<div class="ph"><div><div class="pt">Análisis OT x OT</div><div class="ps">Rentabilidad individual por orden de trabajo</div></div></div>`;
+  const ots=S.ordenes.filter(o=>o.cotId);
+  if(!ots.length&&!S.cotizaciones.length){h+=`<div class="empty"><i class="ti ti-chart-bar"></i>Sin datos para analizar</div>`;return h;}
+  // resumen global
+  const apr=S.cotizaciones.filter(c=>c.estado==='aprobada');
+  const ing=apr.reduce((a,c)=>a+(c.total||0),0);
+  const cos=apr.reduce((a,c)=>a+(c.costoTotal||0),0);
+  const ge=S.gastos.reduce((a,g)=>a+(g.monto||0),0);
+  const ut=ing-cos-ge,mg=ing>0?((ut/ing)*100).toFixed(1):0;
+  h+=`<div class="cg">
+<div class="mc mi"><div class="ml">Ingresos (cots. aprobadas)</div><div class="mv">${$m(ing)}</div></div>
+<div class="mc mw"><div class="ml">Costos producción</div><div class="mv">${$m(cos)}</div></div>
+<div class="mc md"><div class="ml">Gastos estructura</div><div class="mv">${$m(ge)}</div></div>
+<div class="mc ${ut>=0?'ms2':'md'}"><div class="ml">Utilidad neta</div><div class="mv">${$m(ut)}</div><div class="ms">Margen: ${mg}%</div></div>
+</div>`;
+  if(!apr.length){h+=`<div class="empty"><i class="ti ti-file-invoice"></i>No hay cotizaciones aprobadas</div>`;return h;}
+  h+=`<div class="card" style="padding:0;overflow:hidden">
+<div style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,.08);font-weight:500">Por trabajo</div>
+<table><thead><tr><th>Cotización</th><th>OT</th><th>Cliente</th><th>Venta</th><th>Costo</th><th>Utilidad</th><th>Margen</th><th>Estado</th></tr></thead><tbody>`;
+  apr.forEach(c=>{
+    const ot=S.ordenes.find(o=>o.cotId===c.id);
+    const u=(c.total||0)-(c.costoTotal||0),m2=c.total>0?(u/c.total*100).toFixed(1):0;
+    h+=`<tr><td><strong>${c.num}</strong></td><td>${ot?`<span style="font-size:11px">${ot.num}</span>`:'—'}</td><td>${cNom(c.clienteId)}</td><td>${$m(c.total)}</td><td>${$m(c.costoTotal||0)}</td><td style="color:${u>=0?'#3b6d11':'#a32d2d'};font-weight:500">${$m(u)}</td><td style="color:${m2>=20?'#3b6d11':m2>=10?'#ba7517':'#a32d2d'};font-weight:600">${m2}%</td><td>${stBadge(c.estado)}</td></tr>`;
+    if(c.costos){
+      // Detalle de costos expandido
+      const fijos=c.costos.fijos||{};const procs=c.costos.procesos||[];
+      const detItems=Object.entries({papel:'Papel',impresion:'Impresión',chapas:'Chapas',corte:'Corte',cajas:'Cajas',flete:'Flete'}).filter(([k])=>fijos[k]&&fijos[k].monto>0).map(([k,l])=>`${l}: ${$m(fijos[k].monto)}`);
+      procs.forEach(p=>{if(p.monto>0)detItems.push(`${p.nombre}: ${$m(p.monto)}`);});
+      if(detItems.length)h+=`<tr style="background:#f9f9f8"><td colspan="8" style="font-size:10px;color:#888;padding:3px 8px 5px">&nbsp;&nbsp;&nbsp;↳ ${detItems.join(' · ')}</td></tr>`;
+    }
+  });
+  h+=`</tbody></table></div>`;
+  return h;
+}
+
+function rBalMes(){
+  const mesActual=new Date().toISOString().slice(0,7);
+  const meses=[...new Set(S.gastos.map(g=>g.mes).concat(S.cotizaciones.map(c=>c.fecha?.slice(0,7)||'')).filter(Boolean))].sort().reverse();
+  const [mesSel,setMesSel]=[Q('bal-mes-sel')?.value||mesActual,()=>{}];
+  let h=`<div class="ph"><div><div class="pt">Balance mensual</div></div></div>`;
+  h+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><label style="font-size:12px;font-weight:500">Mes:</label><input type="month" id="bal-mes-inp" value="${mesActual}" style="padding:5px 9px;font-size:12px;border:0.5px solid rgba(0,0,0,.25);border-radius:7px;width:auto" onchange="render()"></div>`;
+  const mes=Q('bal-mes-inp')?.value||mesActual;
+  const cotsDelMes=S.cotizaciones.filter(c=>c.fecha&&c.fecha.slice(0,7)===mes&&c.estado==='aprobada');
+  const ingMes=cotsDelMes.reduce((a,c)=>a+(c.total||0),0);
+  const cosMes=cotsDelMes.reduce((a,c)=>a+(c.costoTotal||0),0);
+  const gastosMes=S.gastos.filter(g=>g.mes===mes).reduce((a,g)=>a+(g.monto||0),0);
+  const gastosFijMes=S.gastos.filter(g=>g.mes===mes&&g.tipo==='fijo').reduce((a,g)=>a+(g.monto||0),0);
+  const utMes=ingMes-cosMes-gastosMes,mgMes=ingMes>0?((utMes/ingMes)*100).toFixed(1):0;
+  const otsMes=S.ordenes.filter(o=>o.fecha&&o.fecha.slice(0,7)===mes);
+  h+=`<div class="cg">
+<div class="mc mi"><div class="ml">Ingresos del mes</div><div class="mv">${$m(ingMes)}</div></div>
+<div class="mc mw"><div class="ml">Costos producción</div><div class="mv">${$m(cosMes)}</div></div>
+<div class="mc md"><div class="ml">Gastos estructura</div><div class="mv">${$m(gastosMes)}</div></div>
+<div class="mc ${utMes>=0?'ms2':'md'}"><div class="ml">Resultado del mes</div><div class="mv">${$m(utMes)}</div><div class="ms">Margen: ${mgMes}%</div></div>
+</div>`;
+  // Punto de equilibrio del mes
+  const pct=gastosFijMes>0?Math.min((ingMes/gastosFijMes)*100,150):0;
+  h+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong>Punto de equilibrio</strong><span style="font-size:11px;color:#888">Fijos: ${$m(gastosFijMes)}</span></div>
+<div style="background:#f5f5f3;border-radius:6px;height:18px;overflow:hidden;margin-bottom:5px"><div style="height:100%;width:${Math.min(pct,100)}%;background:${pct>=100?'#3b6d11':pct>=70?'#ba7517':'#a32d2d'};border-radius:6px;display:flex;align-items:center;padding-left:6px;font-size:10px;font-weight:500;color:#fff">${pct.toFixed(0)}%</div></div>
+<div style="display:flex;justify-content:space-between;font-size:11px;color:#888"><span>Ingresos: ${$m(ingMes)}</span><span style="font-weight:500;color:${pct>=100?'#3b6d11':'#a32d2d'}">${pct>=100?'✓ Sobre el equilibrio':'⚠ Bajo el equilibrio'}</span></div></div>`;
+  h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">`;
+  // Cotizaciones del mes
+  h+=`<div class="card"><div style="font-weight:500;margin-bottom:10px">Cotizaciones aprobadas del mes</div>`;
+  if(!cotsDelMes.length)h+=`<div class="empty" style="padding:12px"><i class="ti ti-file-invoice"></i>Sin cotizaciones aprobadas</div>`;
+  cotsDelMes.forEach(c=>{const u=(c.total||0)-(c.costoTotal||0);h+=`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:0.5px solid rgba(0,0,0,.05)"><div><div style="font-size:12px;font-weight:500">${c.num}</div><div style="font-size:10px;color:#888">${cNom(c.clienteId)}</div></div><div style="text-align:right"><div style="font-size:12px;font-weight:500">${$m(c.total)}</div><div style="font-size:10px;color:${u>=0?'#3b6d11':'#a32d2d'}">Util: ${$m(u)}</div></div></div>`;});
+  h+=`</div>`;
+  // OTs del mes
+  h+=`<div class="card"><div style="font-weight:500;margin-bottom:10px">OTs ingresadas este mes</div>`;
+  if(!otsMes.length)h+=`<div class="empty" style="padding:12px"><i class="ti ti-clipboard-list"></i>Sin OTs este mes</div>`;
+  otsMes.forEach(o=>{h+=`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:0.5px solid rgba(0,0,0,.05)"><div><div style="font-size:12px;font-weight:500">${o.num}</div><div style="font-size:10px;color:#888">${cNom(o.clienteId)}</div></div>${stBadge(o.estado)}</div>`;});
+  h+=`</div></div>`;
+  return h;
+}
+
+function rBalAño(){
+  const añoActual=new Date().getFullYear();
+  const años=[...new Set(S.gastos.map(g=>g.mes?.slice(0,4)).concat(S.cotizaciones.map(c=>c.fecha?.slice(0,4))).filter(Boolean))].sort().reverse();
+  if(!años.length) años.push(String(añoActual));
+  let h=`<div class="ph"><div><div class="pt">Balance anual</div></div></div>`;
+  h+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><label style="font-size:12px;font-weight:500">Año:</label><select id="bal-año-inp" style="padding:5px 9px;font-size:12px;border:0.5px solid rgba(0,0,0,.25);border-radius:7px;width:auto" onchange="render()">${años.map(a=>`<option value="${a}"${a===String(añoActual)?' selected':''}>${a}</option>`).join('')}</select></div>`;
+  const año=Q('bal-año-inp')?.value||String(añoActual);
+  const MESES_N=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const resumenAnual={ing:0,cos:0,gas:0};
+  let tablaH=`<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Mes</th><th>Ingresos</th><th>Costos prod.</th><th>Gastos estr.</th><th>Resultado</th><th>Margen</th></tr></thead><tbody>`;
+  for(let m=0;m<12;m++){
+    const mesKey=`${año}-${String(m+1).padStart(2,'0')}`;
+    const cotsM=S.cotizaciones.filter(c=>c.fecha&&c.fecha.slice(0,7)===mesKey&&c.estado==='aprobada');
+    const ingM=cotsM.reduce((a,c)=>a+(c.total||0),0);
+    const cosM=cotsM.reduce((a,c)=>a+(c.costoTotal||0),0);
+    const gasM=S.gastos.filter(g=>g.mes===mesKey).reduce((a,g)=>a+(g.monto||0),0);
+    const utM=ingM-cosM-gasM,mgM=ingM>0?((utM/ingM)*100).toFixed(1):0;
+    resumenAnual.ing+=ingM;resumenAnual.cos+=cosM;resumenAnual.gas+=gasM;
+    const esMesAct=mesKey===new Date().toISOString().slice(0,7);
+    tablaH+=`<tr${esMesAct?' style="background:#e6f1fb"':''}><td style="font-weight:${esMesAct?'600':'400'}">${MESES_N[m]}</td><td>${ingM>0?$m(ingM):'—'}</td><td>${cosM>0?$m(cosM):'—'}</td><td>${gasM>0?$m(gasM):'—'}</td><td style="color:${utM>0?'#3b6d11':utM<0?'#a32d2d':'#888'};font-weight:500">${ingM>0||gasM>0?$m(utM):'—'}</td><td style="color:${mgM>=20?'#3b6d11':mgM>=10?'#ba7517':'#a32d2d'}">${ingM>0?mgM+'%':'—'}</td></tr>`;
+  }
+  const utAño=resumenAnual.ing-resumenAnual.cos-resumenAnual.gas,mgAño=resumenAnual.ing>0?((utAño/resumenAnual.ing)*100).toFixed(1):0;
+  tablaH+=`<tr style="background:#f5f5f3;font-weight:600"><td>TOTAL ${año}</td><td>${$m(resumenAnual.ing)}</td><td>${$m(resumenAnual.cos)}</td><td>${$m(resumenAnual.gas)}</td><td style="color:${utAño>=0?'#3b6d11':'#a32d2d'}">${$m(utAño)}</td><td style="color:${mgAño>=20?'#3b6d11':mgAño>=10?'#ba7517':'#a32d2d'}">${mgAño}%</td></tr>`;
+  tablaH+=`</tbody></table></div>`;
+  h+=`<div class="cg">
+<div class="mc mi"><div class="ml">Ingresos ${año}</div><div class="mv">${$m(resumenAnual.ing)}</div></div>
+<div class="mc mw"><div class="ml">Costos producción</div><div class="mv">${$m(resumenAnual.cos)}</div></div>
+<div class="mc md"><div class="ml">Gastos estructura</div><div class="mv">${$m(resumenAnual.gas)}</div></div>
+<div class="mc ${utAño>=0?'ms2':'md'}"><div class="ml">Resultado anual</div><div class="mv">${$m(utAño)}</div><div class="ms">Margen: ${mgAño}%</div></div>
+</div>`;
+  h+=tablaH;
+  return h;
+}
+
+// ---- AUTOCOMPLETE CLIENTE ----
+function acCli(iid,hid,ph){
+  const sorted=alfa(S.clientes);
+  const opts=sorted.map(c=>`<div class="aco" onmousedown="selCli('${iid}','${hid}',${c.id},'${c.nombre.replace(/'/g,"\\'")}')"><strong>${c.nombre}</strong>${c.cuit?`<small>${c.cuit}</small>`:''}</div>`).join('');
+  return `<div class="acw" style="display:flex;gap:5px;align-items:flex-start"><div style="flex:1;position:relative"><input class="aci" id="${iid}" placeholder="${ph||'Buscar cliente...'}" autocomplete="off" oninput="filtCli('${iid}','${hid}')" onfocus="Q('dd-${iid}').classList.add('open')" onblur="setTimeout(()=>Q('dd-${iid}').classList.remove('open'),200)"><input type="hidden" id="${hid}"><div class="acd" id="dd-${iid}">${opts}</div></div><button type="button" title="Nuevo cliente" onclick="omNewCli('${iid}','${hid}')" style="padding:5px 8px;flex-shrink:0;white-space:nowrap"><i class="ti ti-user-plus"></i></button></div>`;
+}
+function selCli(ii,hi,id,nom){Q(ii).value=nom;Q(hi).value=id;Q('dd-'+ii).classList.remove('open');}
+function filtCli(ii,hi){
+  const f=Q(ii).value.toLowerCase();Q(hi).value='';
+  const dd=Q('dd-'+ii);dd.classList.add('open');
+  const filt=f?alfa(S.clientes).filter(c=>c.nombre.toLowerCase().includes(f)||(c.cuit||'').includes(f)):alfa(S.clientes);
+  if(filt.length===0){
+    dd.innerHTML=`<div class="aco" style="color:#888">Sin resultados · <span style="color:#185fa5;cursor:pointer;text-decoration:underline" onmousedown="omNewCli('${ii}','${hi}')">+ Crear "${Q(ii).value}"</span></div>`;
+  } else {
+    dd.innerHTML=filt.map(c=>`<div class="aco" onmousedown="selCli('${ii}','${hi}',${c.id},'${c.nombre.replace(/'/g,"\\'")}')"><strong>${f?c.nombre.replace(new RegExp('('+esc(f)+')','gi'),'<mark>$1</mark>'):c.nombre}</strong>${c.cuit?`<small>${c.cuit}</small>`:''}</div>`).join('');
+  }
+}
+function omNewCli(retIid,retHid){
+  // guarda contexto para volver a seleccionar el cliente recién creado
+  window._cliRetCtx={iid:retIid,hid:retHid,nombre:Q(retIid)?.value||''};
+  cm();om('nc');
+}
+function gCid(h){return parseInt(Q(h)?.value||0)||0;}
+function provOpts(selVal){
+  const base=`<option value="">— Sin proveedor —</option>`;
+  return base+alfa(S.proveedores).map(p=>`<option value="${p.id}"${selVal&&p.id==selVal?' selected':''}>${p.nombre}</option>`).join('');
+}
+// Select de proveedor con botón + para agregar uno nuevo rápido
+function provSelect(selId,onChange,selVal){
+  return `<div style="display:flex;gap:3px;align-items:center"><select id="${selId}" style="font-size:11px;padding:4px 6px;flex:1" onchange="${onChange}">${provOpts(selVal)}</select><button type="button" title="Nuevo proveedor" onclick="omNewProv('${selId}')" style="padding:3px 6px;flex-shrink:0"><i class="ti ti-user-plus" style="font-size:11px"></i></button></div>`;
+}
+function omNewProv(retSelId){
+  window._provRetSel=retSelId;
+  // Abrimos modal nuevo proveedor sin cerrar el modal actual
+  const ov2=document.createElement('div');ov2.className='ov';ov2.id='ov2';ov2.style.zIndex='1100';
+  ov2.innerHTML=`<div class="mod">${mNP2()}</div>`;
+  ov2.addEventListener('click',e=>{if(e.target===ov2)ov2.remove();});
+  document.body.appendChild(ov2);
+}
+function mNP2(){
+  return `<div class="mt2">Nuevo proveedor</div><div class="fr"><div class="fg"><label>Nombre</label><input id="pn2"></div><div class="fg"><label>Cond. IVA</label><select id="pi2"><option value="RI">Resp. Inscripto</option><option value="MT">Monotributista</option><option value="EX">Exento</option></select></div></div><div class="fr"><div class="fg"><label>CUIT</label><input id="pc2" style="font-family:monospace"></div><div class="fg"><label>Email</label><input id="pe2" type="email"></div></div><div class="fr"><div class="fg"><label>Teléfono</label><input id="pt2"></div><div class="fg"><label>Localidad</label><input id="pl2"></div></div><div class="mf"><button onclick="document.getElementById('ov2')?.remove()">Cancelar</button><button class="bp" onclick="savProvInline()"><i class="ti ti-check"></i>Guardar</button></div>`;
+}
+function savProvInline(){
+  const n=Q('pn2')?.value.trim();if(!n){alert('Ingresá el nombre');return;}
+  const id=S.proveedores.length?Math.max(...S.proveedores.map(p=>p.id))+1:1;
+  S.proveedores.push({id,nombre:n,iva:Q('pi2').value,cuit:Q('pc2').value,email:Q('pe2').value,tel:Q('pt2').value,loc:Q('pl2').value});
+  sk('proveedores');
+  // Actualizar el select que lo llamó
+  const retSel=window._provRetSel;window._provRetSel=null;
+  document.getElementById('ov2')?.remove();
+  if(retSel){
+    const sel=Q(retSel);
+    if(sel){
+      const opt=document.createElement('option');opt.value=id;opt.textContent=n;opt.selected=true;
+      sel.appendChild(opt);
+    }
+  }
+}
+
+// ---- MODALS ----
+let cotCostosData=null;
+function initCostos(){cotCostosData={fijos:{papel:{monto:0,provId:''},impresion:{monto:0,provId:''},chapas:{monto:0,provId:''},corte:{monto:0,provId:''},cajas:{monto:0,provId:''},flete:{monto:0,provId:''}},procesos:[]};}
+
+function om(t,id){
+  cm();
+  const mods={
+    nc:mNC,vc:()=>mVC(id),np:mNP,vp:()=>mVP(id),
+    nc2:()=>{initCostos();return mNC2();},vc2:()=>mVC2(id),
+    not:mNOT,vot:()=>mVOT(id),editOT:()=>mEditOT(id),editEntrega:()=>mEditEntrega(id),
+    asgn:()=>mASGN(id),recursos:mRecursos,
+    nrem:mNREM,vrem:()=>mVREM(id),
+    ngas:mNGAS,
+    editFicha:()=>mEditFicha(id),
+    newB:()=>mNewBloque(id),editB:()=>mEditBloque(id)
+  };
+  const fn=mods[t];if(!fn)return;
+  const h=fn();if(!h)return;
+  const ov=document.createElement('div');ov.className='ov';ov.id='ov';
+  ov.innerHTML=`<div class="mod${t==='nc2'?' wide':''}">${h}</div>`;
+  ov.addEventListener('click',e=>{if(e.target===ov)cm();});
+  document.body.appendChild(ov);
+}
+function cm(){const o=Q('ov');if(o)o.remove();}
+
+const mNC=()=>`<div class="mt2">Nuevo cliente</div><div class="fr"><div class="fg"><label>Nombre / Razón social</label><input id="cn"></div><div class="fg"><label>CUIT</label><input id="cc" placeholder="XX-XXXXXXXX-X" style="font-family:monospace"></div></div><div class="fr"><div class="fg"><label>Cond. IVA</label><select id="ci"><option value="RI">Resp. Inscripto</option><option value="MT">Monotributista</option><option value="EX">Exento</option><option value="CF">Cons. Final</option></select></div><div class="fg"><label>Email</label><input id="ce" type="email"></div></div><div class="fr"><div class="fg"><label>Teléfono</label><input id="ctel"></div><div class="fg"><label>Localidad</label><input id="cloc"></div></div><div class="fg"><label>Domicilio</label><input id="cdom"></div><div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="savCli()"><i class="ti ti-check"></i>Guardar</button></div>`;
+const mVC=id=>{const c=S.clientes.find(x=>x.id===id);if(!c)return'';const co=S.cotizaciones.filter(x=>x.clienteId===c.id);let h=`<div class="mt2">${c.nombre} ${ivaBadge(c.iva)}</div><div class="kv"><span class="kk">CUIT</span><span class="kval" style="font-family:monospace">${c.cuit||'—'}</span></div><div class="kv"><span class="kk">Domicilio</span><span class="kval">${c.dom||'—'}</span></div><div class="kv"><span class="kk">Localidad</span><span class="kval">${c.loc||'—'}${c.prov?' ('+c.prov+')':''}</span></div><div class="kv"><span class="kk">Email</span><span class="kval">${c.email||'—'}</span></div><div class="kv"><span class="kk">Teléfono</span><span class="kval">${c.tel||'—'}</span></div>`;if(co.length>0){h+=`<div style="margin-top:11px;font-weight:500;font-size:12px;margin-bottom:6px">Cotizaciones (${co.length})</div><table style="font-size:11px"><thead><tr><th>Nro.</th><th>Fecha</th><th>Total</th><th>Estado</th></tr></thead><tbody>${co.map(x=>`<tr><td>${x.num}</td><td>${x.fecha}</td><td>${$m(x.total)}</td><td>${stBadge(x.estado)}</td></tr>`).join('')}</tbody></table>`;}h+=`<div class="mf"><button onclick="cm()">Cerrar</button><button onclick="cm();om('nc2')"><i class="ti ti-file-plus"></i>Nueva cotización</button></div>`;return h;};
+const mNP=()=>`<div class="mt2">Nuevo proveedor</div><div class="fr"><div class="fg"><label>Nombre</label><input id="pn"></div><div class="fg"><label>Cond. IVA</label><select id="pi"><option value="RI">Resp. Inscripto</option><option value="MT">Monotributista</option><option value="EX">Exento</option></select></div></div><div class="fr"><div class="fg"><label>CUIT</label><input id="pc" style="font-family:monospace"></div><div class="fg"><label>Email</label><input id="pe" type="email"></div></div><div class="fr"><div class="fg"><label>Teléfono</label><input id="pt"></div><div class="fg"><label>Localidad</label><input id="pl"></div></div><div class="fg"><label>Domicilio</label><input id="pd"></div><div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="savProv()"><i class="ti ti-check"></i>Guardar</button></div>`;
+const mVP=id=>{const p=S.proveedores.find(x=>x.id===id);if(!p)return'';return `<div class="mt2">${p.nombre} ${ivaBadge(p.iva)}</div><div class="kv"><span class="kk">CUIT</span><span class="kval" style="font-family:monospace">${p.cuit||'—'}</span></div><div class="kv"><span class="kk">Domicilio</span><span class="kval">${p.dom||'—'}</span></div><div class="kv"><span class="kk">Localidad</span><span class="kval">${p.loc||'—'}</span></div><div class="kv"><span class="kk">Email</span><span class="kval">${p.email||'—'}</span></div><div class="kv"><span class="kk">Teléfono</span><span class="kval">${p.tel||'—'}</span></div><div class="mf"><button onclick="cm()">Cerrar</button></div>`;};
+
+function mNC2(){
+  return `<div class="mt2">Nueva cotización</div>
+<div class="fr"><div class="fg"><label>Cliente</label>${acCli('cot-txt','cot-id','Buscar cliente...')}</div><div class="fg"><label>Fecha</label><input id="cf" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="fg"><label>Válido hasta</label><input id="cv" type="date"></div></div>
+<div class="fg" style="margin-bottom:9px"><label>Descripción del trabajo</label><input id="cd" placeholder="Ej: Cajas packaging 1000u, Flyers A5 5000u..."></div>
+<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.05em">Ítems de venta</label><button onclick="addItem()"><i class="ti ti-plus"></i>Agregar</button></div>
+<div id="ci2"><div class="cit" style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 16px;gap:4px;margin-bottom:4px;align-items:center"><input placeholder="Descripción" class="id2"><input placeholder="Cant." type="number" min="1" class="iq" oninput="calcI(this)"><input placeholder="Total $" type="number" class="is" oninput="calcI(this)"><input placeholder="Unit." class="ip" readonly style="background:#f5f5f3;color:#888"><span></span></div></div>
+<div style="display:flex;justify-content:flex-end;gap:12px;font-size:12px;margin-top:5px;padding:7px 10px;background:#f5f5f3;border-radius:7px"><span>Sub: <strong id="csd">$0</strong></span><span>IVA 21%: <strong id="cid2">$0</strong></span><span>Total venta: <strong id="ctd" style="color:#185fa5">$0</strong></span></div></div>
+<div style="margin-top:4px"><div class="sec-t"><i class="ti ti-calculator"></i>Costos del trabajo</div>
+<div style="background:#f5f5f3;border-radius:8px;padding:10px;margin-bottom:8px">
+<div style="font-size:11px;display:grid;grid-template-columns:1.5fr 1fr 2.5fr;gap:6px;font-weight:500;color:#666;margin-bottom:5px"><span>Concepto</span><span>Monto</span><span>Proveedor</span></div>
+${['papel','impresion','chapas','corte','cajas','flete'].map(k=>`<div style="display:grid;grid-template-columns:1.5fr 1fr 2.5fr;gap:6px;align-items:center;padding:4px 0;border-bottom:0.5px solid rgba(0,0,0,.05)"><div style="font-size:12px;font-weight:500;color:#444">${{papel:'Papel',impresion:'Impresión',chapas:'Chapas',corte:'Corte',cajas:'Cajas',flete:'Flete'}[k]}</div><input id="fijo-${k}" type="number" placeholder="$0" style="font-size:12px;padding:4px 7px" oninput="cotCostosData.fijos['${k}'].monto=parseFloat(this.value)||0;recalcCostos()">${provSelect('fijo-prov-'+k,'cotCostosData.fijos[\''+k+'\'].provId=this.value')}</div>`).join('')}
+</div>
+<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:12px;font-weight:500">Procesos adicionales</span><button onclick="addProceso()" style="font-size:11px"><i class="ti ti-plus"></i>Agregar proceso</button></div>
+<div id="proc-container" style="background:#f5f5f3;border-radius:8px;padding:8px 10px"></div></div>
+<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><input id="nuevo-proceso-inp" placeholder="Crear nuevo proceso (ej: Calado especial)..." style="font-size:12px;flex:1;padding:5px 9px"><button onclick="addNuevoProceso()" style="font-size:11px;white-space:nowrap"><i class="ti ti-plus"></i>Crear</button></div>
+<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:#e6f1fb;border-radius:8px;margin-top:4px"><span style="font-size:12px;font-weight:500">Costo total</span><span id="costos-total" style="font-size:15px;font-weight:700;color:#185fa5">$0</span></div></div>
+<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#f5f5f3;border-radius:8px;margin:8px 0">
+<span>Total venta: <strong id="cot-venta-d">$0</strong></span>
+<span>Costo: <strong id="cot-costo-d">$0</strong></span>
+<span>Margen: <strong id="margen-prev" style="color:#888">—</strong></span></div>
+<div class="fg" style="margin-bottom:8px"><label>Notas</label><textarea id="cno2" style="min-height:44px"></textarea></div>
+<div class="mf"><button onclick="cm()">Cancelar</button><button onclick="savCot('borrador')"><i class="ti ti-device-floppy"></i>Borrador</button><button class="bs" onclick="savCot('enviada')"><i class="ti ti-send"></i>Enviar</button></div>`;
+}
+
+function procesosHTML(){
+  return (cotCostosData.procesos||[]).map((p,i)=>{
+    const sid='proc-prov-'+i;
+    return `<div class="costo-row" style="grid-template-columns:1.5fr 1fr 2.5fr 24px"><select style="font-size:11px;padding:4px 7px" onchange="cotCostosData.procesos[${i}].nombre=this.value">${S.procesos.map(n=>`<option value="${n}"${n===p.nombre?' selected':''}>${n}</option>`).join('')}</select><input type="number" placeholder="$0" value="${p.monto||''}" style="font-size:12px;padding:4px 7px" oninput="cotCostosData.procesos[${i}].monto=parseFloat(this.value)||0;recalcCostos()">${provSelect(sid,'cotCostosData.procesos['+i+'].provId=this.value',p.provId)}<button onclick="cotCostosData.procesos.splice(${i},1);Q('proc-container').innerHTML=procesosHTML();recalcCostos()" style="padding:2px 6px;color:#a32d2d;border-color:#a32d2d"><i class="ti ti-x"></i></button></div>`;
+  }).join('');
+}
+function addProceso(){cotCostosData.procesos.push({nombre:S.procesos[0]||'Proceso',monto:0,provId:''});const c=Q('proc-container');if(c)c.innerHTML=procesosHTML();}
+function addNuevoProceso(){const inp=Q('nuevo-proceso-inp');if(!inp)return;const val=inp.value.trim();if(!val)return;if(!S.procesos.includes(val))S.procesos.push(val);sk('procesos');inp.value='';const c=Q('proc-container');if(c)c.innerHTML=procesosHTML();}
+function recalcCostos(){
+  let tot=0;
+  Object.values(cotCostosData.fijos).forEach(f=>tot+=parseFloat(f.monto)||0);
+  (cotCostosData.procesos||[]).forEach(p=>tot+=parseFloat(p.monto)||0);
+  const el=Q('costos-total');if(el)el.textContent=$m(tot);
+  const el2=Q('cot-costo-d');if(el2)el2.textContent=$m(tot);
+  updMargen();
+}
+function updMargen(){
+  const vEl=Q('cot-venta-d'),cEl=Q('costos-total');
+  if(!vEl||!cEl)return;
+  const v=parseFloat(vEl.textContent.replace(/[^0-9]/g,''))||0;
+  const c=parseFloat(cEl.textContent.replace(/[^0-9]/g,''))||0;
+  const mg=v>0?((v-c)/v*100).toFixed(1):0;
+  const el=Q('margen-prev');if(el){el.textContent=mg+'%';el.style.color=mg>=20?'#3b6d11':mg>=10?'#ba7517':'#a32d2d';}
+}
+
+function mVC2(id){const c=S.cotizaciones.find(x=>x.id===id);if(!c)return'';const ct=c.costoTotal||0,mg=c.total>0?((c.total-ct)/c.total*100).toFixed(1):0,ot=S.ordenes.find(o=>o.cotId===c.id);let h=`<div class="mt2">${c.num} — ${cNom(c.clienteId)} ${stBadge(c.estado)}</div><div class="kv"><span class="kk">Fecha</span><span class="kval">${c.fecha}</span></div><div style="margin:9px 0;border:0.5px solid rgba(0,0,0,.1);border-radius:7px;overflow:hidden"><table style="font-size:11px"><thead><tr><th>Descripción</th><th>Cant.</th><th>P.unit.</th><th>Subtotal</th></tr></thead><tbody>${(c.items||[]).map(i=>`<tr><td>${i.desc}</td><td>${i.qty}</td><td>${$m(i.precio)}</td><td>${$m(i.subtotal)}</td></tr>`).join('')}</tbody></table><div style="padding:7px;text-align:right;font-size:11px;background:#f5f5f3">Sub: ${$m(c.subtotal)} · IVA: ${$m(c.iva)} · <strong>Total: ${$m(c.total)}</strong></div></div>`;
+if(c.costos){h+=`<div style="background:#f5f5f3;border-radius:7px;padding:9px;font-size:12px;margin-bottom:10px"><div style="font-weight:600;margin-bottom:6px">Costos</div>`;const labels={papel:'Papel',impresion:'Impresión',chapas:'Chapas',corte:'Corte',cajas:'Cajas',flete:'Flete'};if(c.costos.fijos){Object.entries(labels).forEach(([k,l])=>{const d=c.costos.fijos[k];if(d&&d.monto>0)h+=`<div class="kv"><span class="kk">${l}</span><div style="text-align:right"><strong>${$m(d.monto)}</strong>${d.provId?`<div style="font-size:10px;color:#888">${pNom(parseInt(d.provId))}</div>`:''}</div></div>`;});}(c.costos.procesos||[]).forEach(p=>{h+=`<div class="kv"><span class="kk">${p.nombre}</span><div style="text-align:right"><strong>${$m(p.monto)}</strong>${p.provId?`<div style="font-size:10px;color:#888">${pNom(parseInt(p.provId))}</div>`:''}</div></div>`;});h+=`<div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid rgba(0,0,0,.1);font-weight:600"><span>Costo total</span><span>${$m(ct)}</span></div></div>`;}
+h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#e6f1fb;border-radius:8px;margin-bottom:10px"><span>Venta: <strong>${$m(c.total)}</strong></span><span>Costo: <strong>${$m(ct)}</strong></span><span style="font-size:16px;font-weight:700;color:${mg>=20?'#3b6d11':mg>=10?'#ba7517':'#a32d2d'}">Margen: ${mg}%</span></div>`;
+if(ot)h+=`<div class="alert as"><i class="ti ti-clipboard-check"></i>OT: <strong>${ot.num}</strong> ${stBadge(ot.estado)}</div>`;
+h+=`<div class="mf"><button onclick="cm()">Cerrar</button>${c.estado==='borrador'||c.estado==='enviada'?`<button class="bs" onclick="chCot(${c.id},'aprobada');cm()"><i class="ti ti-check"></i>Aprobar</button>`:''}${c.estado==='aprobada'&&!ot?`<button class="bp" onclick="genOT(${c.id});cm()"><i class="ti ti-clipboard-plus"></i>Generar OT</button>`:''}</div>`;
+return h;}
+
+// ---- Procesos de terminación fijos (igual al Excel) ----
+const PROC_TERM_FIJOS=[
+  {k:'emblocado',l:'Emblocado'},
+  {k:'numerado',l:'Numerado'},
+  {k:'doblado',l:'Doblado'},
+  {k:'encAbrochado',l:'Enc. Abrochado'},
+  {k:'encBinder',l:'Enc. Binder / Anillado'},
+  {k:'montado',l:'Montado'},
+  {k:'laminado',l:'Laminado'},
+  {k:'lacaUvPlena',l:'Laca UV Plena'},
+  {k:'lacaUvSect',l:'Laca UV Sectorizada'},
+  {k:'pelicula',l:'Película'},
+  {k:'sacabocados',l:'Sacabocados'},
+  {k:'troqueladoExt',l:'Troquelado Externo'},
+  {k:'troqueladoInt',l:'Troquelado (interno)'},
+  {k:'cuño',l:'Cuño'},
+  {k:'hotStamping',l:'Hot Stamping'},
+  {k:'pegado',l:'Pegado'},
+  {k:'procesoManual',l:'Proceso Manual'},
+  {k:'procesoEspecial',l:'Proceso Especial'}
+];
+
+function sec2(t,i){return `<div class="sec-t"><i class="ti ti-${i}"></i>${t}</div>`;}
+
+function mNOT(){
+  return `<div class="mt2">Nueva Orden de Trabajo</div>`
+  +sec2('Datos generales','clipboard-text')
+  +`<div class="fr"><div class="fg"><label>Nro. de OT</label><input id="ot-num" placeholder="Ej: 33725"></div><div class="fg"><label>Vendedor</label><input id="ot-vend" placeholder="Ej: JPM"></div><div class="fg"><label>OT controlada por</label><input id="ot-ctrl"></div></div>
+<div class="fr"><div class="fg"><label>Cliente</label>${acCli('ot-txt','ot-id')}</div><div class="fg"><label>Fecha de ingreso</label><input id="ot-ing" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="fg"><label>Fecha de entrega</label><input id="ote" type="date"></div></div>
+<div class="fg" style="margin-bottom:9px"><label>Descripción del trabajo</label><textarea id="otd" rows="3" placeholder="Ej: 10.000 Estuche Absolute Nigth, Formato 60x110x60, Impresión 4/1 (Frente CMYK / Dorso 1665), Material Cart. TX 300grs, Terminación Stamping Oro + Laca UV..."></textarea></div>`
+  +sec2('Detalle de material a cortar','cut')
+  +`<div class="fr"><div class="fg"><label>Proveedor / Llega de</label><select id="m-prov">${provOpts()}</select></div><div class="fg"><label>Papelera</label><input id="m-papelera"></div><div class="fg"><label>Material</label><input id="m-material" placeholder="Ej: Cart. TX"></div></div>
+<div class="fr"><div class="fg"><label>Formato (cm)</label><div style="display:flex;gap:4px;align-items:center"><input id="m-fx" type="number" placeholder="Ancho"><span>x</span><input id="m-fy" type="number" placeholder="Alto"></div></div><div class="fg"><label>Gramaje (grs)</label><input id="m-grs" type="number"></div><div class="fg"><label>Hojas</label><input id="m-hojas" type="number"></div></div>
+<div class="fr"><div class="fg"><label>Kg</label><input id="m-kg" type="number"></div><div class="fg"><label>Cortar a (cm)</label><div style="display:flex;gap:4px;align-items:center"><input id="m-cax" type="number" placeholder="Ancho"><span>x</span><input id="m-cay" type="number" placeholder="Alto"></div></div><div class="fg"><label>Poses</label><input id="m-poses" type="number"></div></div>
+<div class="fr"><div class="fg"><label>Total de pliegos</label><input id="m-pliegos" type="number"></div></div>
+<div class="fg" style="margin-bottom:8px"><label>Aclaración previa a la impresión</label><textarea id="m-acla" rows="2" placeholder="Ej: Pinza de 1,5 / Respetar pantones - Ver con muestra"></textarea></div>`
+  +sec2('Detalle de impresión','printer')
+  +`<div class="fr"><div class="fg"><label>Máquina</label><select id="i-maq"><option value="">— Seleccionar —</option>${S.maquinas.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="fg"><label>Maquinista</label><input id="i-maqista"></div><div class="fg"><label>Colores</label><input id="i-colores" placeholder="Ej: 4/1"></div></div>
+<div class="fr"><div class="fg"><label>Cant. chapas</label><input id="i-chapas" type="number"></div><div class="fg"><label>Impresión Frente</label><input id="i-frente" placeholder="Ej: CMYK"></div><div class="fg"><label>Impresión Dorso</label><input id="i-dorso"></div></div>
+<div class="fr"><div class="fg"><label>Cantidad de piezas</label><input id="i-piezas" type="number"></div><div class="fg"><label>Cant. de posturas</label><input id="i-posturas" type="number"></div><div class="fg"><label>Pliegos cortados</label><input id="i-pcort" type="number"></div></div>
+<div class="fr"><div class="fg"><label>Pliegos buenos</label><input id="i-pbuenos" type="number"></div><div class="fg"><label>Pliegos demasía</label><input id="i-pdem" type="number"></div><div class="fg"><label>Desperdicio</label><input id="i-desp" type="number"></div></div>
+<div class="fg" style="margin-bottom:8px"><label>Observación de impresión</label><input id="i-obs" placeholder="Ej: Controlar el polvo (lleva laca UV)"></div>`
+  +sec2('Detalle de procesos de terminación','stack-2')
+  +`<div class="fg" style="margin-bottom:8px"><label>Orden de procesos / instrucciones</label><textarea id="t-orden" rows="2" placeholder="Ej: Respetar orden de procesos: 1) Stamping Oro 2) Laca UV Brillante. Troquelado, pegado lateral"></textarea></div>
+<div id="proc-term-container">${procTermHTML()}</div>
+<div style="display:flex;gap:6px;align-items:center;margin:8px 0"><input id="nuevo-proc-term-inp" placeholder="Agregar otro proceso (ej: Repujado)..." style="font-size:12px;flex:1;padding:5px 9px"><button onclick="addProcTermExtra()" style="font-size:11px;white-space:nowrap"><i class="ti ti-plus"></i>Agregar</button></div>
+<div id="proc-term-extra"></div>`
+  +sec2('Empaque','package')
+  +`<div class="fr"><div class="fg"><label>Paquetes de</label><input id="emp-paq" type="number" placeholder="unid."></div><div class="fg"><label>Cajas de</label><input id="emp-caja" type="number" placeholder="unid."></div></div>
+<div class="fg" style="margin-bottom:8px"><label>Observaciones de empaque</label><input id="emp-obs"></div>`
+  +`<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px"><button onclick="cm()">Cancelar</button><button class="bp" onclick="savOT()"><i class="ti ti-check"></i>Crear OT</button></div>`;
+}
+
+function procTermHTML(){
+  let h=`<div style="background:#f5f5f3;border-radius:8px;padding:8px 10px">`;
+  h+=`<div style="font-size:11px;display:grid;grid-template-columns:1.3fr 70px 1.3fr 1fr;gap:6px;font-weight:600;color:#666;margin-bottom:5px;padding:0 2px"><span>Proceso</span><span>¿Sí?</span><span>Detalle</span><span>Proveedor</span></div>`;
+  PROC_TERM_FIJOS.forEach(p=>{
+    h+=`<div class="costo-row" style="grid-template-columns:1.3fr 70px 1.3fr 1fr 0px"><div style="font-size:12px;font-weight:500;color:#444">${p.l}</div><select id="pt-${p.k}-si" style="font-size:11px;padding:4px"><option value="">--</option><option value="SI">SÍ</option></select><input id="pt-${p.k}-det" placeholder="Detalle" style="font-size:11px;padding:4px 6px"><select id="pt-${p.k}-prov" style="font-size:11px;padding:4px">${provOpts()}</select><span></span></div>`;
+  });
+  h+=`</div>`;
+  return h;
+}
+function addProcTermExtra(){
+  const inp=Q('nuevo-proc-term-inp');if(!inp)return;
+  const val=inp.value.trim();if(!val)return;
+  const cont=Q('proc-term-extra');
+  const row=document.createElement('div');
+  row.className='costo-row';
+  row.style.cssText='grid-template-columns:1.3fr 70px 1.3fr 1fr 24px;background:#f5f5f3;padding:4px 6px;margin-top:2px;border-radius:6px';
+  row.innerHTML=`<div style="font-size:12px;font-weight:500;color:#444">${val}</div><select class="pte-si" style="font-size:11px;padding:4px"><option value="">--</option><option value="SI" selected>SÍ</option></select><input class="pte-det" placeholder="Detalle" style="font-size:11px;padding:4px 6px"><select class="pte-prov" style="font-size:11px;padding:4px">${provOpts()}</select><button onclick="this.parentElement.remove()" style="padding:2px 6px;color:#a32d2d;border-color:#a32d2d"><i class="ti ti-x"></i></button>`;
+  row.dataset.nombre=val;
+  cont.appendChild(row);
+  inp.value='';
+}
+
+function kv2(label,val){if(val===undefined||val===null||val==='')return'';return `<div class="kv"><span class="kk">${label}</span><span class="kval">${val}</span></div>`;}
+
+function mVOT(id){
+  const o=S.ordenes.find(x=>x.id===id);if(!o)return'';
+  let h=`<div class="mt2">${o.num} ${stBadge(o.estado)}</div>`;
+  h+=`<div class="kv"><span class="kk">Cliente</span><span class="kval">${cNom(o.clienteId)}</span></div>`;
+  h+=kv2('Vendedor',o.vendedor);
+  h+=kv2('OT controlada por',o.controladaPor);
+  h+=`<div class="kv"><span class="kk">Fecha ingreso</span><span class="kval">${o.fecha||'—'}</span></div>`;
+  h+=`<div class="kv"><span class="kk">Fecha entrega</span><span class="kval">${o.entrega||'—'}</span></div>`;
+  h+=`<div style="margin-top:8px;background:#f5f5f3;border-radius:7px;padding:9px;font-size:12px;line-height:1.5">${o.descripcion||'—'}</div>`;
+
+  // Material
+  if(o.material&&(o.material.material||o.material.grs||o.material.pliegos)){
+    const m=o.material;
+    h+=sec2('Material a cortar','cut');
+    h+=`<div class="kv-grid">${kv2('Proveedor',pNom(parseInt(m.prov))||m.prov)}${kv2('Papelera',m.papelera)}${kv2('Material',m.material)}${kv2('Formato',m.fx&&m.fy?`${m.fx} x ${m.fy} cm`:'')}${kv2('Gramaje',m.grs?m.grs+' grs':'')}${kv2('Hojas',m.hojas)}${kv2('Kg',m.kg)}${kv2('Cortar a',m.cax&&m.cay?`${m.cax} x ${m.cay} cm`:'')}${kv2('Poses',m.poses)}${kv2('Total pliegos',m.pliegos)}</div>`;
+    if(m.aclaracion)h+=`<div style="margin-top:5px;font-size:11px;color:#a32d2d"><i class="ti ti-alert-triangle"></i> ${m.aclaracion}</div>`;
+  }
+  // Impresion
+  if(o.impresion&&(o.impresion.maquina||o.impresion.piezas)){
+    const im=o.impresion;
+    h+=sec2('Impresión','printer');
+    h+=`<div class="kv-grid">${kv2('Máquina',im.maquina)}${kv2('Maquinista',im.maquinista)}${kv2('Colores',im.colores)}${kv2('Chapas',im.chapas)}${kv2('Frente',im.frente)}${kv2('Dorso',im.dorso)}${kv2('Piezas',im.piezas)}${kv2('Posturas',im.posturas)}${kv2('Pliegos cortados',im.pliegosCortados)}${kv2('Pliegos buenos',im.pliegosBuenos)}${kv2('Pliegos demasía',im.pliegosDemasia)}${kv2('Desperdicio',im.desperdicio)}</div>`;
+    if(im.obs)h+=`<div style="margin-top:5px;font-size:11px;color:#888"><i class="ti ti-info-circle"></i> ${im.obs}</div>`;
+  }
+  // Terminacion
+  if(o.terminacion&&o.terminacion.length){
+    h+=sec2('Procesos de terminación','stack-2');
+    if(o.ordenProcesos)h+=`<div style="font-size:11px;color:#a32d2d;margin-bottom:6px"><i class="ti ti-list-numbers"></i> ${o.ordenProcesos}</div>`;
+    h+=`<div style="display:flex;flex-direction:column;gap:3px">`;
+    o.terminacion.forEach(t=>{h+=`<div style="display:flex;justify-content:space-between;align-items:center;background:#f5f5f3;border-radius:6px;padding:5px 9px;font-size:12px"><span><span class="tag g">SÍ</span> <strong>${t.nombre}</strong>${t.detalle?` — ${t.detalle}`:''}</span>${t.provId?`<span style="font-size:10px;color:#888">${pNom(parseInt(t.provId))}</span>`:''}</div>`;});
+    h+=`</div>`;
+  }
+  // Empaque
+  if(o.empaque&&(o.empaque.paq||o.empaque.caja||o.empaque.obs)){
+    h+=sec2('Empaque','package');
+    h+=`<div class="kv-grid">${kv2('Paquetes de',o.empaque.paq)}${kv2('Cajas de',o.empaque.caja)}</div>`;
+    if(o.empaque.obs)h+=`<div style="margin-top:5px;font-size:11px;color:#888">${o.empaque.obs}</div>`;
+  }
+
+  // Seguimiento de pasos
+  h+=sec2('Seguimiento de producción','list-check');
+  h+=`<div style="margin-bottom:4px">`;
+  o.pasos.forEach((p,i)=>{
+    const a=o.asignaciones&&o.asignaciones[p.nombre];
+    h+=`<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:0.5px solid rgba(0,0,0,.05)"><div class="sdot ${p.estado}" style="margin-top:1px">${p.estado==='done'?'<i class="ti ti-check" style="font-size:9px"></i>':p.estado==='active'?'▶':(i+1)}</div><div style="flex:1"><div style="font-size:12px;font-weight:500">${p.nombre}${p.fecha?` <span style="font-weight:400;color:#888">${p.fecha}</span>`:''} ${a&&a.nombre?`<span class="rtag ${a.tipo==='maq'?'maq':a.tipo==='fle'?'ext':'ext'}" style="font-size:10px"><i class="ti ti-${a.tipo==='maq'?'tool':a.tipo==='fle'?'truck-delivery':'user'}" style="font-size:9px"></i>${a.nombre}</span>`:''}</div>${p.nota?`<div style="font-size:11px;color:#888">${p.nota}</div>`:''}${p.estado!=='done'?`<div style="margin-top:4px;display:flex;gap:4px"><input id="np${i}" placeholder="Nota..." style="font-size:11px;padding:3px 7px"><button class="bs" onclick="avPN(${o.id},${i})"><i class="ti ti-check"></i>${p.estado==='pending'?'Iniciar':'Completar'}</button></div>`:''}</div></div>`;
+  });
+  h+=`</div>`;
+  h+=`<div class="mf"><button onclick="cm()">Cerrar</button><button onclick="om('editOT',${id})"><i class="ti ti-edit"></i>Editar detalle</button><button onclick="om('asgn',${id})"><i class="ti ti-cpu"></i>Asignar recursos</button>${o.estado!=='entregada'?`<button class="bp" onclick="om('nrem');cm()"><i class="ti ti-truck-delivery"></i>Remito</button>`:''}</div>`;
+  return h;
+}
+
+function mASGN(otId){
+  const o=S.ordenes.find(x=>x.id===otId);if(!o)return'';
+  if(!o.asignaciones)o.asignaciones={};
+  const maqOpts=`<option value="">— Sin asignar —</option>${S.maquinas.map(m=>`<option value="maq::${m}">🔧 ${m}</option>`).join('')}<option disabled>──────────</option>${S.externos.map(e=>`<option value="ext::${e}">👤 ${e}</option>`).join('')}<option disabled>──────────</option>${S.fletes.map(f=>`<option value="fle::${f}">🚚 ${f}</option>`).join('')}`;
+  let h=`<div class="mt2"><i class="ti ti-cpu" style="margin-right:6px"></i>Asignar recursos — ${o.num}</div><div style="font-size:12px;color:#888;margin-bottom:12px">${o.descripcion}</div>`;
+  o.pasos.forEach((p,i)=>{const cur=o.asignaciones[p.nombre];const curVal=cur?(cur.tipo+'::'+cur.nombre):'';h+=`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid rgba(0,0,0,.05)"><div class="sdot ${p.estado}" style="flex-shrink:0">${p.estado==='done'?'<i class="ti ti-check" style="font-size:9px"></i>':p.estado==='active'?'▶':(i+1)}</div><div style="flex:1"><div style="font-size:12px;font-weight:500">${p.nombre}</div>${cur&&cur.nombre?`<div style="font-size:10px;color:#888">→ ${cur.nombre}</div>`:''}</div><select style="font-size:11px;padding:4px 7px;width:auto;min-width:140px" onchange="setAsign(${otId},'${p.nombre}',this.value)">${maqOpts.replace(`value="${curVal}"`,`value="${curVal}" selected`)}</select></div>`;});
+  h+=`<div style="background:#f5f5f3;border-radius:8px;padding:10px;margin:10px 0"><div style="font-size:11px;font-weight:600;color:#666;margin-bottom:7px">Asignación rápida (a todos los pasos)</div><div style="display:flex;gap:7px"><select id="asgn-rapida" style="font-size:12px;padding:5px 9px;flex:1"><option value="">Seleccionar...</option>${S.maquinas.map(m=>`<option value="maq::${m}">🔧 ${m}</option>`).join('')}<option disabled>──────────</option>${S.externos.map(e=>`<option value="ext::${e}">👤 ${e}</option>`).join('')}<option disabled>──────────</option>${S.fletes.map(f=>`<option value="fle::${f}">🚚 ${f}</option>`).join('')}</select><button class="bp" onclick="asignRapida(${otId})" style="white-space:nowrap"><i class="ti ti-bolt"></i>Aplicar a todos</button></div></div>`;
+  h+=`<div class="mf"><button onclick="cm();render()">Cerrar</button></div>`;return h;
+}
+function setAsign(otId,paso,val){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;if(!o.asignaciones)o.asignaciones={};if(!val){delete o.asignaciones[paso];}else{const[tipo,...rest]=val.split('::');o.asignaciones[paso]={tipo,nombre:rest.join('::')};};sk('ordenes');const mod=document.querySelector('.mod');if(mod)mod.innerHTML=mASGN(otId);}
+function asignRapida(otId){const val=Q('asgn-rapida')?.value;if(!val)return;const o=S.ordenes.find(x=>x.id===otId);if(!o)return;if(!o.asignaciones)o.asignaciones={};const[tipo,...rest]=val.split('::');o.pasos.forEach(p=>{o.asignaciones[p.nombre]={tipo,nombre:rest.join('::')};});sk('ordenes');const mod=document.querySelector('.mod');if(mod)mod.innerHTML=mASGN(otId);}
+
+function mRecursos(){
+  return `<div class="mt2"><i class="ti ti-settings" style="margin-right:6px"></i>Gestionar recursos</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px">
+<div>
+  <div style="font-size:12px;font-weight:600;margin-bottom:8px"><i class="ti ti-tool"></i> Máquinas internas</div>
+  <div id="lista-maq">${S.maquinas.map((m,i)=>`<div class="res-item"><span>${m}</span><button class="bd" onclick="delRec('maq',${i})" style="font-size:10px;padding:2px 6px"><i class="ti ti-x"></i></button></div>`).join('')}</div>
+  <div style="display:flex;gap:5px;margin-top:8px"><input id="new-maq" placeholder="Nueva máquina..." style="font-size:12px;padding:5px 8px;flex:1"><button onclick="addRec('maq')" style="font-size:11px"><i class="ti ti-plus"></i></button></div>
+</div>
+<div>
+  <div style="font-size:12px;font-weight:600;margin-bottom:8px"><i class="ti ti-user"></i> Externos</div>
+  <div id="lista-ext">${S.externos.map((e,i)=>`<div class="res-item"><span>${e}</span><button class="bd" onclick="delRec('ext',${i})" style="font-size:10px;padding:2px 6px"><i class="ti ti-x"></i></button></div>`).join('')}</div>
+  <div style="display:flex;gap:5px;margin-top:8px"><input id="new-ext" placeholder="Nuevo externo..." style="font-size:12px;padding:5px 8px;flex:1"><button onclick="addRec('ext')" style="font-size:11px"><i class="ti ti-plus"></i></button></div>
+</div>
+</div>
+<div>
+  <div style="font-size:12px;font-weight:600;margin-bottom:8px"><i class="ti ti-truck-delivery"></i> Fletes</div>
+  <div id="lista-fle">${S.fletes.map((f,i)=>`<div class="res-item"><span>${f}</span><button class="bd" onclick="delRec('fle',${i})" style="font-size:10px;padding:2px 6px"><i class="ti ti-x"></i></button></div>`).join('')}</div>
+  <div style="display:flex;gap:5px;margin-top:8px"><input id="new-fle" placeholder="Nuevo flete..." style="font-size:12px;padding:5px 8px;flex:1"><button onclick="addRec('fle')" style="font-size:11px"><i class="ti ti-plus"></i></button></div>
+</div>
+<div class="mf"><button onclick="cm();render()">Cerrar</button></div>`;
+}
+function addRec(tipo){
+  const inp=Q('new-'+tipo);if(!inp)return;
+  const val=inp.value.trim();if(!val)return;
+  if(tipo==='maq'){if(!S.maquinas.includes(val))S.maquinas.push(val);sk('maquinas');}
+  else if(tipo==='ext'){if(!S.externos.includes(val))S.externos.push(val);sk('externos');}
+  else if(tipo==='fle'){if(!S.fletes.includes(val))S.fletes.push(val);sk('fletes');}
+  inp.value='';
+  const mod=document.querySelector('.mod');if(mod)mod.innerHTML=mRecursos();
+}
+function delRec(tipo,idx){
+  if(tipo==='maq'){S.maquinas.splice(idx,1);sk('maquinas');}
+  else if(tipo==='ext'){S.externos.splice(idx,1);sk('externos');}
+  else if(tipo==='fle'){S.fletes.splice(idx,1);sk('fletes');}
+  const mod=document.querySelector('.mod');if(mod)mod.innerHTML=mRecursos();
+}
+
+const mNREM=()=>`<div class="mt2">Nuevo remito interno</div><div class="fr"><div class="fg"><label>Cliente</label>${acCli('rem-txt','rem-id')}</div><div class="fg"><label>OT</label><select id="remo"><option value="">Sin OT</option>${S.ordenes.map(o=>`<option value="${o.id}">${o.num} — ${o.descripcion}</option>`).join('')}</select></div></div><div class="fr"><div class="fg"><label>Fecha</label><input id="rf" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="fg"><label>Dirección</label><input id="rd"></div></div><div class="fg"><label>Detalle bultos</label><textarea id="rdet"></textarea></div><div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="savRem()"><i class="ti ti-check"></i>Emitir</button></div>`;
+const mVREM=id=>{const r=S.remitos.find(x=>x.id===id);if(!r)return'';return`<div class="mt2">Remito ${r.num}</div><div class="kv"><span class="kk">Cliente</span><span class="kval">${cNom(r.clienteId)}</span></div><div class="kv"><span class="kk">OT</span><span class="kval">${r.otNum||'—'}</span></div><div class="kv"><span class="kk">Fecha</span><span class="kval">${r.fecha}</span></div><div class="kv"><span class="kk">Dirección</span><span class="kval">${r.dir||'—'}</span></div><div class="kv"><span class="kk">Detalle</span><span class="kval">${r.det||'—'}</span></div><div class="kv"><span class="kk">Estado</span><span class="kval">${stBadge(r.estado)}</span></div><div class="mf"><button onclick="cm()">Cerrar</button>${r.estado!=='entregado'?`<button class="bs" onclick="mkRem(${r.id},'entregado')"><i class="ti ti-check"></i>Marcar entregado</button>`:''}</div>`;};
+const mNGAS=()=>`<div class="mt2">Agregar gasto de estructura</div><div class="fr"><div class="fg"><label>Concepto</label><input id="gc"></div><div class="fg"><label>Tipo</label><select id="gti"><option value="fijo">Fijo</option><option value="variable">Variable</option></select></div></div><div class="fr"><div class="fg"><label>Monto mensual</label><input id="gm" type="number" placeholder="$0"></div><div class="fg"><label>Mes</label><input id="gme" type="month" value="${new Date().toISOString().slice(0,7)}"></div></div><div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="savGas()"><i class="ti ti-check"></i>Guardar</button></div>`;
+
+// ---- PLANIFICACION MODALS ----
+function mNewBloque(data){
+  const[maq,fecha,slot]=data.split('|');
+  const otsAct=S.ordenes.filter(o=>o.estado!=='entregada'&&o.estado!=='cancelada');
+  const MESES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const d=new Date(fecha+'T12:00:00');
+  return `<div class="mt2"><i class="ti ti-calendar-plus" style="margin-right:6px"></i>Asignar bloque</div>
+<div style="background:#f5f5f3;border-radius:8px;padding:9px;margin-bottom:12px;font-size:12px;display:flex;gap:16px;flex-wrap:wrap">
+<span><i class="ti ti-tool" style="font-size:12px;margin-right:3px"></i><strong>${maq}</strong></span>
+<span><i class="ti ti-calendar" style="font-size:12px;margin-right:3px"></i>${DIAS[d.getDay()]} ${d.getDate()}/${MESES[d.getMonth()]}</span>
+<span><i class="ti ti-clock" style="font-size:12px;margin-right:3px"></i>${slot}</span>
+</div>
+<div class="fr"><div class="fg"><label>OT</label><select id="b-ot"><option value="">Seleccionar OT...</option>${otsAct.map(o=>`<option value="${o.id}">${o.num} — ${o.descripcion.substring(0,30)} (${cNom(o.clienteId)})</option>`).join('')}</select></div></div>
+<div class="fr"><div class="fg"><label>Paso de la OT</label><select id="b-paso"><option value="">— Paso general —</option></select></div></div>
+<div class="fr"><div class="fg"><label>Duración</label><select id="b-dur"><option value="1">30 min</option><option value="2">1 hora</option><option value="3">1:30 hs</option><option value="4">2 horas</option><option value="6">3 horas</option><option value="8">4 horas</option></select></div><div class="fg"><label>Nota</label><input id="b-nota" placeholder="Opcional..."></div></div>
+<div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="savBloque('${data}')"><i class="ti ti-check"></i>Guardar</button></div>`;
+}
+document.addEventListener('change',e=>{
+  if(e.target&&e.target.id==='b-ot'){
+    const otId=parseInt(e.target.value),sel=Q('b-paso');if(!sel)return;
+    const ot=S.ordenes.find(o=>o.id===otId);
+    sel.innerHTML='<option value="">— Paso general —</option>';
+    if(ot)ot.pasos.forEach(p=>{const opt=document.createElement('option');opt.value=p.nombre;opt.textContent=p.nombre+(p.estado==='done'?' ✓':'');sel.appendChild(opt);});
+  }
+});
+function mEditBloque(data){
+  const[maq,fecha,slot]=data.split('|');
+  if(!S.planificacion[maq]||!S.planificacion[maq][fecha]||!S.planificacion[maq][fecha][slot])return'<div class="mt2">No encontrado</div><div class="mf"><button onclick="cm()">Cerrar</button></div>';
+  const b=S.planificacion[maq][fecha][slot];const ot=S.ordenes.find(o=>o.id===b.otId);
+  const MESES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const d=new Date(fecha+'T12:00:00');
+  return `<div class="mt2"><i class="ti ti-calendar-event" style="margin-right:6px"></i>Bloque planificado</div>
+<div style="background:#f5f5f3;border-radius:8px;padding:9px;margin-bottom:12px">
+<div class="kv"><span class="kk">Máquina / Externo</span><span class="kval">${maq}</span></div>
+<div class="kv"><span class="kk">Fecha</span><span class="kval">${DIAS[d.getDay()]} ${d.getDate()}/${MESES[d.getMonth()]}</span></div>
+<div class="kv"><span class="kk">Hora</span><span class="kval">${slot}</span></div>
+${ot?`<div class="kv"><span class="kk">OT</span><span class="kval"><span class="badge ${otCol(ot.id)}">${ot.num}</span> ${ot.descripcion}</span></div>`:''}
+${b.pasoNombre?`<div class="kv"><span class="kk">Paso</span><span class="kval">${b.pasoNombre}</span></div>`:''}
+${b.nota?`<div class="kv"><span class="kk">Nota</span><span class="kval">${b.nota}</span></div>`:''}
+</div>
+<div class="mf"><button onclick="cm()">Cerrar</button><button class="bd" onclick="delBloque('${maq}','${fecha}','${slot}');cm()"><i class="ti ti-trash"></i>Eliminar bloque</button></div>`;
+}
+function savBloque(data){
+  const[maq,fecha,slot]=data.split('|');
+  const otId=parseInt(Q('b-ot')?.value);if(!otId){alert('Seleccioná una OT');return;}
+  const pasoNombre=Q('b-paso')?.value||'',dur=parseInt(Q('b-dur')?.value)||1,nota=Q('b-nota')?.value||'';
+  if(!S.planificacion[maq])S.planificacion[maq]={};
+  if(!S.planificacion[maq][fecha])S.planificacion[maq][fecha]={};
+  const idx=ALL_SLOTS.indexOf(slot);
+  for(let i=0;i<dur&&(idx+i)<ALL_SLOTS.length;i++){
+    if(!S.planificacion[maq][fecha])S.planificacion[maq][fecha]={};
+    S.planificacion[maq][fecha][ALL_SLOTS[idx+i]]={otId,pasoNombre,nota,dur:i===0?dur:0,cont:i>0};
+  }
+  sk('planificacion');cm();render();
+}
+function delBloque(maq,fecha,slot){
+  if(!S.planificacion[maq]||!S.planificacion[maq][fecha])return;
+  const b=S.planificacion[maq][fecha][slot];if(!b)return;
+  if(b.dur>1){const idx=ALL_SLOTS.indexOf(slot);for(let i=0;i<b.dur&&(idx+i)<ALL_SLOTS.length;i++)delete S.planificacion[maq][fecha][ALL_SLOTS[idx+i]];}
+  else delete S.planificacion[maq][fecha][slot];
+  if(Object.keys(S.planificacion[maq][fecha]).length===0)delete S.planificacion[maq][fecha];
+  sk('planificacion');render();
+}
+
+// ---- FICHA NUEVA ----
+function rFichaNueva(){
+  const otOpts=S.ordenes.map(o=>`<option value="${o.id}">${o.num} — ${o.descripcion}</option>`).join('');
+  const sT=(t,i)=>`<div class="sec-t"><i class="ti ti-${i}"></i>${t}</div>`;
+  return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><button onclick="fichaTab='lista';render()"><i class="ti ti-arrow-left"></i>Volver</button><div class="pt">Nueva ficha de OT</div></div>`
+  +sT('Descripción del trabajo','clipboard-text')
+  +`<div class="fr"><div class="fg"><label>Nro. pedido / presupuesto</label><input id="f-np" placeholder="34986"></div><div class="fg"><label>Fecha</label><input id="f-fecha" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="fg"><label>OT vinculada</label><select id="f-otid"><option value="">— Sin vincular —</option>${otOpts}</select></div></div>`
+  +`<div class="fg" style="margin-bottom:8px"><label>Descripción del trabajo</label><textarea id="f-desc" rows="3" placeholder="Ej: 3000 estuches 5.40x12.10 cm, 2/0 colores + barniz brillante, cartulina triplex 270g, troquelados y pegados..."></textarea></div>`
+  +`<div class="fr"><div class="fg"><label>Fecha de entrega solicitada</label><input id="f-ent" type="date"></div><div class="fg" style="justify-content:flex-end;padding-top:18px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px"><input type="checkbox" id="f-aprox" style="width:auto;padding:0"> Entrega aproximada</label></div></div>`
+  +`<div class="fg" style="margin-bottom:8px"><label>Observaciones del trabajo</label><textarea id="f-obsTrab" rows="2"></textarea></div>`
+  +sT('Importes y comisiones','calculator')
+  +`<div class="fr"><div class="fg"><label>Precio neto (AGF)</label><input id="f-agf" type="number" placeholder="0" oninput="calcFicha()"></div><div class="fg"><label>Comisión Garbarino</label><input id="f-garb" type="number" placeholder="0" oninput="calcFicha()"></div><div class="fg"><label>Otras comisiones</label><input id="f-otras" type="number" placeholder="0" oninput="calcFicha()"></div></div>`
+  +`<div class="fr"><div class="fg"><label>Vendedor</label><input id="f-vend"></div><div class="fg"><label>Comisión vendedor ($)</label><input id="f-comVend" type="number" placeholder="0" oninput="calcFicha()"></div><div class="fg"><label>IVA</label><select id="f-iva"><option value="0.21">21%</option><option value="0.105">10.5%</option><option value="0">Exento</option></select></div></div>`
+  +`<div style="background:#f5f5f3;border-radius:8px;padding:9px 12px;display:flex;gap:18px;flex-wrap:wrap;font-size:12px;margin-bottom:8px"><span>Subtotal: <strong id="f-sub-d">$0</strong></span><span>IVA: <strong id="f-iva-d">$0</strong></span><span style="font-size:14px">Total c/IVA: <strong id="f-tot-d" style="color:#185fa5">$0</strong></span></div>`
+  +sT('Datos de facturación','receipt')
+  +`<div class="fr"><div class="fg"><label>Razón social</label><input id="f-razSoc"></div><div class="fg"><label>CUIT</label><input id="f-cuit" style="font-family:monospace"></div><div class="fg"><label>Cond. IVA</label><select id="f-condIva"><option value="RI">Resp. Inscripto</option><option value="MT">Monotributista</option><option value="EX">Exento</option><option value="CF">Cons. Final</option></select></div></div>`
+  +`<div class="fr"><div class="fg"><label>Domicilio fiscal</label><input id="f-domFac"></div></div>`
+  +`<div class="fr"><div class="fg"><label>Contacto facturación</label><input id="f-facCont"></div><div class="fg"><label>Teléfono</label><input id="f-facTel"></div></div>`
+  +`<div class="fr"><div class="fg"><label>E-mail envío factura 1</label><input id="f-email1" type="email"></div><div class="fg"><label>E-mail envío factura 2</label><input id="f-email2" type="email" placeholder="Opcional"></div></div>`
+  +`<div class="fr"><div class="fg" style="flex-direction:row;align-items:center;gap:8px;padding-top:4px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px"><input type="checkbox" id="f-oc" style="width:auto;padding:0"> Requiere Orden de Compra</label></div><div class="fg"><label>Nro. OC</label><input id="f-ocNum"></div></div>`
+  +`<div class="fg" style="margin-bottom:8px"><label>Observaciones facturación</label><textarea id="f-obsFac" rows="2"></textarea></div>`
+  +sT('Condiciones de cobranza','cash')
+  +`<div class="fr"><div class="fg"><label>Condición de pago</label><input id="f-cobCond" placeholder="Ej: 50% anticipo + 50% saldo"></div><div class="fg"><label>Forma de pago</label><select id="f-cobForma"><option value="cheque">Cheque</option><option value="transferencia">Transferencia</option><option value="echeq">E-cheq diferido</option><option value="contado">Contado</option><option value="otro">Otro</option></select></div></div>`
+  +`<div class="fg" style="margin-bottom:8px"><label>Detalle</label><textarea id="f-cobDet" rows="2"></textarea></div>`
+  +`<div class="fr"><div class="fg"><label>Días y horarios de cobro</label><input id="f-cobDias" placeholder="MA y JU de 10 a 12 hs"></div></div>`
+  +`<div class="fr"><div class="fg"><label>Contacto cobranza</label><input id="f-cobCont"></div><div class="fg"><label>Teléfono cobranza</label><input id="f-cobTel"></div><div class="fg"><label>E-mail cobranza</label><input id="f-cobEmail" type="email"></div></div>`
+  +`<div class="fg" style="margin-bottom:8px"><label>Observaciones cobranza</label><textarea id="f-obsCob" rows="2"></textarea></div>`
+  +sT('Datos de entrega (1)','truck-delivery')
+  +`<div class="fr"><div class="fg"><label>Dirección</label><input id="f-e1dir"></div><div class="fg"><label>Cantidad</label><input id="f-e1cant"></div></div>`
+  +`<div class="fr"><div class="fg"><label>Horario</label><input id="f-e1hor" placeholder="8:00 a 12 hs"></div><div class="fg" style="justify-content:flex-end;padding-top:18px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px"><input type="checkbox" id="f-e1t" style="width:auto;padding:0"> Pedir turno</label></div></div>`
+  +`<div class="fr"><div class="fg"><label>Recibe</label><input id="f-e1rec"></div><div class="fg"><label>Teléfono</label><input id="f-e1tel"></div><div class="fg"><label>E-mail</label><input id="f-e1email" type="email"></div></div>`
+  +`<div class="fr"><div class="fg" style="flex-direction:row;align-items:center;gap:8px;padding-top:4px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px"><input type="checkbox" id="f-e1m" style="width:auto;padding:0"> Muestras</label></div><div class="fg"><label>Cant.</label><input id="f-e1mc" type="number" placeholder="0"></div></div>`
+  +`<div class="fg" style="margin-bottom:8px"><label>Obs. entrega 1</label><textarea id="f-e1obs" rows="2"></textarea></div>`
+  +sT('Datos de entrega (2) — opcional','truck-delivery')
+  +`<div class="fr"><div class="fg"><label>Dirección</label><input id="f-e2dir" placeholder="Dejar vacío si no aplica"></div><div class="fg"><label>Cantidad</label><input id="f-e2cant"></div></div>`
+  +`<div class="fr"><div class="fg"><label>Horario</label><input id="f-e2hor"></div><div class="fg" style="justify-content:flex-end;padding-top:18px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px"><input type="checkbox" id="f-e2t" style="width:auto;padding:0"> Pedir turno</label></div></div>`
+  +`<div class="fr"><div class="fg"><label>Recibe</label><input id="f-e2rec"></div><div class="fg"><label>Teléfono</label><input id="f-e2tel"></div><div class="fg"><label>E-mail</label><input id="f-e2email" type="email"></div></div>`
+  +`<div class="fr"><div class="fg" style="flex-direction:row;align-items:center;gap:8px;padding-top:4px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px"><input type="checkbox" id="f-e2m" style="width:auto;padding:0"> Muestras</label></div><div class="fg"><label>Cant.</label><input id="f-e2mc" type="number" placeholder="0"></div></div>`
+  +`<div class="fg" style="margin-bottom:8px"><label>Obs. entrega 2</label><textarea id="f-e2obs" rows="2"></textarea></div>`
+  +`<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px"><button onclick="fichaTab='lista';render()">Cancelar</button><button onclick="savFicha('borrador')"><i class="ti ti-device-floppy"></i>Borrador</button><button class="bp" onclick="savFicha('activa')"><i class="ti ti-check"></i>Guardar ficha</button></div>`;
+}
+function calcFicha(){
+  const agf=parseFloat(Q('f-agf')?.value)||0,garb=parseFloat(Q('f-garb')?.value)||0,otras=parseFloat(Q('f-otras')?.value)||0,vend=parseFloat(Q('f-comVend')?.value)||0;
+  const ivaPct=parseFloat(Q('f-iva')?.value)||0.21,sub=agf+garb+otras+vend,iva=sub*ivaPct;
+  if(Q('f-sub-d'))Q('f-sub-d').textContent=$m(sub);
+  if(Q('f-iva-d'))Q('f-iva-d').textContent=$m(iva);
+  if(Q('f-tot-d'))Q('f-tot-d').textContent=$m(sub+iva);
+}
+function savFicha(estado){
+  const agf=parseFloat(Q('f-agf')?.value)||0,garb=parseFloat(Q('f-garb')?.value)||0,otras=parseFloat(Q('f-otras')?.value)||0,vend=parseFloat(Q('f-comVend')?.value)||0,total=agf+garb+otras+vend;
+  const id=nid('ficha'),num='F-'+String(id).padStart(4,'0');
+  S.fichas.push({id,num,estado,fecha:Q('f-fecha')?.value||'',nPedido:Q('f-np')?.value||'',otId:parseInt(Q('f-otid')?.value)||null,descripcion:Q('f-desc')?.value||'',entregaSolicitada:Q('f-ent')?.value||'',entregaAprox:Q('f-aprox')?.checked||false,observacionesTrabajo:Q('f-obsTrab')?.value||'',agf,garbarinoComision:garb,otrasComisiones:otras,vendedor:Q('f-vend')?.value||'',comisionVendedor:vend,total,iva:parseFloat(Q('f-iva')?.value)||0.21,facRazonSocial:Q('f-razSoc')?.value||'',facCuit:Q('f-cuit')?.value||'',facCondIva:Q('f-condIva')?.value||'RI',facDomicilio:Q('f-domFac')?.value||'',facContacto:Q('f-facCont')?.value||'',facTelefono:Q('f-facTel')?.value||'',facEmail1:Q('f-email1')?.value||'',facEmail2:Q('f-email2')?.value||'',ordenCompra:Q('f-oc')?.checked||false,nOrdenCompra:Q('f-ocNum')?.value||'',observacionesFac:Q('f-obsFac')?.value||'',cobCondPago:Q('f-cobCond')?.value||'',cobFormaPago:Q('f-cobForma')?.value||'',cobDetalle:Q('f-cobDet')?.value||'',cobDiasHorarios:Q('f-cobDias')?.value||'',cobContacto:Q('f-cobCont')?.value||'',cobTelefono:Q('f-cobTel')?.value||'',cobEmail:Q('f-cobEmail')?.value||'',observacionesCob:Q('f-obsCob')?.value||'',ent1Dir:Q('f-e1dir')?.value||'',ent1Cantidad:Q('f-e1cant')?.value||'',ent1Horario:Q('f-e1hor')?.value||'',ent1PedirTurno:Q('f-e1t')?.checked||false,ent1Recibe:Q('f-e1rec')?.value||'',ent1Tel:Q('f-e1tel')?.value||'',ent1Email:Q('f-e1email')?.value||'',ent1Muestras:Q('f-e1m')?.checked||false,ent1CantMuestras:parseInt(Q('f-e1mc')?.value)||0,ent1Obs:Q('f-e1obs')?.value||'',ent2Dir:Q('f-e2dir')?.value||'',ent2Cantidad:Q('f-e2cant')?.value||'',ent2Horario:Q('f-e2hor')?.value||'',ent2PedirTurno:Q('f-e2t')?.checked||false,ent2Recibe:Q('f-e2rec')?.value||'',ent2Tel:Q('f-e2tel')?.value||'',ent2Email:Q('f-e2email')?.value||'',ent2Muestras:Q('f-e2m')?.checked||false,ent2CantMuestras:parseInt(Q('f-e2mc')?.value)||0,ent2Obs:Q('f-e2obs')?.value||''});
+  sk('fichas');fichaTab='ver';fichaVerID=id;render();
+}
+function delFicha(id){if(!confirm('¿Eliminar esta ficha?'))return;S.fichas=S.fichas.filter(x=>x.id!==id);sk('fichas');fichaTab='lista';render();}
+function mEditFicha(id){
+  const f=S.fichas.find(x=>x.id===id);if(!f)return'';
+  return `<div class="mt2"><i class="ti ti-edit" style="margin-right:6px"></i>Editar ficha ${f.num}</div>
+<div class="fr"><div class="fg"><label>Estado</label><select id="ef-est"><option value="borrador"${f.estado==='borrador'?' selected':''}>Borrador</option><option value="activa"${f.estado==='activa'?' selected':''}>Activa</option><option value="entregada"${f.estado==='entregada'?' selected':''}>Entregada</option><option value="cancelada"${f.estado==='cancelada'?' selected':''}>Cancelada</option></select></div></div>
+<div class="fg" style="margin-bottom:8px"><label>Descripción del trabajo</label><textarea id="ef-desc" rows="3">${f.descripcion}</textarea></div>
+<div class="fr"><div class="fg"><label>Entrega solicitada</label><input id="ef-ent" type="date" value="${f.entregaSolicitada}"></div><div class="fg"><label>Razón social</label><input id="ef-razSoc" value="${f.facRazonSocial}"></div></div>
+<div class="fr"><div class="fg"><label>E-mail factura 1</label><input id="ef-email1" type="email" value="${f.facEmail1}"></div><div class="fg"><label>E-mail factura 2</label><input id="ef-email2" type="email" value="${f.facEmail2||''}"></div></div>
+<div class="fr"><div class="fg"><label>Condición de pago</label><input id="ef-cobCond" value="${f.cobCondPago}"></div><div class="fg"><label>Contacto cobranza</label><input id="ef-cobCont" value="${f.cobContacto}"></div></div>
+<div class="fr"><div class="fg"><label>Precio neto (AGF)</label><input id="ef-agf" type="number" value="${f.agf}"></div><div class="fg"><label>Comisión Garbarino</label><input id="ef-garb" type="number" value="${f.garbarinoComision}"></div><div class="fg"><label>Comisión vendedor</label><input id="ef-vend" type="number" value="${f.comisionVendedor}"></div></div>
+<div class="fg" style="margin-bottom:8px"><label>Observaciones cobranza</label><textarea id="ef-obsCob" rows="2">${f.observacionesCob}</textarea></div>
+<div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="updateFicha(${f.id})"><i class="ti ti-check"></i>Guardar cambios</button></div>`;
+}
+function updateFicha(id){
+  const idx=S.fichas.findIndex(x=>x.id===id);if(idx<0)return;
+  const agf=parseFloat(Q('ef-agf')?.value)||0,garb=parseFloat(Q('ef-garb')?.value)||0,vend=parseFloat(Q('ef-vend')?.value)||0;
+  Object.assign(S.fichas[idx],{estado:Q('ef-est')?.value,descripcion:Q('ef-desc')?.value,entregaSolicitada:Q('ef-ent')?.value,facRazonSocial:Q('ef-razSoc')?.value,facEmail1:Q('ef-email1')?.value,facEmail2:Q('ef-email2')?.value,cobCondPago:Q('ef-cobCond')?.value,cobContacto:Q('ef-cobCont')?.value,observacionesCob:Q('ef-obsCob')?.value,agf,garbarinoComision:garb,comisionVendedor:vend,total:agf+garb+vend});
+  sk('fichas');cm();render();
+}
+
+// ---- ACTIONS ----
+function savCli(){
+  const n=Q('cn')?.value.trim();if(!n){alert('Ingresá el nombre');return;}
+  const id=S.clientes.length?Math.max(...S.clientes.map(c=>c.id))+1:1;
+  const nuevoNombre=n;
+  S.clientes.push({id,nombre:nuevoNombre,cuit:Q('cc').value,iva:Q('ci').value,email:Q('ce').value,tel:Q('ctel').value,dom:Q('cdom').value,loc:Q('cloc').value,saldo:0});
+  sk('clientes');
+  cm();
+  // Si fue llamado desde un autocomplete de cotizacion/OT, volver a seleccionarlo
+  const ctx=window._cliRetCtx;
+  if(ctx){
+    window._cliRetCtx=null;
+    // Necesitamos que el modal de cotizacion siga abierto — re-abrir NC2 si corresponde
+    // Solo actualizamos la tabla de clientes en background
+    setTimeout(()=>{
+      const inp=Q(ctx.iid),hid=Q(ctx.hid);
+      if(inp){inp.value=nuevoNombre;}
+      if(hid){hid.value=id;}
+    },50);
+  } else {
+    if(curPg==='cli') updateCliTable();
+  }
+}
+function savProv(){const n=Q('pn')?.value.trim();if(!n){alert('Ingresá el nombre');return;}const id=S.proveedores.length?Math.max(...S.proveedores.map(p=>p.id))+1:1;S.proveedores.push({id,nombre:n,iva:Q('pi').value,cuit:Q('pc').value,email:Q('pe').value,tel:Q('pt').value,dom:Q('pd').value,loc:Q('pl').value});sk('proveedores');cm();updateProvTable();}
+function addItem(){
+  const d=document.createElement('div');d.className='cit';
+  d.style.cssText='display:grid;grid-template-columns:2fr 1fr 1fr 1fr 16px;gap:4px;margin-bottom:4px;align-items:center';
+  d.innerHTML=`<input placeholder="Descripción" class="id2"><input placeholder="Cant." type="number" min="1" class="iq" oninput="calcI(this)"><input placeholder="Total $" type="number" class="is" oninput="calcI(this)"><input placeholder="Unit." class="ip" readonly style="background:#f5f5f3;color:#888"><span style="cursor:pointer;color:#aaa;font-size:14px" onclick="this.parentElement.remove();calcT()">×</span>`;
+  Q('ci2').appendChild(d);
+}
+// Total ÷ Cantidad = Unitario (usuario ingresa Descripción, Cant., Total)
+function calcI(el){
+  const r=el.closest('.cit');
+  const q=parseFloat(r.querySelector('.iq').value)||0;
+  const tot=parseFloat(r.querySelector('.is').value)||0;
+  const unit=q>0?(tot/q):0;
+  r.querySelector('.ip').value=unit>0?unit.toFixed(2):'';
+  calcT();
+}
+function calcT(){const s=[...document.querySelectorAll('.cit')].reduce((a,i)=>a+(parseFloat(i.querySelector('.is').value)||0),0),v=s*.21;if(Q('csd'))Q('csd').textContent=$m(s);if(Q('cid2'))Q('cid2').textContent=$m(v);if(Q('ctd'))Q('ctd').textContent=$m(s+v);if(Q('cot-venta-d'))Q('cot-venta-d').textContent=$m(s+v);updMargen();}
+function savCot(st){
+  const cid=gCid('cot-id');if(!cid){alert('Seleccioná un cliente');return;}
+  const items=[...document.querySelectorAll('.cit')].map(i=>({desc:i.querySelector('.id2').value,qty:parseFloat(i.querySelector('.iq').value)||0,precio:parseFloat(i.querySelector('.ip').value)||0,subtotal:parseFloat(i.querySelector('.is').value)||0})).filter(i=>i.desc);
+  const sub=items.reduce((a,i)=>a+i.subtotal,0),iva=sub*.21;
+  let costoTotal=0;
+  if(cotCostosData){Object.values(cotCostosData.fijos).forEach(f=>costoTotal+=parseFloat(f.monto)||0);(cotCostosData.procesos||[]).forEach(p=>costoTotal+=parseFloat(p.monto)||0);}
+  const id=nid('cot'),num=`C-${String(id).padStart(4,'0')}`;
+  S.cotizaciones.push({id,num,clienteId:cid,fecha:Q('cf').value,validez:Q('cv').value,items,subtotal:sub,iva,total:sub+iva,estado:st,notas:Q('cno2').value,costoTotal,costos:cotCostosData?JSON.parse(JSON.stringify(cotCostosData)):null});
+  sk('cotizaciones');cm();render();
+}
+function chCot(id,st){const i=S.cotizaciones.findIndex(c=>c.id===id);if(i>=0){S.cotizaciones[i].estado=st;sk('cotizaciones');render();}}
+function genOT(cotId){const c=S.cotizaciones.find(x=>x.id===cotId);if(!c)return;const id=nid('ot'),num=`OT-${String(id).padStart(4,'0')}`;S.ordenes.push({id,num,cotId,clienteId:c.clienteId,fecha:new Date().toISOString().slice(0,10),entrega:'',descripcion:c.items[0]?.desc||'Trabajo',estado:'pendiente',asignaciones:{},notas:'',pasos:[{nombre:'Preprensa',estado:'pending',fecha:'',nota:''},{nombre:'Papel / Insumos',estado:'pending',fecha:'',nota:''},{nombre:'Impresión',estado:'pending',fecha:'',nota:''},{nombre:'Proceso interno',estado:'pending',fecha:'',nota:''},{nombre:'Proceso externo',estado:'pending',fecha:'',nota:''},{nombre:'Control calidad',estado:'pending',fecha:'',nota:''},{nombre:'Entrega',estado:'pending',fecha:'',nota:''}]});sk('ordenes');render();}
+function savOT(){
+  const cid=gCid('ot-id');if(!cid){alert('Seleccioná un cliente');return;}
+  const numManual=Q('ot-num')?.value.trim();
+  const id=nid('ot'),num=numManual?numManual:`OT-${String(id).padStart(4,'0')}`;
+  // material
+  const material={
+    prov:Q('m-prov')?.value||'',papelera:Q('m-papelera')?.value||'',material:Q('m-material')?.value||'',
+    fx:Q('m-fx')?.value||'',fy:Q('m-fy')?.value||'',grs:Q('m-grs')?.value||'',hojas:Q('m-hojas')?.value||'',
+    kg:Q('m-kg')?.value||'',cax:Q('m-cax')?.value||'',cay:Q('m-cay')?.value||'',poses:Q('m-poses')?.value||'',
+    pliegos:Q('m-pliegos')?.value||'',aclaracion:Q('m-acla')?.value||''
+  };
+  // impresion
+  const impresion={
+    maquina:Q('i-maq')?.value||'',maquinista:Q('i-maqista')?.value||'',colores:Q('i-colores')?.value||'',
+    chapas:Q('i-chapas')?.value||'',frente:Q('i-frente')?.value||'',dorso:Q('i-dorso')?.value||'',
+    piezas:Q('i-piezas')?.value||'',posturas:Q('i-posturas')?.value||'',pliegosCortados:Q('i-pcort')?.value||'',
+    pliegosBuenos:Q('i-pbuenos')?.value||'',pliegosDemasia:Q('i-pdem')?.value||'',desperdicio:Q('i-desp')?.value||'',
+    obs:Q('i-obs')?.value||''
+  };
+  // terminacion fijos
+  const terminacion=[];
+  PROC_TERM_FIJOS.forEach(p=>{
+    const si=Q(`pt-${p.k}-si`)?.value;
+    if(si==='SI'){
+      terminacion.push({nombre:p.l,detalle:Q(`pt-${p.k}-det`)?.value||'',provId:Q(`pt-${p.k}-prov`)?.value||''});
+    }
+  });
+  document.querySelectorAll('#proc-term-extra .costo-row').forEach(row=>{
+    const si=row.querySelector('.pte-si')?.value;
+    if(si==='SI'){
+      terminacion.push({nombre:row.dataset.nombre,detalle:row.querySelector('.pte-det')?.value||'',provId:row.querySelector('.pte-prov')?.value||''});
+    }
+  });
+  const empaque={paq:Q('emp-paq')?.value||'',caja:Q('emp-caja')?.value||'',obs:Q('emp-obs')?.value||''};
+
+  S.ordenes.push({
+    id,num,cotId:null,clienteId:cid,
+    vendedor:Q('ot-vend')?.value||'',controladaPor:Q('ot-ctrl')?.value||'',
+    fecha:Q('ot-ing')?.value||new Date().toISOString().slice(0,10),
+    entrega:Q('ote').value,descripcion:Q('otd').value,
+    ordenProcesos:Q('t-orden')?.value||'',
+    material,impresion,terminacion,empaque,
+    estado:'pendiente',asignaciones:{},notas:'',
+    pasos:[{nombre:'Preprensa',estado:'pending',fecha:'',nota:''},{nombre:'Papel / Insumos',estado:'pending',fecha:'',nota:''},{nombre:'Impresión',estado:'pending',fecha:'',nota:''},{nombre:'Terminación',estado:'pending',fecha:'',nota:''},{nombre:'Control calidad',estado:'pending',fecha:'',nota:''},{nombre:'Entrega',estado:'pending',fecha:'',nota:''}]
+  });
+  sk('ordenes');cm();render();
+}
+
+// ---- EDITAR OT EXISTENTE ----
+function mEditOT(id){
+  const o=S.ordenes.find(x=>x.id===id);if(!o)return'';
+  const m=o.material||{},im=o.impresion||{},emp=o.empaque||{};
+  const term={};(o.terminacion||[]).forEach(t=>{const f=PROC_TERM_FIJOS.find(p=>p.l===t.nombre);if(f)term[f.k]=t;});
+  let h=`<div class="mt2">Editar OT ${o.num}</div>`
+  +sec2('Datos generales','clipboard-text')
+  +`<div class="fr"><div class="fg"><label>Nro. de OT</label><input id="ot-num" value="${o.num}"></div><div class="fg"><label>Vendedor</label><input id="ot-vend" value="${o.vendedor||''}"></div><div class="fg"><label>OT controlada por</label><input id="ot-ctrl" value="${o.controladaPor||''}"></div></div>
+<div class="fr"><div class="fg"><label>Fecha de ingreso</label><input id="ot-ing" type="date" value="${o.fecha||''}"></div><div class="fg"><label>Fecha de entrega</label><input id="ote" type="date" value="${o.entrega||''}"></div></div>
+<div class="fg" style="margin-bottom:9px"><label>Descripción del trabajo</label><textarea id="otd" rows="3">${o.descripcion||''}</textarea></div>`
+  +sec2('Detalle de material a cortar','cut')
+  +`<div class="fr"><div class="fg"><label>Proveedor / Llega de</label><select id="m-prov">${provOpts().replace(`value="${m.prov}"`,`value="${m.prov}" selected`)}</select></div><div class="fg"><label>Papelera</label><input id="m-papelera" value="${m.papelera||''}"></div><div class="fg"><label>Material</label><input id="m-material" value="${m.material||''}"></div></div>
+<div class="fr"><div class="fg"><label>Formato (cm)</label><div style="display:flex;gap:4px;align-items:center"><input id="m-fx" type="number" value="${m.fx||''}"><span>x</span><input id="m-fy" type="number" value="${m.fy||''}"></div></div><div class="fg"><label>Gramaje (grs)</label><input id="m-grs" type="number" value="${m.grs||''}"></div><div class="fg"><label>Hojas</label><input id="m-hojas" type="number" value="${m.hojas||''}"></div></div>
+<div class="fr"><div class="fg"><label>Kg</label><input id="m-kg" type="number" value="${m.kg||''}"></div><div class="fg"><label>Cortar a (cm)</label><div style="display:flex;gap:4px;align-items:center"><input id="m-cax" type="number" value="${m.cax||''}"><span>x</span><input id="m-cay" type="number" value="${m.cay||''}"></div></div><div class="fg"><label>Poses</label><input id="m-poses" type="number" value="${m.poses||''}"></div></div>
+<div class="fr"><div class="fg"><label>Total de pliegos</label><input id="m-pliegos" type="number" value="${m.pliegos||''}"></div></div>
+<div class="fg" style="margin-bottom:8px"><label>Aclaración previa a la impresión</label><textarea id="m-acla" rows="2">${m.aclaracion||''}</textarea></div>`
+  +sec2('Detalle de impresión','printer')
+  +`<div class="fr"><div class="fg"><label>Máquina</label><select id="i-maq"><option value="">— Seleccionar —</option>${S.maquinas.map(mq=>`<option value="${mq}"${mq===im.maquina?' selected':''}>${mq}</option>`).join('')}</select></div><div class="fg"><label>Maquinista</label><input id="i-maqista" value="${im.maquinista||''}"></div><div class="fg"><label>Colores</label><input id="i-colores" value="${im.colores||''}"></div></div>
+<div class="fr"><div class="fg"><label>Cant. chapas</label><input id="i-chapas" type="number" value="${im.chapas||''}"></div><div class="fg"><label>Impresión Frente</label><input id="i-frente" value="${im.frente||''}"></div><div class="fg"><label>Impresión Dorso</label><input id="i-dorso" value="${im.dorso||''}"></div></div>
+<div class="fr"><div class="fg"><label>Cantidad de piezas</label><input id="i-piezas" type="number" value="${im.piezas||''}"></div><div class="fg"><label>Cant. de posturas</label><input id="i-posturas" type="number" value="${im.posturas||''}"></div><div class="fg"><label>Pliegos cortados</label><input id="i-pcort" type="number" value="${im.pliegosCortados||''}"></div></div>
+<div class="fr"><div class="fg"><label>Pliegos buenos</label><input id="i-pbuenos" type="number" value="${im.pliegosBuenos||''}"></div><div class="fg"><label>Pliegos demasía</label><input id="i-pdem" type="number" value="${im.pliegosDemasia||''}"></div><div class="fg"><label>Desperdicio</label><input id="i-desp" type="number" value="${im.desperdicio||''}"></div></div>
+<div class="fg" style="margin-bottom:8px"><label>Observación de impresión</label><input id="i-obs" value="${im.obs||''}"></div>`
+  +sec2('Detalle de procesos de terminación','stack-2')
+  +`<div class="fg" style="margin-bottom:8px"><label>Orden de procesos / instrucciones</label><textarea id="t-orden" rows="2">${o.ordenProcesos||''}</textarea></div>
+<div id="proc-term-container">${procTermHTMLEdit(term)}</div>
+<div style="display:flex;gap:6px;align-items:center;margin:8px 0"><input id="nuevo-proc-term-inp" placeholder="Agregar otro proceso..." style="font-size:12px;flex:1;padding:5px 9px"><button onclick="addProcTermExtra()" style="font-size:11px;white-space:nowrap"><i class="ti ti-plus"></i>Agregar</button></div>
+<div id="proc-term-extra">${(o.terminacion||[]).filter(t=>!PROC_TERM_FIJOS.find(p=>p.l===t.nombre)).map(t=>`<div class="costo-row" style="grid-template-columns:1.3fr 70px 1.3fr 1fr 24px;background:#f5f5f3;padding:4px 6px;margin-top:2px;border-radius:6px" data-nombre="${t.nombre}"><div style="font-size:12px;font-weight:500;color:#444">${t.nombre}</div><select class="pte-si" style="font-size:11px;padding:4px"><option value="">--</option><option value="SI" selected>SÍ</option></select><input class="pte-det" value="${t.detalle||''}" style="font-size:11px;padding:4px 6px"><select class="pte-prov" style="font-size:11px;padding:4px">${provOpts().replace(`value="${t.provId}"`,`value="${t.provId}" selected`)}</select><button onclick="this.parentElement.remove()" style="padding:2px 6px;color:#a32d2d;border-color:#a32d2d"><i class="ti ti-x"></i></button></div>`).join('')}</div>`
+  +sec2('Empaque','package')
+  +`<div class="fr"><div class="fg"><label>Paquetes de</label><input id="emp-paq" type="number" value="${emp.paq||''}"></div><div class="fg"><label>Cajas de</label><input id="emp-caja" type="number" value="${emp.caja||''}"></div></div>
+<div class="fg" style="margin-bottom:8px"><label>Observaciones de empaque</label><input id="emp-obs" value="${emp.obs||''}"></div>`
+  +`<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px"><button onclick="cm()">Cancelar</button><button class="bp" onclick="updateOT(${id})"><i class="ti ti-check"></i>Guardar cambios</button></div>`;
+  return h;
+}
+function procTermHTMLEdit(term){
+  let h=`<div style="background:#f5f5f3;border-radius:8px;padding:8px 10px">`;
+  h+=`<div style="font-size:11px;display:grid;grid-template-columns:1.3fr 70px 1.3fr 1fr;gap:6px;font-weight:600;color:#666;margin-bottom:5px;padding:0 2px"><span>Proceso</span><span>¿Sí?</span><span>Detalle</span><span>Proveedor</span></div>`;
+  PROC_TERM_FIJOS.forEach(p=>{
+    const t=term[p.k];
+    h+=`<div class="costo-row" style="grid-template-columns:1.3fr 70px 1.3fr 1fr 0px"><div style="font-size:12px;font-weight:500;color:#444">${p.l}</div><select id="pt-${p.k}-si" style="font-size:11px;padding:4px"><option value="">--</option><option value="SI"${t?' selected':''}>SÍ</option></select><input id="pt-${p.k}-det" value="${t?t.detalle||'':''}" style="font-size:11px;padding:4px 6px"><select id="pt-${p.k}-prov" style="font-size:11px;padding:4px">${provOpts().replace(`value="${t?t.provId:''}"`,`value="${t?t.provId:''}" selected`)}</select><span></span></div>`;
+  });
+  h+=`</div>`;
+  return h;
+}
+function updateOT(id){
+  const idx=S.ordenes.findIndex(x=>x.id===id);if(idx<0)return;
+  const o=S.ordenes[idx];
+  const material={prov:Q('m-prov')?.value||'',papelera:Q('m-papelera')?.value||'',material:Q('m-material')?.value||'',fx:Q('m-fx')?.value||'',fy:Q('m-fy')?.value||'',grs:Q('m-grs')?.value||'',hojas:Q('m-hojas')?.value||'',kg:Q('m-kg')?.value||'',cax:Q('m-cax')?.value||'',cay:Q('m-cay')?.value||'',poses:Q('m-poses')?.value||'',pliegos:Q('m-pliegos')?.value||'',aclaracion:Q('m-acla')?.value||''};
+  const impresion={maquina:Q('i-maq')?.value||'',maquinista:Q('i-maqista')?.value||'',colores:Q('i-colores')?.value||'',chapas:Q('i-chapas')?.value||'',frente:Q('i-frente')?.value||'',dorso:Q('i-dorso')?.value||'',piezas:Q('i-piezas')?.value||'',posturas:Q('i-posturas')?.value||'',pliegosCortados:Q('i-pcort')?.value||'',pliegosBuenos:Q('i-pbuenos')?.value||'',pliegosDemasia:Q('i-pdem')?.value||'',desperdicio:Q('i-desp')?.value||'',obs:Q('i-obs')?.value||''};
+  const terminacion=[];
+  PROC_TERM_FIJOS.forEach(p=>{const si=Q(`pt-${p.k}-si`)?.value;if(si==='SI')terminacion.push({nombre:p.l,detalle:Q(`pt-${p.k}-det`)?.value||'',provId:Q(`pt-${p.k}-prov`)?.value||''});});
+  document.querySelectorAll('#proc-term-extra .costo-row').forEach(row=>{const si=row.querySelector('.pte-si')?.value;if(si==='SI')terminacion.push({nombre:row.dataset.nombre,detalle:row.querySelector('.pte-det')?.value||'',provId:row.querySelector('.pte-prov')?.value||''});});
+  const empaque={paq:Q('emp-paq')?.value||'',caja:Q('emp-caja')?.value||'',obs:Q('emp-obs')?.value||''};
+  Object.assign(o,{
+    num:Q('ot-num')?.value||o.num,vendedor:Q('ot-vend')?.value||'',controladaPor:Q('ot-ctrl')?.value||'',
+    fecha:Q('ot-ing')?.value||o.fecha,entrega:Q('ote')?.value||'',descripcion:Q('otd')?.value||'',
+    ordenProcesos:Q('t-orden')?.value||'',material,impresion,terminacion,empaque
+  });
+  sk('ordenes');cm();om('vot',id);
+}
+function avP(otId,nom){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos.find(x=>x.nombre===nom);if(!p)return;const h=new Date().toISOString().slice(0,10);if(p.estado==='pending')p.estado='active';else if(p.estado==='active'){p.estado='done';p.fecha=h;}const dn=o.pasos.filter(x=>x.estado==='done').length;if(dn===o.pasos.length)o.estado='lista';else if(o.pasos.some(x=>x.estado==='active'))o.estado='en_produccion';sk('ordenes');render();}
+function avPN(otId,idx){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos[idx];const n=Q('np'+idx);if(n&&n.value)p.nota=n.value;const h=new Date().toISOString().slice(0,10);if(p.estado==='pending')p.estado='active';else if(p.estado==='active'){p.estado='done';p.fecha=h;}const dn=o.pasos.filter(x=>x.estado==='done').length;if(dn===o.pasos.length)o.estado='lista';else if(o.pasos.some(x=>x.estado==='active'))o.estado='en_produccion';sk('ordenes');cm();om('vot',otId);}
+function savRem(){const cid=gCid('rem-id');if(!cid){alert('Seleccioná un cliente');return;}const otId=parseInt(Q('remo').value)||null;const ot=otId?S.ordenes.find(o=>o.id===otId):null;const id=nid('rem'),num=`R-${String(id).padStart(4,'0')}`;S.remitos.push({id,num,clienteId:cid,otNum:ot?.num||'',fecha:Q('rf').value,dir:Q('rd').value,det:Q('rdet').value,estado:'emitido'});sk('remitos');cm();render();}
+function mkRem(id,st){const i=S.remitos.findIndex(r=>r.id===id);if(i>=0){S.remitos[i].estado=st;sk('remitos');cm();render();}}
+function savGas(){const c=Q('gc')?.value.trim();if(!c){alert('Ingresá el concepto');return;}const id=S.gastos.length?Math.max(...S.gastos.map(g=>g.id))+1:1;S.gastos.push({id,concepto:c,tipo:Q('gti').value,monto:parseFloat(Q('gm').value)||0,mes:Q('gme').value});sk('gastos');cm();render();}
+function delGas(id){if(!confirm('¿Eliminar?'))return;S.gastos=S.gastos.filter(g=>g.id!==id);sk('gastos');render();}
+
+init();
+</script>
+</body>
+</html>
