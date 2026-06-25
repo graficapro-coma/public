@@ -1622,6 +1622,7 @@ function chCot(id,st){
     const yaOT=S.ordenes.find(o=>o.cotId==id);
     if(!yaOT) genOT(id);
   }
+  cm();
   render();
 }
 function chCotIdx(idx,st){
@@ -1881,9 +1882,9 @@ function omCot(id){
   }
   h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#e6f1fb;border-radius:8px;margin-bottom:10px"><span>Venta: <strong>${$m(c.total)}</strong></span><span>Costo: <strong>${$m(ct)}</strong></span><span style="font-size:16px;font-weight:700;color:${mg>=20?'#3b6d11':mg>=10?'#ba7517':'#a32d2d'}">Margen: ${mg}%</span></div>`;
   if(ot)h+=`<div class="alert as"><i class="ti ti-clipboard-check"></i>OT: <strong>${ot.num}</strong> ${stBadge(ot.estado)}</div>`;
-  h+=`<div class="mf"><button onclick="cm()">Cerrar</button><button onclick="generarPDFCotizacion(${idx},true)"><i class="ti ti-printer"></i>PDF</button>`;
-  if(c.estado==='borrador'||c.estado==='enviada')h+=`<button class="bs" onclick="chCotIdx(${idx},'aprobada');cm()"><i class="ti ti-check"></i>Aprobar</button>`;
-  if(c.estado==='aprobada'&&!ot)h+=`<button class="bp" onclick="genOT(${idx},true);cm()"><i class="ti ti-clipboard-plus"></i>Generar OT</button>`;
+  h+=`<div class="mf"><button onclick="cm()">Cerrar</button><button onclick="generarPDFCotizacion(${c.id})"><i class="ti ti-printer"></i>PDF</button>`;
+  if(c.estado==='borrador'||c.estado==='enviada')h+=`<button class="bs" onclick="chCot(${c.id},'aprobada')"><i class="ti ti-check"></i>Aprobar</button>`;
+  if(c.estado==='aprobada'&&!ot)h+=`<button class="bp" onclick="genOT(${c.id});cm()"><i class="ti ti-clipboard-plus"></i>Generar OT</button>`;
   h+=`</div>`;
   const ov=document.createElement('div');ov.className='ov';ov.id='ov';
   const inner=document.createElement('div');inner.className='mod';inner.innerHTML=h;
