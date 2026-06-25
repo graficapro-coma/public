@@ -228,7 +228,8 @@ async function init(){
   if(!S.externos||!S.externos.length)S.externos=['Marcelo (Troquelado)','Víctor (Troquelado)','Oscar (Troquelado)','Laminador externo'];
   if(!S.fletes||!S.fletes.length)S.fletes=['Master / Javier','Fiorino / Edu'];
   if(!S.procesos||!S.procesos.length)S.procesos=['Troquelado','Hot Stamping','Laminado','Laca UV','Laca UV sectorizada','Barniz','Plastificado mate','Plastificado brillo'];
-  if(S.clientes.length===0)seed();
+  // Solo usar seed si clientes vacío Y sin datos reales de Firebase
+  if(!S.clientes||S.clientes.length===0)seed();
   nav('dash');
 }
 async function sk(k){await sv(k,S[k]);}
@@ -296,7 +297,7 @@ function seed(){
     ent2Tel:'',ent2Email:'',ent2Muestras:false,ent2CantMuestras:0,ent2Obs:'',estado:'activa'
   }];
   S.ids={cot:1,ot:3,rem:1,fac:1,cob:1,ficha:2};
-  Object.keys(S).forEach(k=>sk(k));
+  // NOTA: seed() NO guarda en Firebase - solo inicializa memoria como fallback
 }
 
 // ---- HELPERS ----
