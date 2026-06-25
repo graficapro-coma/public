@@ -482,7 +482,7 @@ function rCot(){
     const ct=c.costoTotal||0;const mg=c.total>0?((c.total-ct)/c.total*100).toFixed(1):0;
     const hasOT=S.ordenes.find(o=>o.cotId==c.id);
     const realIdx=S.cotizaciones.indexOf(c);
-    h+=`<tr><td><a href="#" onclick="omCot(${c.id});return false" style="font-weight:600;color:#185fa5;text-decoration:none">${c.num}</a></td><td>${cNom(c.clienteId)}</td><td>${c.fecha}</td><td>${$m(c.total)}</td><td>${$m(ct)}</td><td style="color:${mg>=20?'#3b6d11':mg>=10?'#ba7517':'#a32d2d'};font-weight:500">${mg}%</td><td>${stBadge(c.estado)}</td><td style="white-space:nowrap">${c.estado==='aprobada'&&!hasOT?`<button class="bs" onclick="genOT(${c.id})"><i class="ti ti-clipboard-plus"></i>OT</button>`:''}<button class="bd" onclick="delCotIdx(${realIdx})" title="Eliminar cotización"><i class="ti ti-trash"></i></button></td></tr>`;
+    h+=`<tr><td><a href="#" onclick="omCot(${c.id});return false" style="font-weight:600;color:#185fa5;text-decoration:none">${c.num}</a></td><td>${cNom(c.clienteId)}</td><td>${c.fecha}</td><td>${$m(c.total)}</td><td>${$m(ct)}</td><td style="color:${mg>=20?'#3b6d11':mg>=10?'#ba7517':'#a32d2d'};font-weight:500">${mg}%</td><td>${stBadge(c.estado)}</td><td style="white-space:nowrap">${c.estado==='aprobada'?(!hasOT?`<button class="bs" onclick="genOT(${c.id})"><i class="ti ti-clipboard-plus"></i>OT</button>`:`<button class="bs" style="background:#5a7fa0" onclick="omCotNuevaOT(${c.id})"><i class="ti ti-plus"></i>OT</button>`):''}<button class="bd" onclick="delCotIdx(${realIdx})" title="Eliminar cotización"><i class="ti ti-trash"></i></button></td></tr>`;
   });
   h+=`</tbody></table></div>`;return h;
 }
