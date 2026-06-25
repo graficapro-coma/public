@@ -482,7 +482,7 @@ function rCot(){
     const ct=c.costoTotal||0;const mg=c.total>0?((c.total-ct)/c.total*100).toFixed(1):0;
     const hasOT=S.ordenes.find(o=>o.cotId==c.id);
     const realIdx=S.cotizaciones.indexOf(c);
-    h+=`<tr><td><a href="#" onclick="omCot(${c.id});return false" style="font-weight:600;color:#185fa5;text-decoration:none">${c.num}</a></td><td>${cNom(c.clienteId)}</td><td>${c.fecha}</td><td>${$m(c.total)}</td><td>${$m(ct)}</td><td style="color:${mg>=20?'#3b6d11':mg>=10?'#ba7517':'#a32d2d'};font-weight:500">${mg}%</td><td>${stBadge(c.estado)}</td><td style="white-space:nowrap">${c.estado==='aprobada'&&!hasOT?`<button class="bs" onclick="genOT(${realIdx},true)"><i class="ti ti-clipboard-plus"></i>OT</button>`:''}<button class="bd" onclick="delCotIdx(${realIdx})" title="Eliminar cotización"><i class="ti ti-trash"></i></button></td></tr>`;
+    h+=`<tr><td><a href="#" onclick="omCot(${c.id});return false" style="font-weight:600;color:#185fa5;text-decoration:none">${c.num}</a></td><td>${cNom(c.clienteId)}</td><td>${c.fecha}</td><td>${$m(c.total)}</td><td>${$m(ct)}</td><td style="color:${mg>=20?'#3b6d11':mg>=10?'#ba7517':'#a32d2d'};font-weight:500">${mg}%</td><td>${stBadge(c.estado)}</td><td style="white-space:nowrap">${c.estado==='aprobada'&&!hasOT?`<button class="bs" onclick="genOT(${c.id})"><i class="ti ti-clipboard-plus"></i>OT</button>`:''}<button class="bd" onclick="delCotIdx(${realIdx})" title="Eliminar cotización"><i class="ti ti-trash"></i></button></td></tr>`;
   });
   h+=`</tbody></table></div>`;return h;
 }
@@ -1237,7 +1237,23 @@ let h=`<div class="mt2">${c.num} — ${cNom(c.clienteId)} ${stBadge(c.estado)}</
 if(c.costos){h+=`<div style="background:#f5f5f3;border-radius:7px;padding:9px;font-size:12px;margin-bottom:10px"><div style="font-weight:600;margin-bottom:6px">Costos</div>`;const labels={papel:'Papel',impresion:'Impresión',chapas:'Chapas',corte:'Corte',cajas:'Cajas',flete:'Flete'};if(c.costos.fijos){Object.entries(labels).forEach(([k,l])=>{const d=c.costos.fijos[k];if(d&&d.monto>0)h+='<div class="kv"><span class="kk">'+l+'</span><div style="text-align:right"><strong>'+$m(d.monto)+'</strong>'+(d.provId?'<div style="font-size:10px;color:#888">'+pNom(parseInt(d.provId))+'</div>':'')+'</div></div>';});}(c.costos.procesos||[]).forEach(p=>{h+='<div class="kv"><span class="kk">'+p.nombre+'</span><div style="text-align:right"><strong>'+$m(p.monto)+'</strong>'+(p.provId?'<div style="font-size:10px;color:#888">'+pNom(parseInt(p.provId))+'</div>':'')+'</div></div>';});h+=`<div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid rgba(0,0,0,.1);font-weight:600"><span>Costo total</span><span>${$m(ct)}</span></div></div>`;}
 h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#e6f1fb;border-radius:8px;margin-bottom:10px"><span>Venta: <strong>${$m(c.total)}</strong></span><span>Costo: <strong>${$m(ct)}</strong></span><span style="font-size:16px;font-weight:700;color:${mg>=20?'#3b6d11':mg>=10?'#ba7517':'#a32d2d'}">Margen: ${mg}%</span></div>`;
 if(ot)h+=`<div class="alert as"><i class="ti ti-clipboard-check"></i>OT: <strong>${ot.num}</strong> ${stBadge(ot.estado)}</div>`;
-h+=`<div class="mf"><button onclick="cm()">Cerrar</button><button onclick="generarPDFCotizacion(${c.id})"><i class="ti ti-printer"></i>PDF</button>${c.estado==='borrador'||c.estado==='enviada'?`<button class="bs" onclick="chCot(${c.id},'aprobada');cm()"><i class="ti ti-check"></i>Aprobar</button>`:''}${c.estado==='aprobada'&&!ot?`<button class="bp" onclick="genOT(${c.id});cm()"><i class="ti ti-clipboard-plus"></i>Generar OT</button>`:''}</div>`;
+// OTs vinculadas
+  const otsVinc=S.ordenes.filter(o=>o.cotId==c.id);
+  if(otsVinc.length>0){
+    h+='<div style="margin:8px 0 4px;padding:8px 12px;background:#f0f4f8;border-radius:7px">';
+    h+='<div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px">ÓRDENES DE TRABAJO</div>';
+    otsVinc.forEach(function(o){
+      const bc=o.estado==="lista"?"#3b6d11":o.estado==="en_produccion"?"#185fa5":o.estado==="entregada"?"#666":"#ba7517";
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #dde3ea">'
+        +'<span style="font-weight:700;color:#185fa5;font-size:12px">'+o.num+'</span>'
+        +'<span style="font-size:11px;color:#555;flex:1;margin:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(o.descripcion)+'</span>'
+        +'<span style="font-size:10px;font-weight:600;color:'+bc+'">'+o.estado.replace("_"," ").toUpperCase()+'</span>'
+        +'</div>';
+    });
+    h+='</div>';
+  }
+  var _bid=c.id;var _btnA=(c.estado==='borrador'||c.estado==='enviada')?'<button class="bs" onclick="chCot('+_bid+',\'aprobada\')"><i class="ti ti-check"></i> Aprobar</button>':'';var _btnOT=(c.estado==='aprobada'&&!ot)?'<button class="bp" onclick="genOT('+_bid+')"><i class="ti ti-clipboard-plus"></i> Generar OT</button>':'';
+  var _btnOTcomp=(c.estado==='aprobada'&&ot)?'<button class="bp" style="background:#5a7fa0" onclick="omCotNuevaOT('+_bid+')"><i class="ti ti-plus"></i> OT complementaria</button>':'';h+='<div class="mf"><button onclick="cm()">Cerrar</button><button onclick="generarPDFCotizacion('+_bid+')"><i class="ti ti-printer"></i> PDF</button>'+_btnA+_btnOT+_btnOTcomp+'</div>';
 return h;}
 
 // ---- Procesos de terminación fijos (igual al Excel) ----
@@ -1620,7 +1636,7 @@ function chCot(id,st){
   sk('cotizaciones');
   if(st==='aprobada'){
     const yaOT=S.ordenes.find(o=>o.cotId==id);
-    if(!yaOT) genOT(id);
+    if(!yaOT) genOT(id,false,null,true);
   }
   cm();
   render();
@@ -1635,10 +1651,14 @@ function chCotIdx(idx,st){
   }
   render();
 }
-function genOT(cotIdOrIdx,byIdx){
+function genOT(cotIdOrIdx,byIdx,descComp,noRender){
   const c=byIdx?S.cotizaciones[cotIdOrIdx]:S.cotizaciones.find(x=>x.id==cotIdOrIdx);
   if(!c)return;
-  const id=nid('ot'),num=`OT-${String(id).padStart(4,'0')}`;
+  const id=nid('ot');
+  // Sufijo letra: A si es la primera, B si ya hay una, C si hay dos, etc.
+  const otsPrevias=S.ordenes.filter(o=>o.cotId==c.id);
+  const sufijo=String.fromCharCode(65+otsPrevias.length); // 65='A'
+  const num=`OT-${String(id).padStart(4,'0')}${sufijo}`;
   // Armar asignaciones: pre-prensa siempre, máquina de impresión si viene de la cotización
   const asignaciones={};
   asignaciones['Pre-prensa']={tipo:'maq',nombre:'Pre-prensa'};
@@ -1654,17 +1674,17 @@ function genOT(cotIdOrIdx,byIdx){
     {nombre:'Entrega',estado:'pending',fecha:'',nota:''}
   ];
   S.ordenes.push({
-    id,num,cotId,clienteId:c.clienteId,
+    id,num,cotId:c.id,clienteId:c.clienteId,
     fecha:new Date().toISOString().slice(0,10),
     entrega:c.entrega||'',
-    descripcion:c.items[0]?.desc||c.notas||'Trabajo',
+    descripcion:descComp||c.items[0]?.desc||c.notas||'Trabajo',
     estado:'pendiente',
     asignaciones,
     notas:'',
     pasos
   });
   sk('ordenes');
-  render();
+  if(!noRender)render();
 }
 function savOT(){
   const cid=gCid('ot-id');if(!cid){alert('Seleccioná un cliente');return;}
@@ -1859,6 +1879,18 @@ function delCli(id){const c=S.clientes.find(x=>x.id==id);if(!c)return;if(!confir
 function delProv(id){const p=S.proveedores.find(x=>x.id==id);if(!p)return;if(!confirm(`¿Eliminar el proveedor "${p.nombre}"?\nEsta acción no se puede deshacer.`))return;S.proveedores=S.proveedores.filter(x=>x.id!=id);sk('proveedores');updateProvTable();}
 function delCot(id){const c=S.cotizaciones.find(x=>x.id==id);if(!c)return;if(!confirm(`¿Eliminar la cotización ${c.num}?\nEsta acción no se puede deshacer.`))return;S.cotizaciones=S.cotizaciones.filter(x=>x.id!=id);sk('cotizaciones');render();}
 function delCotIdx(idx){const c=S.cotizaciones[idx];if(!c)return;if(!confirm(`¿Eliminar la cotización ${c.num}?\nEsta acción no se puede deshacer.`))return;S.cotizaciones.splice(idx,1);sk('cotizaciones');render();}
+function omCotNuevaOT(cotId){
+  const c=S.cotizaciones.find(x=>x.id==cotId);if(!c)return;
+  const otsPrev=S.ordenes.filter(o=>o.cotId==cotId);
+  const proxLetra=String.fromCharCode(65+otsPrev.length);
+  const desc=prompt('Descripción de la OT complementaria '+proxLetra+'\n(Ej: Tapa, Interior, Refuerzo, Acetato)','');
+  if(desc===null)return; // canceló
+  genOT(cotId,false,desc||('Componente '+proxLetra));
+  // reabrir el modal con la cotizacion actualizada
+  cm();
+  setTimeout(()=>omCot(cotId),50);
+}
+
 function omCot(id){
   const c=S.cotizaciones.find(x=>x.id==id);if(!c)return;
   const idx=S.cotizaciones.indexOf(c);
