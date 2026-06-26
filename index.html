@@ -158,6 +158,7 @@ textarea{resize:vertical;min-height:56px}
 </div>
 <div class="main" id="pg"></div>
 </div>
+  <script src="firebase-config.js"></script>
 <script>
 const Q=id=>document.getElementById(id);
 let curPg='dash';
@@ -169,14 +170,7 @@ const PER=25;
 
 // ---- STORAGE ----
 // ---- FIREBASE CONFIG ----
-const firebaseConfig = {
-  apiKey: "AIzaSyBknhCg3HU7x1qa1hEgpSpt8yeA3QSBf9g",
-  authDomain: "graficapro-coma.firebaseapp.com",
-  projectId: "graficapro-coma",
-  storageBucket: "graficapro-coma.firebasestorage.app",
-  messagingSenderId: "439415860272",
-  appId: "1:439415860272:web:f3b8860f6e5457111291f5"
-};
+const firebaseConfig = window.__FBCFG;
 
 // Firebase SDK (cargado via CDN en el <head>)
 let db;
