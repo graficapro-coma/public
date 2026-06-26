@@ -338,8 +338,8 @@ function updateCliTable(){
   const hint=Q('cli-hint');
   if(hint)hint.innerHTML=f?`<i class="ti ti-info-circle"></i> ${rows.length} coincidencia${rows.length!==1?'s':''} · <a href="#" onclick="bCli='';Q('sci').value='';updateCliTable();return false" style="color:#185fa5">limpiar</a>`:'Ordenado A→Z · Escribí para filtrar';
   let trs='';
-  if(!f){let ll='';for(const c of sl){const l=(c.nombre[0]||'#').toUpperCase();if(l!==ll){trs+=`<tr><td colspan="5" class="sep">${l}</td></tr>`;ll=l;}trs+=`<tr><td><strong style="font-weight:500">${c.nombre}</strong></td><td style="font-family:monospace;font-size:11px">${c.cuit||'—'}</td><td>${ivaBadge(c.iva)}</td><td>${c.loc||'—'}</td><td style="white-space:nowrap"><button onclick="om('vc',${c.id})"><i class="ti ti-eye"></i></button><button class="bd" onclick="delCli(${c.id})" title="Eliminar cliente"><i class="ti ti-trash"></i></button></td></tr>`;}}
-  else{if(!sl.length)trs=`<tr><td colspan="5"><div class="empty"><i class="ti ti-search"></i>Sin resultados para "${f}"</div></td></tr>`;for(const c of sl)trs+=`<tr><td><strong style="font-weight:500">${hl(c.nombre,f)}</strong></td><td style="font-family:monospace;font-size:11px">${c.cuit||'—'}</td><td>${ivaBadge(c.iva)}</td><td>${hl(c.loc||'—',f)}</td><td style="white-space:nowrap"><button onclick="om('vc',${c.id})"><i class="ti ti-eye"></i></button><button class="bd" onclick="delCli(${c.id})" title="Eliminar cliente"><i class="ti ti-trash"></i></button></td></tr>`;}
+  if(!f){let ll='';for(const c of sl){const l=(c.nombre[0]||'#').toUpperCase();if(l!==ll){trs+=`<tr><td colspan="5" class="sep">${l}</td></tr>`;ll=l;}trs+=`<tr><td><strong style="font-weight:500">${c.nombre}</strong></td><td style="font-family:monospace;font-size:11px">${c.cuit||'—'}</td><td>${ivaBadge(c.iva)}</td><td>${c.loc||'—'}</td><td style="white-space:nowrap"><button onclick="om('vc',${c.id})"><i class="ti ti-eye"></i></button><button onclick="om('ec',${c.id})" title="Editar cliente"><i class="ti ti-edit"></i></button><button class="bd" onclick="delCli(${c.id})" title="Eliminar cliente"><i class="ti ti-trash"></i></button></td></tr>`;}}
+  else{if(!sl.length)trs=`<tr><td colspan="5"><div class="empty"><i class="ti ti-search"></i>Sin resultados para "${f}"</div></td></tr>`;for(const c of sl)trs+=`<tr><td><strong style="font-weight:500">${hl(c.nombre,f)}</strong></td><td style="font-family:monospace;font-size:11px">${c.cuit||'—'}</td><td>${ivaBadge(c.iva)}</td><td>${hl(c.loc||'—',f)}</td><td style="white-space:nowrap"><button onclick="om('vc',${c.id})"><i class="ti ti-eye"></i></button><button onclick="om('ec',${c.id})" title="Editar cliente"><i class="ti ti-edit"></i></button><button class="bd" onclick="delCli(${c.id})" title="Eliminar cliente"><i class="ti ti-trash"></i></button></td></tr>`;}
   const tbody=Q('cli-tbody');if(tbody)tbody.innerHTML=trs;
   const pagDiv=Q('cli-pag');if(pagDiv)pagDiv.innerHTML=pgs>1?`<span>${(pCli-1)*PER+1}–${Math.min(pCli*PER,tot)} de ${tot}</span><button onclick="pCli=Math.max(1,pCli-1);updateCliTable()" ${pCli===1?'disabled':''}>‹</button><span>${pCli}/${pgs}</span><button onclick="pCli=Math.min(${pgs},pCli+1);updateCliTable()" ${pCli===pgs?'disabled':''}>›</button>`:'';
 }
@@ -1132,7 +1132,7 @@ function initCostos(){
 function om(t,id){
   cm();
   const mods={
-    nc:mNC,vc:()=>mVC(id),np:mNP,vp:()=>mVP(id),
+    nc:mNC,vc:()=>mVC(id),ec:()=>mEditCli(id),np:mNP,vp:()=>mVP(id),
     nc2:()=>{initCostos();return mNC2();},vc2:()=>mVC2(id),
     not:mNOT,vot:()=>mVOT(id),editOT:()=>mEditOT(id),editEntrega:()=>mEditEntrega(id),
     asgn:()=>mASGN(id),recursos:mRecursos,
@@ -1569,6 +1569,8 @@ function updateFicha(id){
   Object.assign(S.fichas[idx],{estado:Q('ef-est')?.value,descripcion:Q('ef-desc')?.value,entregaSolicitada:Q('ef-ent')?.value,facRazonSocial:Q('ef-razSoc')?.value,facEmail1:Q('ef-email1')?.value,facEmail2:Q('ef-email2')?.value,cobCondPago:Q('ef-cobCond')?.value,cobContacto:Q('ef-cobCont')?.value,observacionesCob:Q('ef-obsCob')?.value,agf,garbarinoComision:garb,comisionVendedor:vend,total:agf+garb+vend});
   sk('fichas');cm();render();
 }
+  function mEditCli(id){const c=S.clientes.find(x=>x.id==id);if(!c)return'';const iv=(v,l)=>`<option value="${v}"${c.iva===v?' selected':''}>${l}</option>`;return `<div class="mt2"><i class="ti ti-edit" style="margin-right:6px"></i>Editar cliente</div><div class="fr"><div class="fg"><label>Nombre / Razón social</label><input id="ec-nombre" value="${(c.nombre||'').replace(/"/g,'&quot;')}"></div><div class="fg"><label>CUIT</label><input id="ec-cuit" value="${c.cuit||''}"></div></div><div class="fr"><div class="fg"><label>Cond. IVA</label><select id="ec-iva">${iv('RI','Resp. Inscripto')}${iv('MT','Monotributista')}${iv('EX','Exento')}${iv('CF','Cons. Final')}</select></div><div class="fg"><label>Email</label><input id="ec-email" type="email" value="${c.email||''}"></div></div><div class="fr"><div class="fg"><label>Teléfono</label><input id="ec-tel" value="${c.tel||''}"></div><div class="fg"><label>Localidad</label><input id="ec-loc" value="${c.loc||''}"></div></div><div class="fg" style="margin-bottom:8px"><label>Domicilio</label><input id="ec-dom" value="${(c.dom||'').replace(/"/g,'&quot;')}"></div><div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="updateCli(${c.id})"><i class="ti ti-check"></i>Guardar cambios</button></div>`;}
+  function updateCli(id){const idx=S.clientes.findIndex(x=>x.id===id);if(idx<0)return;Object.assign(S.clientes[idx],{nombre:Q('ec-nombre')?.value,cuit:Q('ec-cuit')?.value,iva:Q('ec-iva')?.value,email:Q('ec-email')?.value,tel:Q('ec-tel')?.value,loc:Q('ec-loc')?.value,dom:Q('ec-dom')?.value});sk('clientes');cm();updateCliTable();}
 
 // ---- ACTIONS ----
 function savCli(){
