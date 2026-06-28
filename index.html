@@ -165,7 +165,7 @@ let curPg='dash';
 // Search states
 let bCli='',bProv='',pCli=1,pProv=1,fCot='',fOT='',fichaTab='lista',fichaVerID=null,bFicha='';
 // Planificacion
-let planMaq=null,planOffset=0;
+let planMaq=null,planOffset=0,tallerOff=0;
 const PER=25;
 
 // ---- STORAGE ----
@@ -522,6 +522,7 @@ function rPlan(){
       }
       h+=`<div class="maq-card ${planMaq===m?'on':''}" onclick="planMaq='${m.replace(/'/g,"\\'")}';planOffset=0;render()"><div style="font-size:10px;color:#888;margin-bottom:3px"><i class="ti ti-tool" style="font-size:11px"></i> Máquina</div><div style="font-size:13px;font-weight:600">${m}</div><div style="font-size:10px;color:${cnt>0?'#185fa5':'#aaa'}">${cnt} OT${cnt!==1?'s':''} asignada${cnt!==1?'s':''}</div>${extraInfo}${bsem>0?`<div style="font-size:10px;color:#3b6d11">${bsem} bloque${bsem!==1?'s':''} esta semana</div>`:''}</div>`;
     });
+    h+=`<div class="maq-card ${planMaq==='__TALLER__'?'on':''}" onclick="planMaq='__TALLER__';tallerOff=0;render()" style="border:1.5px solid #185fa5;background:${planMaq==='__TALLER__'?'#e6f1fb':'#f5faff'}"><div style="font-size:11px;color:#185fa5;margin-bottom:4px;font-weight:600"><i class='ti ti-layout-grid'></i> Vista combinada</div><div style="font-size:15px;font-weight:600">📋 PLAN DE TALLER</div><div style="font-size:11px;color:#666;margin-top:3px">Todas las m\u00e1quinas internas por d\u00eda</div></div>`;
     h+=`</div>`;
     // --- Externos ---
     h+=`<div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;margin-top:4px"><i class="ti ti-user" style="font-size:11px"></i> Externos</div>`;
@@ -531,7 +532,7 @@ function rPlan(){
       h+=`<div class="maq-card ${planMaq===e?'on':''}" onclick="planMaq='${e.replace(/'/g,"\\'")}';planOffset=0;render()" style="border-left:3px solid #9fe1cb"><div style="font-size:10px;color:#888;margin-bottom:3px"><i class="ti ti-user" style="font-size:11px"></i> Externo</div><div style="font-size:13px;font-weight:600">${e}</div>${bsem>0?`<div style="font-size:10px;color:#3b6d11">${bsem} bloque${bsem!==1?'s':''}</div>`:''}</div>`;
     });
     h+=`</div>`;
-    if(planMaq)h+=rCalSemanal(planMaq);
+    if(planMaq==='__TALLER__')h+=rTallerDiario();else if(planMaq)h+=rCalSemanal(planMaq);
 
   } else {
     // --- ENTREGAS / FLETES ---
@@ -697,7 +698,7 @@ function saveEditEntrega(id){
   sk('ordenes');cm();render();
 }
 
-const SLOTS_AM=['09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00'];
+const SLOTS_AM=['06:30','07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00'];
 const SLOTS_PM=['13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30'];
 const ALL_SLOTS=[...SLOTS_AM,...SLOTS_PM];
 function getLunes(off){const n=new Date();const d=n.getDay();const diff=d===0?-6:1-d;const l=new Date(n);l.setDate(n.getDate()+diff+off*7);l.setHours(0,0,0,0);return l;}
@@ -740,7 +741,7 @@ function rCalSemanal(maq){
         const dur=bl.dur||1;
         h+=`<td style="padding:2px" rowspan="${dur}" onclick="om('editB','${maq}|${fecha}|${slot}')">`;
         h+=`<div class="bloque ${col}" style="height:${dur*26-4}px"><button class="bx" onclick="event.stopPropagation();delBloque('${maq}','${fecha}','${slot}')">×</button>`;
-        h+=ot?`<div style="font-weight:600">${ot.num}</div><div style="font-size:9px;opacity:.8;overflow:hidden">${ot.descripcion.substring(0,20)}</div>`:'?';
+        h+=ot?`<div style="font-weight:600">${ot.num}</div><div style="font-size:9px;font-weight:600;color:#185fa5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cNom(ot.clienteId)||''}</div><div style="font-size:9px;opacity:.8;overflow:hidden">${ot.descripcion.substring(0,20)}</div>`:'?';
         if(bl.pasoNombre)h+=`<div style="font-size:9px;opacity:.7;font-style:italic">${bl.pasoNombre}</div>`;
         h+=`</div></td>`;
       } else if(bl&&bl.cont){
@@ -864,6 +865,61 @@ function rCalSemanal(maq){
   h+=`</div></div></div>`;
   return h;
 }
+function rTallerDiario(){
+  const base=new Date(); base.setHours(0,0,0,0); base.setDate(base.getDate()+tallerOff);
+  const fecha=fmtD(base);
+  const esHoy=fecha===fmtD(new Date());
+  const maqs=S.maquinas;
+  let h='<div class="card">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
+  h+='<div style="display:flex;align-items:center;gap:8px">';
+  h+='<button onclick="tallerOff--;render()" style="padding:4px 9px">‹</button>';
+  h+='<strong style="font-size:14px">📋 Plan de Taller — '+DIAS[base.getDay()]+' '+base.getDate()+'/'+MESES[base.getMonth()]+(esHoy?' <span style=\'color:#185fa5;font-size:11px\'>(Hoy)</span>':'')+'</strong>';
+  h+='<button onclick="tallerOff++;render()" style="padding:4px 9px">›</button>';
+  h+='<button onclick="tallerOff=0;render()" style="padding:4px 9px;margin-left:4px">Hoy</button>';
+  h+='</div>';
+  h+='<button onclick="planMaq=null;render()" style="padding:4px 11px">✕ Cerrar</button>';
+  h+='</div>';
+  h+='<div style="overflow-x:auto"><table class="cal-table" style="min-width:'+(70+maqs.length*150)+'px"><thead><tr>';
+  h+='<th style="width:54px">Hora</th>';
+  maqs.forEach(m=>{ h+='<th style="min-width:140px">🔧 '+m+'</th>'; });
+  h+='</tr></thead><tbody>';
+  const plan={}; maqs.forEach(m=>{ plan[m]=(S.planificacion&&S.planificacion[m]&&S.planificacion[m][fecha])||{}; });
+  ALL_SLOTS.forEach(slot=>{
+    if(slot==='13:00'){
+      h+='<tr><td class="hcel">'+slot+'</td>';
+      maqs.forEach(()=>{ h+='<td class="alm" style="text-align:center;font-size:10px;color:#888">🍴 Almuerzo</td>'; });
+      h+='</tr>'; return;
+    }
+    h+='<tr><td class="hcel">'+slot+'</td>';
+    maqs.forEach(m=>{
+      const bl=plan[m][slot];
+      if(bl&&bl.cont){ return; }
+      if(bl){
+        const ot=S.ordenes.find(o=>o.id===bl.otId);
+        const col=ot?otCol(ot.id):'';
+        const dur=bl.dur||1;
+        h+='<td style="padding:2px;vertical-align:top" rowspan="'+dur+'" onclick="planMaq=\''+m.replace(/'/g,"\\'")+'\';planOffset=0;render()">';
+        h+='<div class="bloque '+col+'" style="min-height:'+(dur*26-4)+'px">';
+        if(ot){
+          h+='<div style="font-weight:600;font-size:11px">'+ot.num+'</div>';
+          h+='<div style="font-size:9px;font-weight:600;color:#185fa5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+((cNom(ot.clienteId))||'')+'</div>';
+          h+='<div style="font-size:9px;opacity:.8;overflow:hidden">'+((ot.descripcion||'').substring(0,22))+'</div>';
+        }
+        if(bl.pasoNombre){ h+='<div style="font-size:9px;opacity:.7;font-style:italic">'+bl.pasoNombre+'</div>'; }
+        h+='</div></td>';
+      } else {
+        h+='<td onclick="planMaq=\''+m.replace(/'/g,"\\'")+'\';planOffset=0;render()" style="cursor:pointer"></td>';
+      }
+    });
+    h+='</tr>';
+  });
+  h+='</tbody></table></div>';
+  h+='<div style="font-size:11px;color:#888;margin-top:8px"><i class="ti ti-info-circle"></i> Clic en una m\u00e1quina para abrir su plan semanal y editar bloques.</div>';
+  h+='</div>';
+  return h;
+}
+
 
 function rFicha(){
   if(fichaTab==='nueva')return rFichaNueva();
@@ -1396,18 +1452,18 @@ function mRecursos(){
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px">
 <div>
   <div style="font-size:12px;font-weight:600;margin-bottom:8px"><i class="ti ti-tool"></i> Máquinas internas</div>
-  <div id="lista-maq">${S.maquinas.map((m,i)=>`<div class="res-item"><span>${m}</span><button class="bd" onclick="delRec('maq',${i})" style="font-size:10px;padding:2px 6px"><i class="ti ti-x"></i></button></div>`).join('')}</div>
+  <div id="lista-maq">${S.maquinas.map((m,i)=>`<div class="res-item"><span>${m}</span><button class="bd" onclick="editRec('maq',${i})" style="font-size:11px;padding:2px 7px;margin-right:4px" title="Renombrar">✏️</button><button class="bd" onclick="delRec('maq',${i})" style="font-size:10px;padding:2px 6px"><i class="ti ti-x"></i></button></div>`).join('')}</div>
   <div style="display:flex;gap:5px;margin-top:8px"><input id="new-maq" placeholder="Nueva máquina..." style="font-size:12px;padding:5px 8px;flex:1"><button onclick="addRec('maq')" style="font-size:11px"><i class="ti ti-plus"></i></button></div>
 </div>
 <div>
   <div style="font-size:12px;font-weight:600;margin-bottom:8px"><i class="ti ti-user"></i> Externos</div>
-  <div id="lista-ext">${S.externos.map((e,i)=>`<div class="res-item"><span>${e}</span><button class="bd" onclick="delRec('ext',${i})" style="font-size:10px;padding:2px 6px"><i class="ti ti-x"></i></button></div>`).join('')}</div>
+  <div id="lista-ext">${S.externos.map((e,i)=>`<div class="res-item"><span>${e}</span><button class="bd" onclick="editRec('ext',${i})" style="font-size:11px;padding:2px 7px;margin-right:4px" title="Renombrar">✏️</button><button class="bd" onclick="delRec('ext',${i})" style="font-size:10px;padding:2px 6px"><i class="ti ti-x"></i></button></div>`).join('')}</div>
   <div style="display:flex;gap:5px;margin-top:8px"><input id="new-ext" placeholder="Nuevo externo..." style="font-size:12px;padding:5px 8px;flex:1"><button onclick="addRec('ext')" style="font-size:11px"><i class="ti ti-plus"></i></button></div>
 </div>
 </div>
 <div>
   <div style="font-size:12px;font-weight:600;margin-bottom:8px"><i class="ti ti-truck-delivery"></i> Fletes</div>
-  <div id="lista-fle">${S.fletes.map((f,i)=>`<div class="res-item"><span>${f}</span><button class="bd" onclick="delRec('fle',${i})" style="font-size:10px;padding:2px 6px"><i class="ti ti-x"></i></button></div>`).join('')}</div>
+  <div id="lista-fle">${S.fletes.map((f,i)=>`<div class="res-item"><span>${f}</span><button class="bd" onclick="editRec('fle',${i})" style="font-size:11px;padding:2px 7px;margin-right:4px" title="Renombrar">✏️</button><button class="bd" onclick="delRec('fle',${i})" style="font-size:10px;padding:2px 6px"><i class="ti ti-x"></i></button></div>`).join('')}</div>
   <div style="display:flex;gap:5px;margin-top:8px"><input id="new-fle" placeholder="Nuevo flete..." style="font-size:12px;padding:5px 8px;flex:1"><button onclick="addRec('fle')" style="font-size:11px"><i class="ti ti-plus"></i></button></div>
 </div>
 <div class="mf"><button onclick="cm();render()">Cerrar</button></div>`;
@@ -1427,6 +1483,29 @@ function delRec(tipo,idx){
   else if(tipo==='fle'){S.fletes.splice(idx,1);sk('fletes');}
   const mod=document.querySelector('.mod');if(mod)mod.innerHTML=mRecursos();
 }
+function editRec(tipo,idx){
+  const arr = tipo==='maq'?S.maquinas:tipo==='ext'?S.externos:S.fletes;
+  const actual = arr[idx];
+  const nuevo = prompt('Nuevo nombre:', actual);
+  if(nuevo===null) return;
+  const val = nuevo.trim();
+  if(!val){ alert('El nombre no puede quedar vac\u00edo.'); return; }
+  if(val===actual){ return; }
+  if(arr.includes(val)){ alert('Ya existe un recurso con ese nombre.'); return; }
+  if(tipo==='maq'){
+    if(S.planificacion && S.planificacion[actual]){ S.planificacion[val]=S.planificacion[actual]; delete S.planificacion[actual]; }
+    if(planMaq===actual) planMaq=val;
+    S.maquinas.splice(idx,1,val); sk('maquinas'); sk('planificacion');
+  } else if(tipo==='ext'){
+    if(S.planificacion && S.planificacion[actual]){ S.planificacion[val]=S.planificacion[actual]; delete S.planificacion[actual]; }
+    if(planMaq===actual) planMaq=val;
+    S.externos.splice(idx,1,val); sk('externos'); sk('planificacion');
+  } else {
+    S.fletes.splice(idx,1,val); sk('fletes');
+  }
+  render();
+}
+
 
 const mNREM=()=>`<div class="mt2">Nuevo remito interno</div><div class="fr"><div class="fg"><label>Cliente</label>${acCli('rem-txt','rem-id')}</div><div class="fg"><label>OT</label><select id="remo"><option value="">Sin OT</option>${S.ordenes.map(o=>`<option value="${o.id}">${o.num} — ${o.descripcion}</option>`).join('')}</select></div></div><div class="fr"><div class="fg"><label>Fecha</label><input id="rf" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="fg"><label>Dirección</label><input id="rd"></div></div><div class="fg"><label>Detalle bultos</label><textarea id="rdet"></textarea></div><div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="savRem()"><i class="ti ti-check"></i>Emitir</button></div>`;
 const mVREM=id=>{const r=S.remitos.find(x=>x.id==id);if(!r)return'';return`<div class="mt2">Remito ${r.num}</div><div class="kv"><span class="kk">Cliente</span><span class="kval">${cNom(r.clienteId)}</span></div><div class="kv"><span class="kk">OT</span><span class="kval">${r.otNum||'—'}</span></div><div class="kv"><span class="kk">Fecha</span><span class="kval">${r.fecha}</span></div><div class="kv"><span class="kk">Dirección</span><span class="kval">${r.dir||'—'}</span></div><div class="kv"><span class="kk">Detalle</span><span class="kval">${r.det||'—'}</span></div><div class="kv"><span class="kk">Estado</span><span class="kval">${stBadge(r.estado)}</span></div><div class="mf"><button onclick="cm()">Cerrar</button>${r.estado!=='entregado'?`<button class="bs" onclick="mkRem(${r.id},'entregado')"><i class="ti ti-check"></i>Marcar entregado</button>`:''}</div>`;};
