@@ -1,0 +1,32 @@
+rules_version = '2';
+
+// Reglas de seguridad de Firestore para Gráfica Pro.
+// Objetivo: que SOLO usuarios autenticados de la empresa puedan leer/escribir,
+// y nadie pueda tocar la base directamente con la apiKey sin estar logueado.
+//
+// DEPLOY (una sola vez, desde la consola de Firebase o con Firebase CLI):
+//   1) Consola: https://console.firebase.google.com  ->  proyecto graficapro-coma
+//      -> Firestore Database -> pestaña "Reglas" -> pegar este contenido -> Publicar.
+//   2) O con CLI:  firebase deploy --only firestore:rules
+//
+// NOTA: hoy, sin estas reglas publicadas, cualquiera con la apiKey (que está en el
+// código) puede leer y borrar TODA la base. Publicar esto es el arreglo #1 de seguridad.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Toda la app vive bajo /gp/**  (config + subcolecciones "docs")
+    match /gp/{document=**} {
+      // Requiere estar autenticado. Para máxima seguridad, restringí además por dominio
+      // de correo de la empresa descomentando la condición del email.
+      allow read, write: if request.auth != null
+        // && request.auth.token.email.matches('.*@coma-grupoimpresor[.]com[.]ar$')
+        ;
+    }
+
+    // Todo lo demás: denegado por defecto.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
