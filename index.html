@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script>/* Versión oficial: Netlify. Si alguien entra por la vieja web.app de Firebase, lo mandamos a la actual. */
+(function(){if(location.hostname==='graficapro-coma.web.app'){location.replace('https://graficapro-coma.netlify.app'+location.pathname+location.search+location.hash);}})();</script>
 <!-- Endurecimiento: bloquea plugins/objetos y restringe base-uri. Se permite 'unsafe-inline'
      porque la app usa handlers inline; el XSS se ataca sobre todo sanitizando la entrada. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https: wss:; object-src 'none'; base-uri 'self'">
@@ -1910,6 +1912,7 @@ function cotPzEd(k,campo,val){
     cotSync();return;
   }
   if(campo==='nombre'){p.nombre=String(val).replace(/[<>]/g,'').slice(0,60);return;}
+  if(campo==='medidaCerrada'){p.medidaCerrada=String(val).replace(/[<>]/g,'').slice(0,60);return;}
   if(campo==='papelCod'){
     const antes=p.papelCod;
     p.papelCod=parseInt(val)||0;
@@ -2518,7 +2521,7 @@ function rCotizador(){
       </div>
     </div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
-      <div><div style="font-size:10px;color:#888;font-weight:600">MEDIDA PIEZA (cm)</div>${ninp(p.piezaW,`cotPzEd(${k},'piezaW',this.value)`,'52px')} × ${ninp(p.piezaH,`cotPzEd(${k},'piezaH',this.value)`,'52px')}</div>
+      <div><div style="font-size:10px;color:#888;font-weight:600" title="Medida plana/desplegada que va a la máquina">MEDIDA ABIERTA (cm)</div>${ninp(p.piezaW,`cotPzEd(${k},'piezaW',this.value)`,'52px')} × ${ninp(p.piezaH,`cotPzEd(${k},'piezaH',this.value)`,'52px')}<div style="font-size:10px;color:#888;font-weight:600;margin-top:6px" title="Medida final del producto terminado (folleto cerrado, o alto×ancho×fuelle en bolsa, alto×largo×prof en estuche)">MEDIDA CERRADA / FINAL</div><input value="${cotEsc(p.medidaCerrada||'')}" onchange="cotPzEd(${k},'medidaCerrada',this.value)" placeholder="ej: 21x30 · o 20x20x10" style="width:150px;padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px"></div>
       <div><div style="font-size:10px;color:#888;font-weight:600">MÁQUINA</div>
         <span style="display:inline-flex;border:1.5px solid #185fa5;border-radius:8px;overflow:hidden">
         <button onclick="cotPzMaq(${k},'SM52')" title="${_fit52?'Filtrar códigos de impresión de SM52':('El pliego no entra en la SM52 (válido: '+cotMaqRango('SM52')+')')}" style="padding:5px 10px;border:none;cursor:pointer;font-size:11px;font-weight:700;background:${maqPz==='SM52'?'#185fa5':'#fff'};color:${maqPz==='SM52'?'#fff':(_fit52?'#185fa5':'#c0c0c0')};${_fit52?'':'text-decoration:line-through'}">SM52</button>
@@ -3004,6 +3007,7 @@ function updateCotResults(){
           const pzs=co.piezas||(typeof cotPiezasDe==='function'?cotPiezasDe(co):[]);
           (pzs||[]).forEach(pz=>{
             if(!pz)return;
+            hay.push(pz.medidaCerrada,(pz.piezaW||'')+'x'+(pz.piezaH||''));
             const pap=(S.cotPapeles||[]).find(x=>x.codigo===pz.papelCod);if(pap)hay.push(pap.descripcion,pap.gramaje,(pap.ancho||'')+'x'+(pap.alto||''));
             const lam=(S.cotLaminados||[]).find(x=>x.codigo===pz.lamCod);if(lam)hay.push(lam.material);
             const im=(S.cotImpresion||[]).find(x=>x.codigo===pz.impCod);if(im)hay.push(im.descripcion,im.maquina);
