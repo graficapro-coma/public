@@ -1,0 +1,8 @@
+# Configuración de Netlify para Gráfica Pro
+# El sitio es estático (index.html en la raíz) y usa una función serverless para la IA.
+[build]
+  publish = "."
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"

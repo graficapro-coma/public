@@ -550,7 +550,9 @@ async function iniciarSinMigrar(){
   if(!S.externos||!S.externos.length)S.externos=['Marcelo (Troquelado)','Víctor (Troquelado)','Oscar (Troquelado)','Laminador externo'];
   if(!S.fletes||!S.fletes.length)S.fletes=['Master / Javier','Fiorino / Edu'];
   if(!S.procesos||!S.procesos.length)S.procesos=['Troquelado','Hot Stamping','Laminado','Laca UV','Laca UV sectorizada','Barniz','Plastificado mate','Plastificado brillo'];
-  if(!S.tiposTrabajo||!S.tiposTrabajo.length)S.tiposTrabajo=['P.O.P','Folletería','Papelería Comercial','Packaging','Tags','Porta-Retratos'];
+  if(!S.tiposTrabajo||!S.tiposTrabajo.length)S.tiposTrabajo=['P.O.P','Folletería','Papelería Comercial','Packaging','Tags','Porta-Retratos','Bolsas','Etiquetas','Carpetas','Blocks','Revista / Catálogo','Banners'];
+  // Merge de una sola vez: sumar familias faltantes a listas ya existentes
+  if(S.ids&&!S.ids._migTipos){['Carpetas','Blocks','Revista / Catálogo','Banners'].forEach(t=>{if(!S.tiposTrabajo.includes(t))S.tiposTrabajo.push(t);});S.ids._migTipos=1;sk('tiposTrabajo');sk('ids');}
   if(!S.clientes||S.clientes.length===0)seed();
   migrarPreprensa2Etapas();
   migrarPasos9();
@@ -3031,7 +3033,7 @@ function updateCotResults(){
     const realIdx=S.cotizaciones.indexOf(c);
     const nomCorto=[...new Set((c.itemsVariantes||[]).map(it=>(it.nombre||'').trim()).filter(Boolean))].join(', ');
     const netoVta=(c.subtotal!=null&&c.subtotal>0)?c.subtotal:Math.max(0,(c.total||0)-(c.iva||0));
-    h+=`<tr class="rlink" onclick="omCot(${c.id})"><td>${c.fecha}</td><td><strong>${hl(c.num,f)}</strong></td><td>${hl(cNom(c.clienteId),f)}</td><td style="font-size:11px;color:#555">${capNom(c.vendedor)||'—'}</td><td style="font-size:11px;color:#888">${c.tipoTrabajo||'—'}</td><td style="font-size:12px;font-weight:600;color:#185fa5">${nomCorto?hl(nomCorto,f):'—'}</td><td>${netoVta>0?$m(netoVta):'—'}</td><td>${stBadge(c.estado)}</td><td style="white-space:nowrap;text-align:right" onclick="event.stopPropagation()"><span style="display:inline-flex;gap:5px;align-items:center;justify-content:flex-end">${(c.estado==='borrador'||c.estado==='enviada')?`<button class="bs" onclick="omCot(${c.id})" title="Aprobar la cotización: elegí la cantidad/ítem y continuá" style="font-size:10px;padding:4px 8px"><i class="ti ti-check"></i>Aprobar</button>`:''}${c.estado==='aprobada'?(!hasOT?`<button class="bs" onclick="genOT(${c.id})" title="Generar la orden de trabajo de esta cotización" style="font-size:10px;padding:4px 8px"><i class="ti ti-clipboard-plus"></i>Agregar OT</button>`:`<button class="bs" style="background:#5a7fa0;font-size:10px;padding:4px 8px" onclick="omCotNuevaOT(${c.id})" title="Agregar una OT complementaria"><i class="ti ti-plus"></i>Agregar OT</button>`):''}<button onclick="dupCot(${c.id})" title="Crear una cotización nueva copiando esta" style="font-size:10px;padding:4px 8px"><i class="ti ti-copy"></i>Copiar cot.</button>${triAcc(`omCot(${c.id})`,`om('ec2',${c.id})`,`delCotIdx(${realIdx})`)}</span></td></tr>`;
+    h+=`<tr class="rlink" onclick="omCot(${c.id})"><td>${c.fecha}</td><td><strong>${hl(c.num,f)}</strong></td><td>${hl(cNom(c.clienteId),f)}</td><td style="font-size:11px;color:#555">${capNom(c.vendedor)||'—'}</td><td style="font-size:11px;color:#888">${c.tipoTrabajo||'—'}</td><td style="font-size:12px;font-weight:600;color:#185fa5">${nomCorto?hl(nomCorto,f):'—'}</td><td>${netoVta>0?$m(netoVta):'—'}</td><td>${stBadge(c.estado)}</td><td style="white-space:nowrap;text-align:right" onclick="event.stopPropagation()"><span style="display:inline-flex;gap:5px;align-items:center;justify-content:flex-end">${c.estado==='borrador'?`<button onclick="event.stopPropagation();cotSetEstado(${c.id},'enviada')" title="Marcar como enviada" style="font-size:10px;padding:4px 8px;background:#5a7fa0;color:#fff;border-color:#5a7fa0"><i class="ti ti-send"></i>Enviar</button>`:''}${(c.estado==='borrador'||c.estado==='enviada')?`<button class="bs" onclick="omCot(${c.id})" title="Aprobar la cotización: elegí la cantidad/ítem y continuá" style="font-size:10px;padding:4px 8px"><i class="ti ti-check"></i>Aprobar</button>`:''}${c.estado==='aprobada'?(!hasOT?`<button class="bs" onclick="genOT(${c.id})" title="Generar la orden de trabajo de esta cotización" style="font-size:10px;padding:4px 8px"><i class="ti ti-clipboard-plus"></i>Agregar OT</button>`:`<button class="bs" style="background:#5a7fa0;font-size:10px;padding:4px 8px" onclick="omCotNuevaOT(${c.id})" title="Agregar una OT complementaria"><i class="ti ti-plus"></i>Agregar OT</button>`):''}<button onclick="dupCot(${c.id})" title="Crear una cotización nueva copiando esta" style="font-size:10px;padding:4px 8px"><i class="ti ti-copy"></i>Copiar cot.</button>${triAcc(`omCot(${c.id})`,`om('ec2',${c.id})`,`delCotIdx(${realIdx})`)}</span></td></tr>`;
   });
   h+=`</tbody></table>`+_pagCtrl(total,pCot,_cotPgs,'cotPage')+`</div>`;
   cont.innerHTML=h;
@@ -5795,7 +5797,7 @@ function mNC2(){
 <div style="margin-bottom:9px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
     <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.05em">Ítems de venta</label>
-    <button onclick="addItemNuevo()"><i class="ti ti-plus"></i>Agregar ítem</button>
+    <div style="display:flex;gap:6px"><button onclick="aiInterpretarAbrir()" title="Pegá el pedido del cliente y la IA precarga los ítems" style="background:#efe7fb;color:#6b28b6;border-color:#a855f7"><i class="ti ti-sparkles"></i> Interpretar pedido con IA</button><button onclick="addItemNuevo()"><i class="ti ti-plus"></i>Agregar ítem</button></div>
   </div>
   <div id="ci2"></div>
   <div style="display:flex;justify-content:flex-end;gap:12px;font-size:12px;margin-top:5px;padding:7px 10px;background:#f5f5f3;border-radius:7px"><span>Sub: <strong id="csd">$0</strong></span><span>IVA 21%: <strong id="cid2">$0</strong></span><span>Total venta: <strong id="ctd" style="color:#185fa5">$0</strong></span></div>
@@ -5829,6 +5831,56 @@ function updPlazoNotas(){
 function _itemsState(){
   if(!window._cotItems)window._cotItems=[];
   return window._cotItems;
+}
+// ===== Interpretar pedido con IA (Claude vía función de Netlify) =====
+function aiInterpretarAbrir(){
+  let ov=document.getElementById('ai-ov');
+  if(!ov){ov=document.createElement('div');ov.id='ai-ov';ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(15,25,35,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px';document.body.appendChild(ov);}
+  ov.innerHTML=`<div style="background:#fff;border-radius:12px;max-width:640px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.4)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong style="font-size:15px;color:#6b28b6"><i class="ti ti-sparkles"></i> Interpretar pedido con IA</strong><button onclick="aiCerrar()">✕</button></div>
+    <div style="font-size:12px;color:#666;margin-bottom:8px">Pegá el pedido del cliente (mail, WhatsApp o texto). La IA precarga los ítems (nombre, descripción, cantidad, material, máquina, colores, terminaciones) para que <b>revises y apruebes</b>.</div>
+    <textarea id="ai-pedido" rows="8" placeholder="Ej: Hola, necesito 300 tarjetones dípticos 14x10 cm abierto, cartulina, impresos de los dos lados, con troquelado..." style="width:100%;font-size:13px;padding:10px;border:1px solid rgba(0,0,0,.2);border-radius:8px;resize:vertical"></textarea>
+    <div style="font-size:11px;color:#a35b00;margin-top:6px">Reemplaza los ítems que tengas cargados ahora en esta cotización.</div>
+    <div class="mf" style="margin-top:12px"><button onclick="aiCerrar()">Cancelar</button><button id="ai-go" class="bp" onclick="aiInterpretar()"><i class="ti ti-wand"></i> Interpretar</button></div>
+  </div>`;
+  setTimeout(()=>{const t=Q('ai-pedido');if(t)t.focus();},60);
+}
+function aiCerrar(){const ov=document.getElementById('ai-ov');if(ov)ov.remove();}
+async function aiInterpretar(){
+  const t=Q('ai-pedido');if(!t)return;const pedido=t.value.trim();if(!pedido){alert('Pegá el pedido del cliente');return;}
+  const btn=Q('ai-go');if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Interpretando…';}
+  try{
+    const materiales=[...new Set((S.cotPapeles||[]).map(p=>(p.descripcion||'').trim()).filter(Boolean))].slice(0,50);
+    const maquinas=(S.maquinas||[]).filter(m=>/sm\d|xerox/i.test(m));
+    const contexto={tiposTrabajo:S.tiposTrabajo||[],maquinas:maquinas.length?maquinas:['SM52','SM74','Xerox'],materiales};
+    const resp=await fetch('/.netlify/functions/interpretar',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pedido,contexto})});
+    const data=await resp.json();
+    if(!resp.ok){alert('IA: '+(data.error||('error '+resp.status)));return;}
+    aiAplicar(data);
+  }catch(e){alert('No se pudo conectar con la IA.\n¿Está publicada la función en Netlify y cargada la clave ANTHROPIC_API_KEY?\n\nDetalle: '+e.message);}
+  finally{if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-wand"></i> Interpretar';}}
+}
+function aiAplicar(data){
+  const items=_itemsState();items.length=0;
+  (data.items||[]).forEach(ai=>{
+    const cants=(Array.isArray(ai.cantidades)&&ai.cantidades.length)?ai.cantidades:[0];
+    const filas=cants.map(q=>({qty:+q||0,subtotal:0,precio:0}));
+    let desc=(ai.descripcion||'').trim();
+    const extra=[];
+    if(ai.medidaAbierta&&(ai.medidaAbierta.ancho||ai.medidaAbierta.alto))extra.push('Abierto '+(ai.medidaAbierta.ancho||'?')+'x'+(ai.medidaAbierta.alto||'?')+'cm');
+    if(ai.medidaCerrada)extra.push('Cerrado '+ai.medidaCerrada);
+    if(ai.material)extra.push(ai.material+(ai.gramaje?' '+ai.gramaje+'g':''));
+    if(ai.colores)extra.push(ai.colores);
+    if(ai.maquina)extra.push('Máq: '+ai.maquina);
+    if(Array.isArray(ai.procesos)&&ai.procesos.length)extra.push(ai.procesos.join(', '));
+    if(!desc&&extra.length)desc=extra.join(' · ');
+    else if(extra.length)desc=desc+' — ['+extra.join(' · ')+']';
+    items.push({nombre:String(ai.nombre||'').slice(0,60),desc,filas,aiSug:{maquina:ai.maquina||'',material:ai.material||'',gramaje:ai.gramaje||'',medidaAbierta:ai.medidaAbierta||null,medidaCerrada:ai.medidaCerrada||'',colores:ai.colores||'',procesos:ai.procesos||[]}});
+  });
+  if(!items.length)items.push({nombre:'',desc:'',filas:[{qty:0,subtotal:0,precio:0}]});
+  if(data.tipoTrabajo){const sel=Q('cd');if(sel){if(![...sel.options].some(o=>o.value===data.tipoTrabajo)){if(!S.tiposTrabajo.includes(data.tipoTrabajo)){S.tiposTrabajo.push(data.tipoTrabajo);sk('tiposTrabajo');}const o=document.createElement('option');o.value=data.tipoTrabajo;o.textContent=data.tipoTrabajo;sel.appendChild(o);}sel.value=data.tipoTrabajo;}}
+  aiCerrar();
+  _renderItems();
 }
 
 function _renderItems(){
@@ -7421,6 +7473,8 @@ function savCot(st){
   S.cotizaciones.push({id,num,clienteId:cid,fecha:fechaCot,validez:Q('cv').value,entrega,plazo,maquina:'',items,itemsVariantes:rawItems,subtotal:sub,iva,total:sub+iva,estado:st,notas:Q('cno2').value,tipoTrabajo,vendedor,costoTotal:costoCosteos||0,costos:null,variantes:[],pesoEstimado});
   sk('cotizaciones');cm();render();
 }
+// Cambiar el estado de una cotización (ej. borrador → enviada) desde la lista
+function cotSetEstado(id,st){const c=S.cotizaciones.find(x=>x.id==id);if(!c)return;c.estado=st;sk('cotizaciones');updateCotResults();}
 function chCot(id,st,varIdx){
   const i=S.cotizaciones.findIndex(c=>c.id==id);
   if(i<0)return;
