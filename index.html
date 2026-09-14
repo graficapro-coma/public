@@ -2277,6 +2277,7 @@ function cotDesdeItem(ii){
   if(item.costeo){
     cotW=JSON.parse(JSON.stringify(item.costeo));
     cotW.piezas=cotPiezasDe(cotW);
+    cotW._aiFaltantes=null; // al reabrir un costeo ya hecho, no mostramos el cartel de la IA
     if(!cotW.otros)cotW.otros=[];
     if(!cotW.manuales)cotW.manuales=[];
     if(!cotW.variantes)cotW.variantes=[];
@@ -2301,6 +2302,24 @@ function cotDesdeItem(ii){
         s.procesos.forEach(p=>{if(!cotW.otros.some(o=>o.cod===p.cod))cotW.otros.push({cod:p.cod,cant:1,auto:p.auto});});
       }
     });
+    // Precarga del costeo con lo sugerido por la IA: medidas, papel, la máquina MÁS ECONÓMICA, procesos. El humano revisa.
+    if(item.aiSug){
+      const s=item.aiSug;const pz=cotW.piezas&&cotW.piezas[0];const faltan=[];
+      if(pz){
+        if(s.medidaAbierta){if(+s.medidaAbierta.ancho)pz.piezaW=+s.medidaAbierta.ancho;if(+s.medidaAbierta.alto)pz.piezaH=+s.medidaAbierta.alto;}
+        if(s.medidaCerrada)pz.medidaCerrada=s.medidaCerrada;
+        const pc=aiMatchPapel(s.material,s.gramaje);
+        if(pc)pz.papelCod=pc;else faltan.push('Papel'+(s.material?' ('+s.material+(s.gramaje?' '+s.gramaje+'g':'')+')':''));
+        // Costear en todas las máquinas donde entra el pliego y elegir la más barata
+        const opt=aiCostearOptimo(cotW,s.colores);
+        if(opt){pz.maquina=opt.maquina;pz.impCod=opt.impCod;}
+        else{if(['SM52','SM74','Xerox'].includes(s.maquina))pz.maquina=s.maquina;const ic=aiMatchImp(s.colores,pz.maquina);if(ic)pz.impCod=ic;else faltan.push('Impresión'+(s.colores?' ('+s.colores+')':''));}
+        // Procesos / terminaciones: los que están en las tablas se agregan; los que no, van a "faltan"
+        (s.procesos||[]).forEach(nm=>{const code=aiMatchProc(nm);if(code){if(!cotW.otros.some(o=>o.cod===code))cotW.otros.push({cod:code,cant:1,auto:'pliegos'});}else if(nm&&nm.trim())faltan.push('Costo de: '+nm);});
+        try{cotAutoPoses(0);}catch(e){}
+      }
+      cotW._aiFaltantes=faltan;
+    }
   }
   cotEmbedRender();
 }
@@ -2319,6 +2338,8 @@ function cotEmbedRender(){
         <button onclick="cotEmbedCerrar()">Cancelar</button>
         <button class="bp" onclick="cotEmbedAplicar()"><i class="ti ti-check"></i> Aplicar a la cotización</button>
       </div></div>
+    ${(cotW&&cotW._aiFaltantes&&cotW._aiFaltantes.length)?`<div style="background:#fcebeb;border:1px solid #f7c1c1;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#791f1f"><i class="ti ti-alert-triangle"></i> <b>Revisá antes de aplicar</b> — la IA no pudo completar automáticamente: ${cotW._aiFaltantes.map(f=>'<span style="background:#fff;border:1px solid #f7c1c1;border-radius:5px;padding:1px 6px;margin:1px;display:inline-block">'+f+'</span>').join(' ')}</div>`:''}
+    ${(cotW&&cotW._aiFaltantes)?`<div style="font-size:11px;color:#1a7f37;margin-bottom:8px"><i class="ti ti-sparkles"></i> Costeo precargado por IA (máquina más económica elegida automáticamente). Revisá y ajustá.</div>`:''}
     <div id="cot-embed-body">${rCotizador()}</div></div>`;
 }
 function cotEmbedAplicar(){
@@ -5860,22 +5881,62 @@ async function aiInterpretar(){
   }catch(e){alert('No se pudo conectar con la IA.\n¿Está publicada la función en Netlify y cargada la clave ANTHROPIC_API_KEY?\n\nDetalle: '+e.message);}
   finally{if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-wand"></i> Interpretar';}}
 }
+// Matchear el material sugerido por IA a un código de papel de las tablas
+function aiMatchPapel(material,gramaje){
+  const mats=(S.cotPapeles||[]).filter(p=>p&&p.codigo);if(!mats.length)return 0;
+  const m=String(material||'').toLowerCase();const g=+gramaje||0;
+  const toks=m.replace(/[^a-záéíóúñ ]/gi,' ').split(/\s+/).filter(t=>t.length>=3);
+  const score=p=>{const d=String(p.descripcion||'').toLowerCase();let s=0;
+    if(g&&(+p.gramaje===g||d.includes(String(g))))s+=3;
+    toks.forEach(t=>{if(d.includes(t)||d.includes(t.slice(0,4)))s+=1;});
+    if(/ilus/.test(m)&&/ilus/.test(d))s+=2;
+    if(/(cart|tx|triplex)/.test(m)&&/(tx|cart|triplex)/.test(d))s+=2;
+    if(/obra/.test(m)&&/obra/.test(d))s+=2;
+    if(/(auto|adhes)/.test(m)&&/(auto|adhes)/.test(d))s+=2;
+    return s;};
+  let best=null,bs=0;mats.forEach(p=>{const s=score(p);if(s>bs){bs=s;best=p;}});
+  return (bs>=3&&best)?best.codigo:0;
+}
+// Matchear los colores sugeridos (ej. "4/4") a un código de impresión
+function aiMatchImp(colores,maquina){
+  const imps=(S.cotImpresion||[]).filter(x=>x&&x.codigo);if(!imps.length)return 0;
+  const norm=s=>String(s||'').replace(/\s/g,'').toLowerCase();
+  const c=norm(colores);const maq=String(maquina||'');
+  let best=null,bs=0;
+  imps.forEach(x=>{let s=0;const d=norm(x.descripcion);if(c&&d.includes(c))s+=4;if(maq&&x.maquina===maq)s+=2;if(s>bs){bs=s;best=x;}});
+  return (bs>=4&&best)?best.codigo:0;
+}
+// Matchear una terminación/proceso sugerido a un código de las tablas (cotOtros)
+function aiMatchProc(nombre){
+  const arr=(S.cotOtros||[]).filter(x=>x&&x.codigo);const n=String(nombre||'').toLowerCase().trim();if(!n)return 0;
+  let best=0,bs=0;
+  arr.forEach(x=>{const d=String(x.concepto||'').toLowerCase();let s=0;if(d&&(d.includes(n)||n.includes(d)))s+=3;n.split(/\s+/).forEach(t=>{if(t.length>=4&&d.includes(t))s+=1;});if(s>bs){bs=s;best=x.codigo;}});
+  return bs>=3?best:0;
+}
+// Probar el costo en todas las máquinas donde entra el pliego y devolver la más económica
+function aiCostearOptimo(cotW,colores){
+  const pz=cotW.piezas&&cotW.piezas[0];if(!pz)return null;
+  const dims=(typeof cotPapelDims==='function')?cotPapelDims(pz):null;
+  let best=null;
+  ['SM52','SM74','Xerox'].forEach(m=>{
+    if(dims&&typeof cotPliegoEnMaq==='function'&&!cotPliegoEnMaq(dims,m))return;
+    const ic=aiMatchImp(colores,m);if(!ic)return; // sin código de impresión válido para esa máquina, no comparo
+    let clone;try{clone=JSON.parse(JSON.stringify(cotW));}catch(e){return;}
+    const p=clone.piezas[0];p.maquina=m;p.impCod=ic;
+    let r;try{r=cotCalc(clone);}catch(e){return;}
+    const tot=(r&&r.total)||0;
+    if(tot>0&&(!best||tot<best.total))best={maquina:m,impCod:ic,total:tot};
+  });
+  return best;
+}
 function aiAplicar(data){
   const items=_itemsState();items.length=0;
   (data.items||[]).forEach(ai=>{
     const cants=(Array.isArray(ai.cantidades)&&ai.cantidades.length)?ai.cantidades:[0];
     const filas=cants.map(q=>({qty:+q||0,subtotal:0,precio:0}));
-    let desc=(ai.descripcion||'').trim();
-    const extra=[];
-    if(ai.medidaAbierta&&(ai.medidaAbierta.ancho||ai.medidaAbierta.alto))extra.push('Abierto '+(ai.medidaAbierta.ancho||'?')+'x'+(ai.medidaAbierta.alto||'?')+'cm');
-    if(ai.medidaCerrada)extra.push('Cerrado '+ai.medidaCerrada);
-    if(ai.material)extra.push(ai.material+(ai.gramaje?' '+ai.gramaje+'g':''));
-    if(ai.colores)extra.push(ai.colores);
-    if(ai.maquina)extra.push('Máq: '+ai.maquina);
-    if(Array.isArray(ai.procesos)&&ai.procesos.length)extra.push(ai.procesos.join(', '));
-    if(!desc&&extra.length)desc=extra.join(' · ');
-    else if(extra.length)desc=desc+' — ['+extra.join(' · ')+']';
-    items.push({nombre:String(ai.nombre||'').slice(0,60),desc,filas,aiSug:{maquina:ai.maquina||'',material:ai.material||'',gramaje:ai.gramaje||'',medidaAbierta:ai.medidaAbierta||null,medidaCerrada:ai.medidaCerrada||'',colores:ai.colores||'',procesos:ai.procesos||[]}});
+    // La descripción que ve el cliente queda limpia; los datos técnicos van a aiSug (interno, no sale en PDF)
+    const desc=(ai.descripcion||'').trim();
+    items.push({nombre:String(ai.nombre||'').slice(0,60),desc,filas,aiSug:{maquina:ai.maquina||'',material:ai.material||'',gramaje:ai.gramaje||'',medidaAbierta:ai.medidaAbierta||null,medidaCerrada:ai.medidaCerrada||'',colores:ai.colores||'',procesos:Array.isArray(ai.procesos)?ai.procesos:[]}});
   });
   if(!items.length)items.push({nombre:'',desc:'',filas:[{qty:0,subtotal:0,precio:0}]});
   if(data.tipoTrabajo){const sel=Q('cd');if(sel){if(![...sel.options].some(o=>o.value===data.tipoTrabajo)){if(!S.tiposTrabajo.includes(data.tipoTrabajo)){S.tiposTrabajo.push(data.tipoTrabajo);sk('tiposTrabajo');}const o=document.createElement('option');o.value=data.tipoTrabajo;o.textContent=data.tipoTrabajo;sel.appendChild(o);}sel.value=data.tipoTrabajo;}}
@@ -5911,6 +5972,7 @@ function _renderItems(){
     h+=`</div></div>`;
     h+=`<textarea placeholder="Descripción completa del trabajo (medidas, papel, colores, terminaciones...)" class="id2" data-ii="${ii}" rows="2" oninput="onItemDesc(${ii},this.value)" style="width:100%;font-size:12px;margin-top:5px;padding:6px 9px;line-height:1.5;resize:vertical;min-height:46px;border:1px solid rgba(0,0,0,.14);border-radius:6px">${(item.desc||'').replace(/</g,'&lt;')}</textarea>`;
     h+=(()=>{const ref=(item.filas||[]).filter(f=>f.costo||f.ventaCalc);if(!ref.length)return '';return `<div style="font-size:10px;color:#888;margin-top:4px;line-height:1.5">${ref.map(f=>`<span style="white-space:nowrap">${$n(f.qty)}u · costo $${$n(f.costo||0)} · sug. $${$n(f.ventaCalc||0)}${f.manual?` · <span style="color:#1a7f37;font-weight:700">definitivo $${$n(f.subtotal||0)}</span>`:''}</span>`).join(' &nbsp;|&nbsp; ')}</div>`;})();
+    if(item.aiSug){const s=item.aiSug;const parts=[s.maquina?'Máq '+s.maquina:'',s.material?s.material+(s.gramaje?' '+s.gramaje+'g':''):'',(s.medidaAbierta&&(s.medidaAbierta.ancho||s.medidaAbierta.alto))?'abierto '+(s.medidaAbierta.ancho||'?')+'x'+(s.medidaAbierta.alto||'?'):'',s.medidaCerrada?'cerrado '+s.medidaCerrada:'',s.colores||'',(s.procesos&&s.procesos.length)?s.procesos.join(', '):''].filter(Boolean);if(parts.length)h+=`<div style="font-size:10px;color:#6b28b6;margin-top:3px"><i class="ti ti-lock" style="font-size:9px"></i> Interno IA (no sale en PDF): ${parts.join(' · ')} <span style="color:#aaa">· se usa al costear</span></div>`;}
     h+=`</div>`;
     // Filas de variantes (fila 1, 2, 3...)
     if(hasVars){
