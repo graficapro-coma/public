@@ -8,7 +8,7 @@ exports.handler = async (event) => {
 
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return { statusCode: 500, headers: H, body: JSON.stringify({ error: 'Falta configurar ANTHROPIC_API_KEY en Netlify (Environment variables).' }) };
-  const model = process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest';
+  const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 
   let body;
   try { body = JSON.parse(event.body || '{}'); } catch (e) { return { statusCode: 400, headers: H, body: JSON.stringify({ error: 'JSON inválido' }) }; }
@@ -28,20 +28,32 @@ Reglas:
 - cantidades: incluí TODAS las que pida el cliente (si pide varias tiradas, ponelas todas en el array).
 - descripcion: una sola línea, clara y completa, como la escribiría un impresor: cantidad, medida, colores, material y terminaciones.
 - procesos: terminaciones detectadas (troquelado, laminado, stamping, plegado, etc.).
-- Si un dato no está en el pedido, poné tu mejor sugerencia técnica (un humano revisa y aprueba todo). No inventes datos del cliente (nombre, CUIT, etc.).`;
+- Si un dato no está en el pedido, poné tu mejor sugerencia técnica (un humano revisa y aprueba todo). No inventes datos del cliente (nombre, CUIT, etc.).
+- MUY IMPORTANTE: respondé ÚNICAMENTE con el objeto JSON, sin texto antes ni después, sin explicaciones y sin bloques de código markdown.`;
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 1800, system, messages: [{ role: 'user', content: pedido }] })
+      body: JSON.stringify({
+        model, max_tokens: 2500, system,
+        // Prefill de la respuesta con "{" para forzar JSON puro (el modelo continúa el objeto)
+        messages: [{ role: 'user', content: pedido }, { role: 'assistant', content: '{' }]
+      })
     });
     const data = await r.json();
     if (!r.ok) return { statusCode: 502, headers: H, body: JSON.stringify({ error: (data && data.error && data.error.message) || 'Error de la IA' }) };
     let txt = (data.content && data.content[0] && data.content[0].text) || '';
-    const m = txt.match(/\{[\s\S]*\}/);
+    // Como prefiljamos con "{", la respuesta es la continuación del objeto:
+    let raw = ('{' + txt).replace(/```json/gi, '').replace(/```/g, '').trim();
     let parsed;
-    try { parsed = JSON.parse(m ? m[0] : txt); } catch (e) { return { statusCode: 502, headers: H, body: JSON.stringify({ error: 'La IA no devolvió un JSON válido', raw: txt.slice(0, 500) }) }; }
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      const m = raw.match(/\{[\s\S]*\}/);
+      try { parsed = JSON.parse(m ? m[0] : raw); }
+      catch (e2) { return { statusCode: 502, headers: H, body: JSON.stringify({ error: 'La IA no devolvió un JSON válido', raw: raw.slice(0, 600) }) }; }
+    }
     return { statusCode: 200, headers: H, body: JSON.stringify(parsed) };
   } catch (e) {
     return { statusCode: 500, headers: H, body: JSON.stringify({ error: String((e && e.message) || e) }) };
