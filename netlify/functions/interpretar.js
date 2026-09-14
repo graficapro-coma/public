@@ -28,8 +28,39 @@ Reglas:
 - cantidades: incluí TODAS las que pida el cliente (si pide varias tiradas, ponelas todas en el array).
 - descripcion: una sola línea, clara y completa, como la escribiría un impresor: cantidad, medida, colores, material y terminaciones.
 - procesos: terminaciones detectadas (troquelado, laminado, stamping, plegado, etc.).
-- Si un dato no está en el pedido, poné tu mejor sugerencia técnica (un humano revisa y aprueba todo). No inventes datos del cliente (nombre, CUIT, etc.).
-- MUY IMPORTANTE: respondé ÚNICAMENTE con el objeto JSON, sin texto antes ni después, sin explicaciones y sin bloques de código markdown.`;
+- Si un dato no está en el pedido, poné tu mejor sugerencia técnica (un humano revisa y aprueba todo). No inventes datos del cliente (nombre, CUIT, etc.).`;
+
+  // Structured output vía "tool use": la IA devuelve datos con este molde exacto (JSON garantizado).
+  const tool = {
+    name: 'cargar_cotizacion',
+    description: 'Carga los datos interpretados del pedido del cliente en la cotización.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tipoTrabajo: { type: 'string' },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              nombre: { type: 'string' },
+              descripcion: { type: 'string' },
+              cantidades: { type: 'array', items: { type: 'number' } },
+              medidaAbierta: { type: 'object', properties: { ancho: { type: 'number' }, alto: { type: 'number' } } },
+              medidaCerrada: { type: 'string' },
+              material: { type: 'string' },
+              gramaje: { type: 'number' },
+              colores: { type: 'string' },
+              maquina: { type: 'string' },
+              procesos: { type: 'array', items: { type: 'string' } }
+            },
+            required: ['nombre', 'descripcion', 'cantidades']
+          }
+        }
+      },
+      required: ['items']
+    }
+  };
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -37,24 +68,16 @@ Reglas:
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model, max_tokens: 2500, system,
-        // Prefill de la respuesta con "{" para forzar JSON puro (el modelo continúa el objeto)
-        messages: [{ role: 'user', content: pedido }, { role: 'assistant', content: '{' }]
+        tools: [tool],
+        tool_choice: { type: 'tool', name: 'cargar_cotizacion' },
+        messages: [{ role: 'user', content: pedido }]
       })
     });
     const data = await r.json();
     if (!r.ok) return { statusCode: 502, headers: H, body: JSON.stringify({ error: (data && data.error && data.error.message) || 'Error de la IA' }) };
-    let txt = (data.content && data.content[0] && data.content[0].text) || '';
-    // Como prefiljamos con "{", la respuesta es la continuación del objeto:
-    let raw = ('{' + txt).replace(/```json/gi, '').replace(/```/g, '').trim();
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (e) {
-      const m = raw.match(/\{[\s\S]*\}/);
-      try { parsed = JSON.parse(m ? m[0] : raw); }
-      catch (e2) { return { statusCode: 502, headers: H, body: JSON.stringify({ error: 'La IA no devolvió un JSON válido', raw: raw.slice(0, 600) }) }; }
-    }
-    return { statusCode: 200, headers: H, body: JSON.stringify(parsed) };
+    const block = (data.content || []).find(c => c && c.type === 'tool_use');
+    if (!block || !block.input) return { statusCode: 502, headers: H, body: JSON.stringify({ error: 'La IA no devolvió datos estructurados' }) };
+    return { statusCode: 200, headers: H, body: JSON.stringify(block.input) };
   } catch (e) {
     return { statusCode: 500, headers: H, body: JSON.stringify({ error: String((e && e.message) || e) }) };
   }
