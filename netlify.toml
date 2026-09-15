@@ -3,6 +3,10 @@
 [build]
   publish = "."
 
+# El nombre del modelo NO es un secreto: que el escáner de Netlify no lo trate como tal.
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "ANTHROPIC_MODEL"
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"

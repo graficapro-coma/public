@@ -6,6 +6,11 @@
 
 1. **Material en la cotización.** Cargar el material a usar ya en la cotización (cuando se cotiza el papel ya se sabe qué material va). Que ese material baje solo: cotización → OT → módulo de Pedidos de papel (grilla prellenada, sin recargar ni riesgo de error).
 
+2. **IA "Interpretar pedido" — activar y afinar.** Ya está armado el botón en la cotización + la función segura `netlify/functions/interpretar.js` (la clave va en variable de entorno, NO en el código). Falta:
+   - Subir a GitHub: `index.html`, `netlify.toml` y `netlify/functions/interpretar.js`.
+   - Crear clave en console.anthropic.com y cargarla en Netlify → Environment variables como `ANTHROPIC_API_KEY` (opcional `ANTHROPIC_MODEL`).
+   - Etapa 2: que además de precargar los ítems, complete el **costeo** (máquina + papel exacto de las tablas + poses + procesos), no solo texto.
+
 ## Hecho
 
 ### Tablero de Seguimiento (9 etapas)

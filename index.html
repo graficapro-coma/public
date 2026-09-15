@@ -97,6 +97,7 @@
   <div class="ns">Análisis</div>
   <div class="ni fin-only" onclick="nav('analot')"><i class="ti ti-chart-bar"></i>Análisis OT x OT</div>
   <div class="ni" onclick="nav('tiempos')"><i class="ti ti-clock-hour-4"></i>Tiempos de producción</div>
+  <div class="ni" onclick="nav('capacidad')"><i class="ti ti-gauge"></i>Capacidad y producción</div>
   <div class="ni fin-only" onclick="nav('gas')"><i class="ti ti-building"></i>Gastos estructura</div>
   <div class="ni fin-only" onclick="nav('balmes')"><i class="ti ti-calendar-stats"></i>Balance mensual</div>
   <div class="ni fin-only" onclick="nav('balaño')"><i class="ti ti-chart-line"></i>Balance anual</div>
@@ -199,7 +200,7 @@ async function initFirebase(){
 // Colecciones que usan subcollections (una doc por registro)
 const COL_KEYS=['clientes','proveedores','cotizaciones','ordenes','remitos','fichas','gastos','cotTrabajos'];
 // Colecciones que siguen como blob (configuración liviana)
-const BLOB_KEYS=['procesos','maquinas','externos','fletes','planificacion','ids','analCostos','recursosAnal','tiposTrabajo','stockPapel','stockMovs','vendedores','cotPapeles','cotImpresion','cotChapas','cotLaminados','cotOtros','cotConfig','insumosItems','insumosMovs'];
+const BLOB_KEYS=['procesos','maquinas','externos','fletes','planificacion','ids','analCostos','recursosAnal','tiposTrabajo','stockPapel','stockMovs','vendedores','cotPapeles','cotImpresion','cotChapas','cotLaminados','cotOtros','cotConfig','insumosItems','insumosMovs','cotEstructuras'];
 
 async function ld(k){
   try{
@@ -311,7 +312,8 @@ let S={
   stockPapel:[], // [{id,material,grs,fx,fy,papelera,cantidad}]
   stockMovs:[],  // [{fecha,tipo,material,grs,fx,fy,papelera,cant,otNum,nota}]
   ids:{cot:1,ot:1,rem:1,fac:1,cob:1,ficha:1},
-  cotPapeles:[],cotImpresion:[],cotChapas:[],cotLaminados:[],cotOtros:[],cotConfig:{},cotTrabajos:[]
+  cotPapeles:[],cotImpresion:[],cotChapas:[],cotLaminados:[],cotOtros:[],cotConfig:{},cotTrabajos:[],
+  cotEstructuras:[] // [{id,nombre,tipoTrabajo,items:[{nombre,tipo,opcional,nota,defMaterial,defColores}]}]
 };
 
 async function init(){
@@ -553,6 +555,9 @@ async function iniciarSinMigrar(){
   if(!S.tiposTrabajo||!S.tiposTrabajo.length)S.tiposTrabajo=['P.O.P','Folletería','Papelería Comercial','Packaging','Tags','Porta-Retratos','Bolsas','Etiquetas','Carpetas','Blocks','Revista / Catálogo','Banners'];
   // Merge de una sola vez: sumar familias faltantes a listas ya existentes
   if(S.ids&&!S.ids._migTipos){['Carpetas','Blocks','Revista / Catálogo','Banners'].forEach(t=>{if(!S.tiposTrabajo.includes(t))S.tiposTrabajo.push(t);});S.ids._migTipos=1;sk('tiposTrabajo');sk('ids');}
+  // Estructuras por familia: sembrar las de fábrica una sola vez (no pisa lo que edite el usuario)
+  if(!Array.isArray(S.cotEstructuras))S.cotEstructuras=[];
+  if(S.ids&&!S.ids._migEstructuras&&!S.cotEstructuras.length){S.cotEstructuras=JSON.parse(JSON.stringify(COT_ESTRUCTURAS_SEED));S.ids._migEstructuras=1;sk('cotEstructuras');sk('ids');}
   if(!S.clientes||S.clientes.length===0)seed();
   migrarPreprensa2Etapas();
   migrarPasos9();
@@ -912,6 +917,42 @@ function costosDel(k,idx){
   if(!confirm('¿Eliminar esta fila?'))return;
   S[k].splice(idx,1);costosSave(k);render();
 }
+// ===== Editor de Estructuras por familia =====
+function estrGuardar(){clearTimeout(window._estrSaveT);window._estrSaveT=setTimeout(()=>costosSave('cotEstructuras'),600);}
+function estrSeed(){S.cotEstructuras=JSON.parse(JSON.stringify(COT_ESTRUCTURAS_SEED));costosSave('cotEstructuras');render();}
+function estrAdd(){
+  if(!Array.isArray(S.cotEstructuras))S.cotEstructuras=[];
+  const maxId=S.cotEstructuras.reduce((m,x)=>Math.max(m,x.id||0),0);
+  S.cotEstructuras.push({id:maxId+1,nombre:'Nueva familia',tipoTrabajo:'',items:[]});
+  costosSave('cotEstructuras');render();
+}
+function estrDel(ei){
+  const e=S.cotEstructuras[ei];if(!e)return;
+  if(!confirm('¿Eliminar la estructura "'+(e.nombre||'')+'"?'))return;
+  S.cotEstructuras.splice(ei,1);costosSave('cotEstructuras');render();
+}
+function estrEdit(ei,campo,val){
+  const e=S.cotEstructuras[ei];if(!e)return;
+  e[campo]=String(val).replace(/[<>]/g,'').slice(0,80);estrGuardar();
+}
+function estrItemAdd(ei){
+  const e=S.cotEstructuras[ei];if(!e)return;
+  if(!Array.isArray(e.items))e.items=[];
+  e.items.push({nombre:'Nuevo ítem',tipo:'pieza',opcional:false,nota:'',defMaterial:'',defColores:''});
+  costosSave('cotEstructuras');render();
+}
+function estrItemDel(ei,ii){
+  const e=S.cotEstructuras[ei];if(!e||!e.items||!e.items[ii])return;
+  e.items.splice(ii,1);costosSave('cotEstructuras');render();
+}
+function estrItemEdit(ei,ii,campo,val){
+  const e=S.cotEstructuras[ei];if(!e||!e.items||!e.items[ii])return;
+  const it=e.items[ii];
+  if(campo==='opcional')it.opcional=!!val;
+  else if(campo==='tipo')it.tipo=['pieza','insumo','proceso','manoobra'].includes(val)?val:'pieza';
+  else it[campo]=String(val).replace(/[<>]/g,'').slice(0,80);
+  estrGuardar();
+}
 function costosCfgEdit(campo,val){
   if(!S.cotConfig)S.cotConfig=Object.assign({},COT_CONFIG_DEFAULT);
   S.cotConfig[campo]=cotNumDec(val);
@@ -946,7 +987,7 @@ function costosAumentoMasivo(){
 }
 function costosSelTodos(v){document.querySelectorAll('.cot-sel').forEach(ch=>ch.checked=v);}
 function rCostos(){
-  const tabs=[['papeles','Papeles'],['impresion','Impresión'],['chapas','Chapas CTP'],['laminados','Laminados'],['otros','Procesos'],['config','Configuración'],['numeracion','Numeración']];
+  const tabs=[['papeles','Papeles'],['impresion','Impresión'],['chapas','Chapas CTP'],['laminados','Laminados'],['otros','Procesos'],['estructuras','Estructuras'],['config','Configuración'],['numeracion','Numeración']];
   const cfg=cotCfg();
   let h=`<div class="ph"><div><div class="pt">Tablas de costos</div><div class="ps">Cotizador offset SM52 / SM74 · Dólar efectivo (+${cfg.spreadPct}%): <strong>$ ${cotFmtDec(cotDolarEfectivo(),2)}</strong></div></div>
   <div style="display:flex;gap:6px">${!costosHayDatos()?`<button class="bp" onclick="costosSeed()"><i class="ti ti-database-import"></i> Cargar tablas iniciales del Excel</button>`:''}</div></div>`;
@@ -1065,6 +1106,45 @@ function rCostos(){
       <td>${delBtn('cotOtros',i)}</td></tr>`;
     });
     h+=`</table></div>`;
+  }
+  if(costosTab==='estructuras'){
+    const arr=S.cotEstructuras||[];
+    const tipos=(S.tiposTrabajo||[]);
+    h+=`<div class="card" style="padding:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:11px;color:#888;max-width:640px">Plantillas de ítems típicos por familia (ej. Bolsa, Estuche, Revista, Movie). Al cotizar podés <strong>armar la estructura</strong> y se cargan solos los ítems fijos; los opcionales aparecen para tildar. La IA también las usa para interpretar el pedido.</div>
+        <button class="bp" onclick="estrAdd()" style="font-size:11px;white-space:nowrap"><i class="ti ti-plus"></i> Nueva familia</button>
+      </div>`;
+    if(!arr.length){h+=`<div style="padding:20px;text-align:center;color:#999;font-size:13px">Todavía no hay estructuras. <button class="bp" onclick="estrSeed()" style="font-size:11px;margin-left:8px"><i class="ti ti-database-import"></i> Cargar las de fábrica</button></div>`;}
+    arr.forEach((e,ei)=>{
+      const items=e.items||[];
+      h+=`<div style="border:1px solid rgba(0,0,0,.12);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <i class="ti ti-box" style="color:#185fa5"></i>
+          <input value="${cotEsc(e.nombre||'')}" onchange="estrEdit(${ei},'nombre',this.value)" placeholder="Nombre de la familia" style="font-weight:700;color:#185fa5;font-size:14px;border:1px solid rgba(0,0,0,.15);border-radius:6px;padding:5px 8px;width:230px">
+          <span style="font-size:11px;color:#888">Tipo de trabajo:</span>
+          <select onchange="estrEdit(${ei},'tipoTrabajo',this.value)" style="padding:5px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px">
+            <option value="">— (ninguno) —</option>${tipos.map(t=>`<option value="${cotEsc(t)}" ${t===e.tipoTrabajo?'selected':''}>${cotEsc(t)}</option>`).join('')}</select>
+          <button onclick="estrDel(${ei})" title="Eliminar familia" style="border:none;background:none;color:#a32d2d;cursor:pointer;font-size:15px;margin-left:auto"><i class="ti ti-trash"></i></button>
+        </div>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+          <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th style="width:24%">Ítem</th><th style="width:14%">Tipo</th><th style="width:9%;text-align:center">Opcional</th><th style="width:14%">Material sug.</th><th style="width:9%">Colores</th><th>Nota</th><th></th></tr>`;
+      items.forEach((it,ii)=>{
+        h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.06)">
+          <td>${inpTxt(it.nombre,`estrItemEdit(${ei},${ii},'nombre',this.value)`,'100%')}</td>
+          <td><select onchange="estrItemEdit(${ei},${ii},'tipo',this.value)" style="padding:4px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px">
+            ${[['pieza','Pieza (papel)'],['insumo','Insumo'],['proceso','Proceso'],['manoobra','Mano de obra']].map(([v,l])=>`<option value="${v}" ${it.tipo===v?'selected':''}>${l}</option>`).join('')}</select></td>
+          <td style="text-align:center">${chk(it.opcional,`estrItemEdit(${ei},${ii},'opcional',this.checked)`)}</td>
+          <td>${inpTxt(it.defMaterial||'',`estrItemEdit(${ei},${ii},'defMaterial',this.value)`,'100%')}</td>
+          <td>${inpTxt(it.defColores||'',`estrItemEdit(${ei},${ii},'defColores',this.value)`,'60px')}</td>
+          <td>${inpTxt(it.nota||'',`estrItemEdit(${ei},${ii},'nota',this.value)`,'100%')}</td>
+          <td><button onclick="estrItemDel(${ei},${ii})" title="Quitar ítem" style="border:none;background:none;color:#a32d2d;cursor:pointer;font-size:13px"><i class="ti ti-x"></i></button></td></tr>`;
+      });
+      h+=`</table></div>
+        <button onclick="estrItemAdd(${ei})" style="font-size:11px;margin-top:8px"><i class="ti ti-plus"></i> Agregar ítem</button>
+      </div>`;
+    });
+    h+=`</div>`;
   }
   if(costosTab==='config'){
     const c=cfg;
@@ -1519,6 +1599,39 @@ let cotW=null, cotVista='editor';
 const COT_PROCESOS_SUGERIDOS=[
   {match:/packag/i,procesos:[{cod:5,auto:'pliegos'},{cod:4,auto:'unidades'}],nota:'Packaging → se agregaron Troquelado y Pegado'},
   {match:/follet/i,procesos:[{cod:2,auto:'unidades'}],nota:'Folletería → se agregó Doblado (x mill. de unidades)'}
+];
+// Estructuras por familia: esqueleto de ítems típicos de cada producto.
+// tipo: 'pieza' (lleva papel/impresión/costeo) · 'insumo' (cordón, troquel, acetato...) · 'proceso' (troquelado, pegado, abrochado...) · 'manoobra' (armado).
+// opcional: true = no se carga por defecto, aparece como casilla para tildar.
+const COT_ESTRUCTURAS_SEED=[
+  {id:1,nombre:'Bolsa',tipoTrabajo:'Bolsas',items:[
+    {nombre:'Cuerpo de bolsa',tipo:'pieza',opcional:false,nota:'1 o 2 cartulinas según la medida abierta',defMaterial:'Cartulina',defColores:''},
+    {nombre:'Fondo',tipo:'pieza',opcional:false,nota:'Cartulina lisa para tapar el pegado interno',defMaterial:'Cartulina',defColores:''},
+    {nombre:'Refuerzo',tipo:'pieza',opcional:true,nota:'Cartulina de refuerzo (boca/base)',defMaterial:'Cartulina',defColores:''},
+    {nombre:'Manija (cordón/cinta)',tipo:'insumo',opcional:false,nota:'Cordón o cinta según modelo',defMaterial:'',defColores:''},
+    {nombre:'Armado',tipo:'manoobra',opcional:false,nota:'Armado y pegado de la bolsa',defMaterial:'',defColores:''}
+  ]},
+  {id:2,nombre:'Estuche',tipoTrabajo:'Packaging',items:[
+    {nombre:'Cartulina impresa',tipo:'pieza',opcional:false,nota:'Cuerpo del estuche',defMaterial:'Cartulina',defColores:''},
+    {nombre:'Troquel',tipo:'insumo',opcional:false,nota:'De stock o a fabricar',defMaterial:'',defColores:''},
+    {nombre:'Troquelado',tipo:'proceso',opcional:false,nota:'',defMaterial:'',defColores:''},
+    {nombre:'Pegado lateral',tipo:'proceso',opcional:false,nota:'',defMaterial:'',defColores:''},
+    {nombre:'Laminado',tipo:'proceso',opcional:true,nota:'OPP mate/brillo o soft touch',defMaterial:'',defColores:''},
+    {nombre:'Hot stamping',tipo:'proceso',opcional:true,nota:'',defMaterial:'',defColores:''},
+    {nombre:'Laca sectorizada',tipo:'proceso',opcional:true,nota:'',defMaterial:'',defColores:''}
+  ]},
+  {id:3,nombre:'Revista / Catálogo',tipoTrabajo:'Revista / Catálogo',items:[
+    {nombre:'Tapa',tipo:'pieza',opcional:false,nota:'Mismo o distinto gramaje que el interior',defMaterial:'',defColores:'4/4'},
+    {nombre:'Interiores',tipo:'pieza',opcional:false,nota:'Múltiplo de 4 páginas: 12 / 16 / 24 / 32',defMaterial:'',defColores:'4/4'},
+    {nombre:'Laminado de tapa',tipo:'proceso',opcional:true,nota:'',defMaterial:'',defColores:''},
+    {nombre:'Abrochado',tipo:'proceso',opcional:false,nota:'',defMaterial:'',defColores:''}
+  ]},
+  {id:4,nombre:'Movie',tipoTrabajo:'P.O.P',items:[
+    {nombre:'Círculo en cartulina',tipo:'pieza',opcional:false,nota:'ø15 cm (troquel en stock)',defMaterial:'Cartulina',defColores:'4/0'},
+    {nombre:'Troquel acabocado',tipo:'insumo',opcional:false,nota:'Acabocado; el de ø15 ya está en stock',defMaterial:'',defColores:''},
+    {nombre:'Troquelado',tipo:'proceso',opcional:false,nota:'',defMaterial:'',defColores:''},
+    {nombre:'Tira de acetato con bifaz',tipo:'insumo',opcional:false,nota:'~12 cm, cinta bifaz en las dos puntas',defMaterial:'',defColores:''}
+  ]}
 ];
 function cotPiezaNueva(nombre){
   const cfg=cotCfg();
@@ -2314,6 +2427,21 @@ function cotDesdeItem(ii){
         const opt=aiCostearOptimo(cotW,s.colores);
         if(opt){pz.maquina=opt.maquina;pz.impCod=opt.impCod;}
         else{if(['SM52','SM74','Xerox'].includes(s.maquina))pz.maquina=s.maquina;const ic=aiMatchImp(s.colores,pz.maquina);if(ic)pz.impCod=ic;else faltan.push('Impresión'+(s.colores?' ('+s.colores+')':''));}
+        // Chapas (CTP): sólo offset. Cantidad = suma de colores frente+dorso (ej. 4/4→8). Xerox no lleva.
+        if(pz.maquina==='Xerox'){pz.chapasCod=0;pz.chapasCant=0;}
+        else{
+          const imp=(S.cotImpresion||[]).find(x=>x.codigo===pz.impCod);
+          pz.chapasCant=(imp&&imp.chapas)?imp.chapas:aiChapasDeColores(s.colores);
+          if(pz.maquina==='SM52')pz.chapasCod=2;else if(pz.maquina==='SM74')pz.chapasCod=3;else pz.chapasCod=aiMatchChapa(pz.maquina);
+          if(!pz.chapasCod)faltan.push('Chapas / CTP');
+          if(!pz.chapasCant)faltan.push('Cantidad de chapas'+(s.colores?' (colores '+s.colores+' no reconocidos)':' (faltan colores)'));
+        }
+        // Laminado / plastificado: va a la fila LAMINADO, no a procesos
+        if(s.laminado&&(s.laminado.tipo||'').trim()){
+          const lc=aiMatchLaminado(s.laminado.tipo);
+          if(lc){pz.lamCod=lc;pz.lamCaras=s.laminado.frenteYDorso?2:1;}
+          else faltan.push('Laminado'+(s.laminado.tipo?' ('+s.laminado.tipo+')':''));
+        }
         // Procesos / terminaciones: los que están en las tablas se agregan; los que no, van a "faltan"
         (s.procesos||[]).forEach(nm=>{const code=aiMatchProc(nm);if(code){if(!cotW.otros.some(o=>o.cod===code))cotW.otros.push({cod:code,cant:1,auto:'pliegos'});}else if(nm&&nm.trim())faltan.push('Costo de: '+nm);});
         try{cotAutoPoses(0);}catch(e){}
@@ -2711,7 +2839,7 @@ function nav(p){
 }
 let _lastRenderPg=null,_scrollPorPg={};
 function render(){
-  const fns={dash:rDash,cli:rCli,prov:rProv,cot:rCot,ot:rOT,seg:rSeg,papel:rPapel,plan:rPlan,entregas:rEntregasView,ficha:rFicha,rem:rRem,gas:rGas,analot:rAnalOT,tiempos:rTiempos,balmes:rBalMes,balaño:rBalAño,costos:rCostos,cotizador:rCotizador,insumos:rInsumos};
+  const fns={dash:rDash,cli:rCli,prov:rProv,cot:rCot,ot:rOT,seg:rSeg,papel:rPapel,plan:rPlan,entregas:rEntregasView,ficha:rFicha,rem:rRem,gas:rGas,analot:rAnalOT,tiempos:rTiempos,capacidad:rCapacidad,balmes:rBalMes,balaño:rBalAño,costos:rCostos,cotizador:rCotizador,insumos:rInsumos};
   const pg=Q('pg');
   // Guardar la posición de scroll de la página que estábamos viendo (para no saltar arriba al re-renderizar)
   if(pg&&_lastRenderPg!==null)_scrollPorPg[_lastRenderPg]=pg.scrollTop;
@@ -4208,6 +4336,22 @@ function cotSetFecha(id,campo,val){
 const SLOTS_AM=['06:30','07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00'];
 const SLOTS_PM=['13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30'];
 const ALL_SLOTS=[...SLOTS_AM,...SLOTS_PM];
+// Categorías de bloqueo/paro de máquina (tiempo improductivo) — con color para el plan
+const BLOQUEO_CATS=[
+  {id:'mant',label:'Mantenimiento programado',color:'#2f6fb0'},
+  {id:'repar',label:'Reparación / rotura',color:'#c0392b'},
+  {id:'mecanico',label:'Visita mecánico',color:'#b9770e'},
+  {id:'limpieza',label:'Limpieza',color:'#2e8b57'},
+  {id:'ajuste',label:'Ajuste de máquina',color:'#7a5199'},
+  {id:'cambio',label:'Cambio de pieza',color:'#8a6d3b'},
+  {id:'espera',label:'Esperando cliente / material',color:'#777777'},
+  {id:'feriado',label:'Feriado / sin turno',color:'#555555'},
+  {id:'otro',label:'Otro',color:'#666666'}
+];
+function bloqCat(id){return BLOQUEO_CATS.find(c=>c.id===id)||null;}
+function bloqCatColor(bl){const c=bl&&bl.cat?bloqCat(bl.cat):null;return c?c.color:'#9a9a92';}
+function bloqCatLabel(id){const c=bloqCat(id);return c?c.label:'';}
+function bloqCatStyle(bl){const c=bloqCatColor(bl);return `background:repeating-linear-gradient(45deg,${c}14,${c}14 6px,${c}2b 6px,${c}2b 12px);border-color:${c};color:${c}`;}
 // Lunes de la semana a mostrar. Lun-Sáb => lunes de ESTA semana. Domingo => lunes de la semana que viene
 // (el domingo no se trabaja, así que se muestra directamente la próxima semana de taller).
 function getLunes(off){const n=new Date();const d=n.getDay();const diff=d===0?1:1-d;const l=new Date(n);l.setDate(n.getDate()+diff+off*7);l.setHours(0,0,0,0);return l;}
@@ -4257,7 +4401,7 @@ function rCalSemanal(maq){
         const dur=bl.dur||1;
         const verde=bloqueHecho(bl,maq);
         h+=`<td style="padding:2px" rowspan="${dur}" onclick="om('editB','${maq}|${fecha}|${slot}')" ondragover="planDragOver(event)" ondragleave="planDragLeave(event)" ondrop="planDrop(event,'${maq.replace(/'/g,"\\'")}','${fecha}','${slot}')">`;
-        h+=`<div class="bloque ${col}" style="height:${dur*26-4}px;cursor:${verde?'default':'grab'}${verde?';background:#c0dd97;border-color:#3b6d11;color:#173a05':''}${bl.bloqueo?';background:repeating-linear-gradient(45deg,#eeeeea,#eeeeea 6px,#e2e2dc 6px,#e2e2dc 12px);border-color:#c9c9c2;color:#555':''}" draggable="${verde?'false':'true'}" ondragstart="planDragB(event,'${maq.replace(/'/g,"\\'")}','${fecha}','${slot}')"><button class="bx" onclick="event.stopPropagation();delBloque('${maq}','${fecha}','${slot}')">×</button>`;
+        h+=`<div class="bloque ${col}" style="height:${dur*26-4}px;cursor:${verde?'default':'grab'}${verde?';background:#c0dd97;border-color:#3b6d11;color:#173a05':''}${bl.bloqueo?';'+bloqCatStyle(bl):''}" draggable="${verde?'false':'true'}" ondragstart="planDragB(event,'${maq.replace(/'/g,"\\'")}','${fecha}','${slot}')"><button class="bx" onclick="event.stopPropagation();delBloque('${maq}','${fecha}','${slot}')">×</button>`;
         h+=ot?`<div style="font-weight:600">${ot.num} ${verde?'<i class="ti ti-circle-check" style="font-size:10px;color:#27500a"></i>':readyDot(ot,8)}</div><div style="font-size:9px;font-weight:600;color:${verde?'#27500a':'#185fa5'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cNomCorto(ot.clienteId)||''}</div><div style="font-size:9px;opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ot.descripcion||''}</div>${(()=>{const m=ot.material||{},im=ot.impresion||{};let r='';const l1=[im.colores||'',(m.fx&&m.fy)?m.fx+'×'+m.fy:''].filter(Boolean).join(' · ');if(l1)r+=`<div style="font-size:8px;opacity:.75">${l1}</div>`;const mat=[m.material||'',m.marca||'',m.grs?m.grs+'g':''].filter(Boolean).join(' ');if(mat)r+=`<div style="font-size:8px;opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${mat}</div>`;const cant=im.piezas||m.pliegos;if(cant)r+=`<div style="font-size:8px;opacity:.75">${Number(cant).toLocaleString('es-AR')} ${im.piezas?'pzs':'pliegos'}</div>`;return r;})()}`:(bl.bloqueo?`<div style="font-weight:600;font-size:10px"><i class="ti ti-alert-octagon" style="font-size:10px"></i> ${bl.texto||'Bloqueado'}</div>${bl.nota?`<div style="font-size:9px;opacity:.8">${bl.nota}</div>`:''}`:'?');
         if(ot&&bl.extra)h+=`<div style="font-size:9px;font-weight:700;color:#7c2fb0"><i class="ti ti-repeat" style="font-size:9px"></i> ${bl.pasada||'Pasada'}</div>`;
         if(bl.pasoNombre)h+=`<div style="font-size:9px;opacity:.7;font-style:italic">${bl.pasoNombre}</div>`;
@@ -4454,7 +4598,7 @@ function rTallerDiario(){
         const dur=bl.dur||1;
         const verde=bloqueHecho(bl,m);
         h+='<td style="padding:2px;vertical-align:top" rowspan="'+dur+'" onclick="planMaq=\''+m.replace(/'/g,"\\'")+'\';planOffset=0;render()">';
-        h+='<div class="bloque '+col+'" style="min-height:'+(dur*26-4)+'px'+(verde?';background:#c0dd97;border-color:#3b6d11;color:#173a05':'')+(bl.bloqueo?';background:repeating-linear-gradient(45deg,#eeeeea,#eeeeea 6px,#e2e2dc 6px,#e2e2dc 12px);border-color:#c9c9c2;color:#555':'')+'">';
+        h+='<div class="bloque '+col+'" style="min-height:'+(dur*26-4)+'px'+(verde?';background:#c0dd97;border-color:#3b6d11;color:#173a05':'')+(bl.bloqueo?';'+bloqCatStyle(bl):'')+'">';
         if(ot){
           h+='<div style="font-weight:600;font-size:11px">'+ot.num+(verde?' ✓':'')+'</div>';
           h+='<div style="font-size:9px;font-weight:600;color:#185fa5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+((cNom(ot.clienteId))||'')+'</div>';
@@ -5431,6 +5575,92 @@ function rTiempos(){
   return h;
 }
 
+// ===== Dashboard de Capacidad y Producción por máquina (desde el plan) =====
+function _capIso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function capRango(){
+  const P=window.capPeriodo||'sem',off=window.capOffset||0;
+  const now=new Date();now.setHours(12,0,0,0);
+  const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  if(P==='mes'){const d=new Date(now.getFullYear(),now.getMonth()+off,1);const f=new Date(d.getFullYear(),d.getMonth()+1,0);return {ini:_capIso(d),fin:_capIso(f),label:MES[d.getMonth()]+' '+d.getFullYear()};}
+  if(P==='anio'){const y=now.getFullYear()+off;return {ini:y+'-01-01',fin:y+'-12-31',label:'Año '+y};}
+  const d=new Date(now);const dow=(d.getDay()+6)%7;d.setDate(d.getDate()-dow+off*7);const f=new Date(d);f.setDate(f.getDate()+5);
+  const dm=x=>x.getDate()+'/'+(x.getMonth()+1);return {ini:_capIso(d),fin:_capIso(f),label:'Semana '+dm(d)+' al '+dm(f)};
+}
+function capDiasHabiles(ini,fin){let n=0,guard=0;const d=new Date(ini+'T12:00:00'),f=new Date(fin+'T12:00:00');while(d<=f&&guard++<400){if(d.getDay()!==0)n++;d.setDate(d.getDate()+1);}return n;}
+function capMetricas(maq,ini,fin){
+  const dias=(S.planificacion&&S.planificacion[maq])||{};
+  let prodH=0,improdH=0,pasadas=0,chapas=0,pliegos=0,extras=0;const improdCat={},otSet={};
+  for(const f in dias){if(f<ini||f>fin)continue;const day=dias[f];
+    for(const s in day){const b=day[s];if(!b||b.cont)continue;
+      const hrs=((b.modReal||b.dur||1))/2;
+      if(b.bloqueo){improdH+=hrs;const c=b.cat||'otro';improdCat[c]=(improdCat[c]||0)+hrs;continue;}
+      prodH+=hrs;pasadas++;if(b.extra)extras++;
+      if(b.otId){const o=S.ordenes.find(x=>x.id===b.otId);
+        if(o&&!otSet[o.id]){otSet[o.id]=1;const im=o.impresion||{},m=o.material||{};
+          pliegos+=(+im.pliegosBuenos||0)||(+im.pliegosCortados||0)||(+m.pliegos||0);
+          if(esMaqImpresion(maq)&&maq!=='Xerox')chapas+=aiChapasDeColores(im.colores||'');
+        }
+      }
+    }
+  }
+  const dh=capDiasHabiles(ini,fin),cap=dh*11;
+  return {prodH,improdH,improdCat,pasadas,extras,chapas,pliegos,cap,dh,util:cap>0?prodH/cap*100:0,vel:prodH>0?pliegos/prodH:0,trabajos:Object.keys(otSet).length};
+}
+function capSetPeriodo(p){window.capPeriodo=p;window.capOffset=0;render();}
+function capNav(d){window.capOffset=(window.capOffset||0)+d;render();}
+function capHoy(){window.capOffset=0;render();}
+function rCapacidad(){
+  if(!window.capPeriodo)window.capPeriodo='sem';if(window.capOffset==null)window.capOffset=0;
+  const R=capRango();
+  const fmtH=x=>{const v=Math.round(x*10)/10;return v===Math.floor(v)?String(v):v.toFixed(1);};
+  const conAct=Object.keys(S.planificacion||{}).filter(m=>{const mm=capMetricas(m,R.ini,R.fin);return mm.prodH>0||mm.improdH>0;});
+  const maqs=[...new Set([...(S.maquinas||[]).filter(esMaqImpresion),...conAct])];
+  const btn=(p,l)=>`<button onclick="capSetPeriodo('${p}')" style="padding:7px 16px;border-radius:8px;border:1px solid ${window.capPeriodo===p?'#185fa5':'rgba(0,0,0,.15)'};background:${window.capPeriodo===p?'#185fa5':'#fff'};color:${window.capPeriodo===p?'#fff':'#333'};font-size:12px;font-weight:600;cursor:pointer">${l}</button>`;
+  let h=`<div class="ph"><div><div class="pt">Capacidad y producción</div><div class="ps">Utilización, pasadas, chapas y velocidad · horas reales (o planificadas si no hay real cargado)</div></div></div>`;
+  h+=`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+    <div style="display:flex;gap:5px">${btn('sem','Semana')}${btn('mes','Mes')}${btn('anio','Año')}</div>
+    <div style="display:flex;align-items:center;gap:8px"><button onclick="capNav(-1)" style="padding:6px 11px">‹</button><strong style="font-size:13px;color:#185fa5;min-width:170px;text-align:center;display:inline-block">${R.label}</strong><button onclick="capNav(1)" style="padding:6px 11px">›</button>${window.capOffset!==0?`<button onclick="capHoy()" style="font-size:11px">Actual</button>`:''}</div>
+  </div>`;
+  if(!maqs.length){h+=`<div class="empty"><i class="ti ti-gauge"></i>No hay máquinas con producción en este período. Planificá trabajos y registrá tiempos para ver la utilización.</div>`;return h;}
+  let tot={prodH:0,improdH:0,cap:0,pasadas:0,chapas:0,pliegos:0,trabajos:0,imprPliegos:0,imprProdH:0};
+  const rows=maqs.map(m=>{const mm=capMetricas(m,R.ini,R.fin);tot.prodH+=mm.prodH;tot.improdH+=mm.improdH;tot.cap+=mm.cap;tot.pasadas+=mm.pasadas;tot.chapas+=mm.chapas;tot.pliegos+=mm.pliegos;tot.trabajos+=mm.trabajos;if(esMaqImpresion(m)){tot.imprPliegos+=mm.pliegos;tot.imprProdH+=mm.prodH;}return {m,mm};});
+  const totUtil=tot.cap>0?tot.prodH/tot.cap*100:0,totVel=tot.imprProdH>0?tot.imprPliegos/tot.imprProdH:0;
+  const kpi=(lbl,val,sub,col)=>`<div style="flex:1;min-width:118px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:10px;padding:11px 13px"><div style="font-size:10px;color:#888;font-weight:600;text-transform:uppercase">${lbl}</div><div style="font-size:20px;font-weight:700;color:${col||'#185fa5'}">${val}</div><div style="font-size:10px;color:#999">${sub||''}</div></div>`;
+  h+=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+    ${kpi('Utilización',fmtH(totUtil)+'%','de '+fmtH(tot.cap)+' h de capacidad')}
+    ${kpi('Horas productivas',fmtH(tot.prodH)+' h',tot.pasadas+' pasadas · '+tot.trabajos+' OTs')}
+    ${kpi('Improductivo',fmtH(tot.improdH)+' h','paros / mantenimiento','#c0392b')}
+    ${kpi('Chapas cambiadas',tot.chapas||'—','en impresión')}
+    ${kpi('Velocidad',totVel?Math.round(totVel).toLocaleString('es-AR'):'—','pliegos/hora')}
+  </div>`;
+  rows.forEach(({m,mm})=>{
+    const barU=Math.max(0,Math.min(100,Math.round(mm.util)));
+    const barI=mm.cap>0?Math.min(100-barU,Math.round(mm.improdH/mm.cap*100)):0;
+    const catChips=Object.keys(mm.improdCat).sort((a,b)=>mm.improdCat[b]-mm.improdCat[a]).map(c=>{const col=bloqCatColor({cat:c});return `<span style="display:inline-block;background:${col}1a;color:${col};border:1px solid ${col}55;border-radius:5px;padding:1px 7px;margin:2px;font-size:11px">${bloqCatLabel(c)||c}: ${fmtH(mm.improdCat[c])} h</span>`;}).join('');
+    h+=`<div class="card" style="padding:14px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <strong style="font-size:15px;color:#185fa5"><i class="ti ti-printer" style="margin-right:5px"></i>${m}</strong>
+        <span style="font-size:22px;font-weight:800;color:${mm.util>=70?'#2e8b57':mm.util>=40?'#b9770e':'#a32d2d'}">${fmtH(mm.util)}%<span style="font-size:11px;color:#999;font-weight:500"> util.</span></span>
+      </div>
+      <div style="height:16px;border-radius:8px;background:#eee;overflow:hidden;display:flex;margin-bottom:4px">
+        <div style="width:${barU}%;background:#2e8b57"></div>
+        <div style="width:${barI}%;background:repeating-linear-gradient(45deg,#d98a8a,#d98a8a 5px,#cc6666 5px,#cc6666 10px)"></div>
+      </div>
+      <div style="font-size:10px;color:#999;margin-bottom:12px">${fmtH(mm.prodH)} h productivas · ${fmtH(mm.improdH)} h paros · ${fmtH(mm.cap)} h capacidad (${mm.dh} días hábiles)</div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12px">
+        <div><div style="font-size:10px;color:#888">Pasadas / arranques</div><div style="font-size:17px;font-weight:700">${mm.pasadas}${mm.extras?` <span style="font-size:10px;color:#7c2fb0">(+${mm.extras} extra)</span>`:''}</div></div>
+        <div><div style="font-size:10px;color:#888">Trabajos (OTs)</div><div style="font-size:17px;font-weight:700">${mm.trabajos}</div></div>
+        <div><div style="font-size:10px;color:#888">Chapas cambiadas</div><div style="font-size:17px;font-weight:700">${mm.chapas||'—'}</div></div>
+        <div><div style="font-size:10px;color:#888">Pliegos</div><div style="font-size:17px;font-weight:700">${mm.pliegos.toLocaleString('es-AR')}</div></div>
+        <div><div style="font-size:10px;color:#888">Velocidad</div><div style="font-size:17px;font-weight:700;color:#185fa5">${mm.vel?Math.round(mm.vel).toLocaleString('es-AR'):'—'} <span style="font-size:10px;color:#999">pl/h</span></div></div>
+      </div>
+      ${catChips?`<div style="margin-top:10px;border-top:0.5px solid rgba(0,0,0,.06);padding-top:8px"><div style="font-size:10px;color:#888;margin-bottom:3px">Tiempo improductivo por causa</div>${catChips}</div>`:''}
+    </div>`;
+  });
+  h+=`<div style="font-size:11px;color:#999;margin-top:6px"><i class="ti ti-info-circle"></i> Capacidad = días hábiles (Lun-Sáb) × 11 h. Velocidad = pliegos impresos ÷ horas productivas. Chapas y pliegos salen de cada OT (colores y pliegos cargados); si una OT no los tiene, no suma.</div>`;
+  return h;
+}
+
 
 // ---- Ranking de vendedores: ventas netas + margen (costo REAL de Análisis OT×OT; si no hay, presupuestado de la ficha) ----
 function _sumFPD(c){if(!c)return 0;const f=c.fijos?Object.values(c.fijos).reduce((a,x)=>a+(x.monto||0),0):0;const p=c.procesos?c.procesos.reduce((a,x)=>a+(x.monto||0),0):0;const d=c.directos?c.directos.reduce((a,x)=>a+(x.monto||0),0):0;return f+p+d;}
@@ -5818,7 +6048,7 @@ function mNC2(){
 <div style="margin-bottom:9px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
     <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.05em">Ítems de venta</label>
-    <div style="display:flex;gap:6px"><button onclick="aiInterpretarAbrir()" title="Pegá el pedido del cliente y la IA precarga los ítems" style="background:#efe7fb;color:#6b28b6;border-color:#a855f7"><i class="ti ti-sparkles"></i> Interpretar pedido con IA</button><button onclick="addItemNuevo()"><i class="ti ti-plus"></i>Agregar ítem</button></div>
+    <div style="display:flex;gap:6px"><button onclick="aiInterpretarAbrir()" title="Pegá el pedido del cliente y la IA precarga los ítems" style="background:#efe7fb;color:#6b28b6;border-color:#a855f7"><i class="ti ti-sparkles"></i> Interpretar pedido con IA</button><button onclick="estrArmarAbrir()" title="Armar la cotización con la estructura típica de una familia" style="background:#e6f0fb;color:#185fa5;border-color:#7db3e8"><i class="ti ti-box"></i> Armar estructura</button><button onclick="addItemNuevo()"><i class="ti ti-plus"></i>Agregar ítem</button></div>
   </div>
   <div id="ci2"></div>
   <div style="display:flex;justify-content:flex-end;gap:12px;font-size:12px;margin-top:5px;padding:7px 10px;background:#f5f5f3;border-radius:7px"><span>Sub: <strong id="csd">$0</strong></span><span>IVA 21%: <strong id="cid2">$0</strong></span><span>Total venta: <strong id="ctd" style="color:#185fa5">$0</strong></span></div>
@@ -5855,26 +6085,83 @@ function _itemsState(){
 }
 // ===== Interpretar pedido con IA (Claude vía función de Netlify) =====
 function aiInterpretarAbrir(){
+  window._aiImgs=[];
   let ov=document.getElementById('ai-ov');
   if(!ov){ov=document.createElement('div');ov.id='ai-ov';ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(15,25,35,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px';document.body.appendChild(ov);}
   ov.innerHTML=`<div style="background:#fff;border-radius:12px;max-width:640px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.4)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong style="font-size:15px;color:#6b28b6"><i class="ti ti-sparkles"></i> Interpretar pedido con IA</strong><button onclick="aiCerrar()">✕</button></div>
-    <div style="font-size:12px;color:#666;margin-bottom:8px">Pegá el pedido del cliente (mail, WhatsApp o texto). La IA precarga los ítems (nombre, descripción, cantidad, material, máquina, colores, terminaciones) para que <b>revises y apruebes</b>.</div>
-    <textarea id="ai-pedido" rows="8" placeholder="Ej: Hola, necesito 300 tarjetones dípticos 14x10 cm abierto, cartulina, impresos de los dos lados, con troquelado..." style="width:100%;font-size:13px;padding:10px;border:1px solid rgba(0,0,0,.2);border-radius:8px;resize:vertical"></textarea>
-    <div style="font-size:11px;color:#a35b00;margin-top:6px">Reemplaza los ítems que tengas cargados ahora en esta cotización.</div>
+    <div style="font-size:12px;color:#666;margin-bottom:8px">Pegá el pedido del cliente (mail, WhatsApp o texto) <b>y/o una imagen</b> (captura de un Excel, foto de una tabla). La IA precarga los ítems para que <b>revises y apruebes</b>.</div>
+    <textarea id="ai-pedido" rows="7" placeholder="Ej: Hola, necesito 300 tarjetones dípticos 14x10 cm abierto, cartulina, impresos de los dos lados, con troquelado... — o pegá una captura con Ctrl+V." style="width:100%;font-size:13px;padding:10px;border:1px solid rgba(0,0,0,.2);border-radius:8px;resize:vertical"></textarea>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#185fa5;border:1px dashed #7db3e8;border-radius:8px;padding:6px 10px;cursor:pointer;background:#f2f8ff">
+        <i class="ti ti-photo-plus"></i> Adjuntar imagen
+        <input type="file" accept="image/*" multiple onchange="aiImgFiles(this)" style="display:none">
+      </label>
+      <span style="font-size:11px;color:#888">o pegá una captura con <b>Ctrl+V</b> (JPG/PNG, hasta 4)</span>
+    </div>
+    <div id="ai-imgs" style="margin-top:8px"></div>
+    <div style="font-size:11px;color:#a35b00;margin-top:8px">Reemplaza los ítems que tengas cargados ahora en esta cotización.</div>
     <div class="mf" style="margin-top:12px"><button onclick="aiCerrar()">Cancelar</button><button id="ai-go" class="bp" onclick="aiInterpretar()"><i class="ti ti-wand"></i> Interpretar</button></div>
   </div>`;
-  setTimeout(()=>{const t=Q('ai-pedido');if(t)t.focus();},60);
+  setTimeout(()=>{const t=Q('ai-pedido');if(t)t.focus();if(ov)ov.addEventListener('paste',aiPasteHandler);},60);
 }
-function aiCerrar(){const ov=document.getElementById('ai-ov');if(ov)ov.remove();}
+function aiCerrar(){const ov=document.getElementById('ai-ov');if(ov){ov.removeEventListener('paste',aiPasteHandler);ov.remove();}window._aiImgs=[];}
+// ---- Imágenes para la IA (pegar o adjuntar) ----
+function aiImgsState(){if(!Array.isArray(window._aiImgs))window._aiImgs=[];return window._aiImgs;}
+function aiImgRender(){
+  const cont=Q('ai-imgs');if(!cont)return;
+  const imgs=aiImgsState();
+  cont.innerHTML=imgs.map((im,i)=>`<div style="position:relative;display:inline-block;margin:0 6px 6px 0;vertical-align:top">
+    <img src="${im.dataUrl}" style="height:66px;width:auto;max-width:130px;border:1px solid rgba(0,0,0,.2);border-radius:6px;display:block;object-fit:cover">
+    <button onclick="aiImgRemove(${i})" title="Quitar" style="position:absolute;top:-8px;right:-8px;background:#a32d2d;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;line-height:1">✕</button>
+  </div>`).join('');
+}
+function aiImgRemove(i){aiImgsState().splice(i,1);aiImgRender();}
+function aiImgFiles(input){const files=[...(input.files||[])];input.value='';aiAddFiles(files);}
+function aiAddFiles(files){
+  const imgs=aiImgsState();
+  files.filter(f=>/^image\//.test(f.type||'')).forEach(f=>{
+    if(aiImgsState().length>=4){alert('Máximo 4 imágenes.');return;}
+    const r=new FileReader();
+    r.onload=()=>aiDownscale(r.result,res=>{if(res&&aiImgsState().length<4){aiImgsState().push(res);aiImgRender();}});
+    r.readAsDataURL(f);
+  });
+}
+function aiDownscale(dataUrl,cb){
+  const img=new Image();
+  img.onload=()=>{
+    let w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;const max=1600;
+    if(w>max||h>max){const s=max/Math.max(w,h);w=Math.round(w*s);h=Math.round(h*s);}
+    try{
+      const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+      const ctx=cv.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);
+      const out=cv.toDataURL('image/jpeg',0.85);
+      cb({dataUrl:out,data:out.split(',')[1]||'',mediaType:'image/jpeg'});
+    }catch(e){alert('No se pudo procesar la imagen.');cb(null);}
+  };
+  img.onerror=()=>{alert('No se pudo leer la imagen.');cb(null);};
+  img.src=dataUrl;
+}
+function aiPasteHandler(e){
+  const items=(e.clipboardData&&e.clipboardData.items)||[];
+  const files=[];
+  for(const it of items){if(it&&it.type&&it.type.indexOf('image')===0){const f=it.getAsFile();if(f)files.push(f);}}
+  if(files.length){e.preventDefault();aiAddFiles(files);}
+}
 async function aiInterpretar(){
-  const t=Q('ai-pedido');if(!t)return;const pedido=t.value.trim();if(!pedido){alert('Pegá el pedido del cliente');return;}
+  const t=Q('ai-pedido');if(!t)return;const pedido=t.value.trim();
+  const imagenes=aiImgsState().map(im=>({mediaType:im.mediaType,data:im.data})).filter(im=>im.data);
+  if(!pedido&&!imagenes.length){alert('Pegá el pedido del cliente o adjuntá una imagen.');return;}
   const btn=Q('ai-go');if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Interpretando…';}
   try{
     const materiales=[...new Set((S.cotPapeles||[]).map(p=>(p.descripcion||'').trim()).filter(Boolean))].slice(0,50);
+    const laminados=[...new Set((S.cotLaminados||[]).filter(l=>l&&l.activo!==false&&l.codigo).map(l=>(l.material||'').trim()).filter(Boolean))].slice(0,30);
+    const procesos=[...new Set((S.cotOtros||[]).filter(o=>o&&o.codigo).map(o=>(o.concepto||'').trim()).filter(Boolean))].slice(0,50);
     const maquinas=(S.maquinas||[]).filter(m=>/sm\d|xerox/i.test(m));
-    const contexto={tiposTrabajo:S.tiposTrabajo||[],maquinas:maquinas.length?maquinas:['SM52','SM74','Xerox'],materiales};
-    const resp=await fetch('/.netlify/functions/interpretar',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pedido,contexto})});
+    // Esqueleto de estructuras por familia: para que la IA arme la cotización con los ítems típicos
+    const estructuras=(S.cotEstructuras||[]).map(e=>({familia:e.nombre,tipoTrabajo:e.tipoTrabajo||'',items:(e.items||[]).map(it=>({nombre:it.nombre,tipo:it.tipo,opcional:!!it.opcional,nota:it.nota||''}))})).slice(0,20);
+    const contexto={tiposTrabajo:S.tiposTrabajo||[],maquinas:maquinas.length?maquinas:['SM52','SM74','Xerox'],materiales,laminados,procesos,estructuras};
+    const resp=await fetch('/.netlify/functions/interpretar',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pedido,contexto,imagenes})});
     const data=await resp.json();
     if(!resp.ok){alert('IA: '+(data.error||('error '+resp.status)));return;}
     aiAplicar(data);
@@ -5906,12 +6193,36 @@ function aiMatchImp(colores,maquina){
   imps.forEach(x=>{let s=0;const d=norm(x.descripcion);if(c&&d.includes(c))s+=4;if(maq&&x.maquina===maq)s+=2;if(s>bs){bs=s;best=x;}});
   return (bs>=4&&best)?best.codigo:0;
 }
-// Matchear una terminación/proceso sugerido a un código de las tablas (cotOtros)
+// Matchear una terminación/proceso a un código (cotOtros), con sinónimos del rubro
 function aiMatchProc(nombre){
   const arr=(S.cotOtros||[]).filter(x=>x&&x.codigo);const n=String(nombre||'').toLowerCase().trim();if(!n)return 0;
+  const syn={'plegado':'doblado','trazado':'doblado','hendido':'doblado','doblez':'doblado','troquel':'troquelado','espiralado':'anillado','pegado':'encolado','abrochado':'encuaderna'};
+  const terms=[n,...Object.keys(syn).filter(k=>n.includes(k)).map(k=>syn[k])];
   let best=0,bs=0;
-  arr.forEach(x=>{const d=String(x.concepto||'').toLowerCase();let s=0;if(d&&(d.includes(n)||n.includes(d)))s+=3;n.split(/\s+/).forEach(t=>{if(t.length>=4&&d.includes(t))s+=1;});if(s>bs){bs=s;best=x.codigo;}});
+  arr.forEach(x=>{const d=String(x.concepto||'').toLowerCase();let s=0;terms.forEach(tt=>{if(d.includes(tt)||tt.includes(d))s+=3;tt.split(/\s+/).forEach(t=>{if(t.length>=4&&d.includes(t))s+=1;});});if(s>bs){bs=s;best=x.codigo;}});
   return bs>=3?best:0;
+}
+// Matchear el laminado sugerido a un código de cotLaminados
+function aiMatchLaminado(tipo){
+  const arr=(S.cotLaminados||[]).filter(x=>x&&x.codigo&&x.activo!==false);if(!arr.length)return 0;
+  const t=String(tipo||'').toLowerCase();if(!t)return 0;
+  const toks=t.replace(/[^a-záéíóúñ ]/gi,' ').split(/\s+/).filter(w=>w.length>=3);
+  let best=0,bs=0;
+  arr.forEach(x=>{const d=String(x.material||'').toLowerCase();let s=0;if(d.includes(t)||t.includes(d))s+=3;toks.forEach(w=>{if(d.includes(w))s+=1;});if(/opp/.test(t)&&/opp/.test(d))s+=2;if(/soft/.test(t)&&/soft/.test(d))s+=2;if(/mate/.test(t)&&/mate/.test(d))s+=1;if(/(brillo|bril)/.test(t)&&/(brillo|bril|bte)/.test(d))s+=1;if(s>bs){bs=s;best=x.codigo;}});
+  return bs>=2?best:0;
+}
+// Cantidad de chapas según los colores (ej. "4/4" → 8, "4/0" → 4, "4/1" → 5)
+function aiChapasDeColores(colores){
+  const c=String(colores||'').replace(/\s/g,'');const m=c.match(/(\d+)\s*\/\s*(\d+)/);
+  if(m)return (parseInt(m[1])||0)+(parseInt(m[2])||0);
+  const one=c.match(/(\d+)/);return one?parseInt(one[1])||0:0;
+}
+// Elegir un código de chapa CTP (preferí el que menciona la máquina)
+function aiMatchChapa(maquina){
+  const arr=(S.cotChapas||[]).filter(x=>x&&x.codigo);if(!arr.length)return 0;
+  const m=String(maquina||'').toLowerCase();
+  const byMaq=arr.find(x=>m&&String(x.descripcion||'').toLowerCase().includes(m));
+  return (byMaq||arr[0]).codigo;
 }
 // Probar el costo en todas las máquinas donde entra el pliego y devolver la más económica
 function aiCostearOptimo(cotW,colores){
@@ -5931,12 +6242,16 @@ function aiCostearOptimo(cotW,colores){
 }
 function aiAplicar(data){
   const items=_itemsState();items.length=0;
+  const familia=(data.familia||data.estructura||'').trim();
   (data.items||[]).forEach(ai=>{
     const cants=(Array.isArray(ai.cantidades)&&ai.cantidades.length)?ai.cantidades:[0];
     const filas=cants.map(q=>({qty:+q||0,subtotal:0,precio:0}));
     // La descripción que ve el cliente queda limpia; los datos técnicos van a aiSug (interno, no sale en PDF)
     const desc=(ai.descripcion||'').trim();
-    items.push({nombre:String(ai.nombre||'').slice(0,60),desc,filas,aiSug:{maquina:ai.maquina||'',material:ai.material||'',gramaje:ai.gramaje||'',medidaAbierta:ai.medidaAbierta||null,medidaCerrada:ai.medidaCerrada||'',colores:ai.colores||'',procesos:Array.isArray(ai.procesos)?ai.procesos:[]}});
+    const rol=['pieza','insumo','proceso','manoobra'].includes(ai.rol)?ai.rol:'';
+    const it={nombre:String(ai.nombre||'').slice(0,60),desc,filas,aiSug:{maquina:ai.maquina||'',material:ai.material||'',gramaje:ai.gramaje||'',medidaAbierta:ai.medidaAbierta||null,medidaCerrada:ai.medidaCerrada||'',colores:ai.colores||'',laminado:ai.laminado||null,procesos:Array.isArray(ai.procesos)?ai.procesos:[]}};
+    if(rol)it.estrTipo=rol;if(familia)it.estrFamilia=familia;
+    items.push(it);
   });
   if(!items.length)items.push({nombre:'',desc:'',filas:[{qty:0,subtotal:0,precio:0}]});
   if(data.tipoTrabajo){const sel=Q('cd');if(sel){if(![...sel.options].some(o=>o.value===data.tipoTrabajo)){if(!S.tiposTrabajo.includes(data.tipoTrabajo)){S.tiposTrabajo.push(data.tipoTrabajo);sk('tiposTrabajo');}const o=document.createElement('option');o.value=data.tipoTrabajo;o.textContent=data.tipoTrabajo;sel.appendChild(o);}sel.value=data.tipoTrabajo;}}
@@ -6077,6 +6392,68 @@ function _leerItemsDOMNuevo(){
 
 // Inicializar el estado con 1 ítem vacío al abrir formulario
 function initItemsNuevo(){window._cotItems=[{nombre:'',desc:'',filas:[{qty:0,subtotal:0,precio:0}]}];_renderItems();}
+// ===== Armar estructura de una familia en la cotización =====
+const ESTR_TIPO_LBL={pieza:'Pieza (papel)',insumo:'Insumo',proceso:'Proceso',manoobra:'Mano de obra'};
+function estrArmarAbrir(sel){
+  const arr=S.cotEstructuras||[];
+  let ov=document.getElementById('estr-armar');
+  if(!ov){ov=document.createElement('div');ov.id='estr-armar';ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(15,25,35,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:28px';document.body.appendChild(ov);}
+  if(!arr.length){ov.innerHTML=`<div style="background:#fff;border-radius:12px;max-width:440px;width:100%;padding:20px;margin-top:40px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong style="color:#185fa5"><i class="ti ti-box"></i> Armar estructura</strong><button onclick="estrArmarCerrar()">✕</button></div><div style="font-size:13px;color:#666">No hay estructuras cargadas. Andá a <strong>Tablas de costos → Estructuras</strong> para crearlas.</div></div>`;return;}
+  const e=(sel!=null&&arr[sel])?arr[sel]:null;
+  let h=`<div style="background:#f4f6f8;border-radius:12px;max-width:640px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.4);margin:20px 0">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:15px;color:#185fa5"><i class="ti ti-box"></i> Armar estructura</strong><button onclick="estrArmarCerrar()">✕</button></div>`;
+  if(!e){
+    h+=`<div style="font-size:12px;color:#666;margin-bottom:10px">Elegí la familia. Se cargan los ítems fijos y podés tildar los opcionales.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">`;
+    arr.forEach((x,i)=>{h+=`<button onclick="estrArmarAbrir(${i})" style="padding:12px 16px;border:1px solid #7db3e8;border-radius:10px;background:#fff;cursor:pointer;text-align:left;min-width:150px">
+      <div style="font-weight:700;color:#185fa5;font-size:14px"><i class="ti ti-box"></i> ${cotEsc(x.nombre||'')}</div>
+      <div style="font-size:10px;color:#888;margin-top:3px">${(x.items||[]).length} ítems${x.tipoTrabajo?' · '+cotEsc(x.tipoTrabajo):''}</div></button>`;});
+    h+=`</div>`;
+  } else {
+    const items=e.items||[];
+    h+=`<div style="font-size:12px;color:#666;margin-bottom:8px">Familia <strong style="color:#185fa5">${cotEsc(e.nombre)}</strong>. Destildá lo que no lleve este trabajo; tildá los opcionales que sí.</div>
+    <div style="background:#fff;border-radius:8px;padding:6px 4px;max-height:52vh;overflow:auto">`;
+    items.forEach((it,ii)=>{
+      h+=`<label style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-bottom:0.5px solid rgba(0,0,0,.06);cursor:pointer">
+        <input type="checkbox" class="estr-arm-chk" data-ii="${ii}" ${it.opcional?'':'checked'} style="width:16px;height:16px;accent-color:#185fa5">
+        <span style="flex:1"><span style="font-weight:600;font-size:13px">${cotEsc(it.nombre)}</span>
+          <span style="font-size:10px;color:#fff;background:${it.tipo==='pieza'?'#185fa5':it.tipo==='proceso'?'#c47d16':it.tipo==='insumo'?'#7a5199':'#4a8c4a'};border-radius:4px;padding:1px 6px;margin-left:6px">${ESTR_TIPO_LBL[it.tipo]||it.tipo}</span>
+          ${it.opcional?'<span style="font-size:10px;color:#999;margin-left:5px">opcional</span>':''}
+          ${it.nota?`<div style="font-size:11px;color:#888;margin-top:2px">${cotEsc(it.nota)}</div>`:''}</span></label>`;
+    });
+    h+=`</div>
+    <div style="display:flex;justify-content:space-between;gap:8px;margin-top:14px">
+      <button onclick="estrArmarAbrir()"><i class="ti ti-arrow-left"></i> Volver</button>
+      <div style="display:flex;gap:8px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#666"><input type="checkbox" id="estr-arm-reemplazar" style="width:15px;height:15px;accent-color:#185fa5"> Reemplazar ítems actuales</label>
+        <button class="bp" onclick="estrArmarAplicar(${sel})"><i class="ti ti-check"></i> Armar</button>
+      </div></div>`;
+  }
+  h+=`</div>`;
+  ov.innerHTML=h;
+}
+function estrArmarCerrar(){const ov=document.getElementById('estr-armar');if(ov)ov.remove();}
+function estrArmarAplicar(sel){
+  const e=(S.cotEstructuras||[])[sel];if(!e)return;
+  const marcados=[...document.querySelectorAll('#estr-armar .estr-arm-chk:checked')].map(c=>parseInt(c.dataset.ii));
+  const reemplazar=!!(document.getElementById('estr-arm-reemplazar')||{}).checked;
+  const items=_itemsState();
+  if(reemplazar)items.length=0;
+  // Si sólo hay un ítem vacío (cotización nueva), lo sacamos
+  if(items.length===1&&!items[0].nombre&&!(items[0].desc||'').trim()&&!(items[0].filas||[]).some(f=>f.qty))items.length=0;
+  (e.items||[]).forEach((it,ii)=>{
+    if(!marcados.includes(ii))return;
+    const nuevo={nombre:String(it.nombre||'').slice(0,60),desc:it.nota||'',filas:[{qty:0,subtotal:0,precio:0}],estrTipo:it.tipo,estrFamilia:e.nombre};
+    // Para las piezas (llevan papel) dejamos una sugerencia para que el costeo prellene material/colores
+    if(it.tipo==='pieza'&&(it.defMaterial||it.defColores)){nuevo.aiSug={maquina:'',material:it.defMaterial||'',gramaje:'',medidaAbierta:null,medidaCerrada:'',colores:it.defColores||'',laminado:null,procesos:[]};}
+    items.push(nuevo);
+  });
+  if(!items.length)items.push({nombre:'',desc:'',filas:[{qty:0,subtotal:0,precio:0}]});
+  // Fijar el tipo de trabajo si la estructura lo define y no hay uno elegido
+  if(e.tipoTrabajo){const sel2=Q('cd');if(sel2&&!sel2.value){if([...sel2.options].some(o=>o.value===e.tipoTrabajo))sel2.value=e.tipoTrabajo;}}
+  estrArmarCerrar();
+  _renderItems();
+}
 // ¿La cotización tiene variantes de cantidad? (algún ítem con más de una fila)
 // Si las tiene, el total queda en $0 hasta que el cliente elija cantidades al aprobar,
 // para no dar a entender que el presupuesto es la opción más barata.
@@ -6328,6 +6705,7 @@ function confirmarDistribucionOTs(cotId){
   const baseId=nid('ot');
   const letras=Object.keys(grupos).sort((a,b)=>Number(a)-Number(b));
   const multiOT=letras.length>1;
+  const nuevasOTids=[];
   const _hoyD=new Date().toISOString().slice(0,10);
   // Entrega = hoy (ingreso de la OT) + días hábiles del plazo de la cotización
   const _entD=(typeof addDiasHabiles==='function'&&(+c.plazo)>0)?addDiasHabiles(_hoyD,+c.plazo):(c.entrega||'');
@@ -6357,10 +6735,47 @@ function confirmarDistribucionOTs(cotId){
       itemsOT:g.entradas.map(e=>({desc:e.item.desc,qty:e.item.qty,precio:e.item.precio,subtotal:e.item.subtotal,piezaIdx:e.piezaIdx,piezaNombre:e.piezaNombre,comunes:e.comunes}))
     });
     sk('ordenes');
+    nuevasOTids.push(idOT);
     crearFichaAuto(S.ordenes[S.ordenes.length-1],c);
   });
   window._dotRows=null;
-  cm();render();
+  cm();
+  if(nuevasOTids.length)modHorasEstimAbrir(nuevasOTids);else render();
+}
+// ===== Horas estimadas de producción — al generar la OT =====
+function _modToHoras(m){const h=(m||0)/2;return (h===Math.floor(h))?String(h):h.toFixed(1);}
+function modHorasEstimAbrir(ids){
+  const ots=ids.map(id=>S.ordenes.find(o=>o.id===id)).filter(Boolean);
+  if(!ots.length){render();return;}
+  let ov=document.getElementById('he-ov');
+  if(!ov){ov=document.createElement('div');ov.id='he-ov';ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(15,25,35,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px';document.body.appendChild(ov);}
+  let h=`<div style="background:#fff;border-radius:12px;max-width:560px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.4)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong style="font-size:15px;color:#185fa5"><i class="ti ti-clock-hour-4"></i> Horas estimadas de producción</strong><button onclick="modHorasEstimCerrar()">✕</button></div>
+    <div style="font-size:12px;color:#666;margin-bottom:12px">¿Cuánto tiempo de máquina estimás para cada orden? Se usa para dimensionar el bloque en el plan de producción (podés ajustarlo después).</div>
+    <div style="max-height:56vh;overflow:auto">`;
+  ots.forEach(o=>{
+    const hEst=o.horasEstim!=null?o.horasEstim:1;
+    h+=`<div style="display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:0.5px solid rgba(0,0,0,.07)">
+      <div style="flex:1;min-width:0"><div style="font-weight:700;color:#185fa5;font-size:13px">${o.num}</div><div style="font-size:11px;color:#777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${cotEsc(o.descripcion||'')}</div></div>
+      <div style="display:flex;align-items:center;gap:5px"><input id="he-${o.id}" type="number" step="0.5" min="0.5" value="${hEst}" style="width:72px;padding:6px;border:1px solid rgba(0,0,0,.2);border-radius:6px;font-size:13px;text-align:right"><span style="font-size:12px;color:#666">horas</span></div>
+    </div>`;
+  });
+  h+=`</div>
+    <div class="mf" style="margin-top:14px"><button onclick="modHorasEstimCerrar()">Más tarde</button><button class="bp" onclick='modHorasEstimGuardar(${JSON.stringify(ots.map(o=>o.id))})'><i class="ti ti-check"></i> Guardar estimaciones</button></div>
+  </div>`;
+  ov.innerHTML=h;
+}
+function modHorasEstimCerrar(){const ov=document.getElementById('he-ov');if(ov)ov.remove();render();}
+function modHorasEstimGuardar(ids){
+  (ids||[]).forEach(id=>{
+    const o=S.ordenes.find(x=>x.id===id);if(!o)return;
+    const el=document.getElementById('he-'+id);if(!el)return;
+    const h=Math.max(0.5,parseFloat(el.value)||1);
+    o.horasEstim=h;o.modEstim=Math.max(1,Math.round(h*2));
+  });
+  sk('ordenes');
+  const ov=document.getElementById('he-ov');if(ov)ov.remove();
+  render();
 }
 // Terminación para buildPasos según entradas (pieza-aware): laminado de ESA pieza; procesos comunes solo donde corresponde
 function _terminacionDesdeRows(cot,entradas){
@@ -6838,9 +7253,10 @@ function mNewBloque(data){
 <div style="text-align:center;font-size:11px;color:#aaa;margin:6px 0">— o agregá una pasada / reimpresión de una OT ya planificada —</div>
 <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px">${['Frente','Dorso','Reimpresión','2da pasada'].map(pz=>`<button type="button" onclick="Q('b-pasada').value='${pz}'" style="font-size:11px;padding:3px 8px">${pz}</button>`).join('')}</div>
 <div class="fr"><div class="fg"><label>OT ya planificada</label><select id="b-ot2"><option value="">— Elegir —</option>${otsPlanif.map(o=>`<option value="${o.id}">${o.num} — ${o.descripcion.substring(0,26)}</option>`).join('')}</select></div><div class="fg"><label>Pasada / motivo</label><input id="b-pasada" placeholder="Frente / Dorso / Reimpresión"></div></div>
-<div style="text-align:center;font-size:11px;color:#aaa;margin:6px 0">— o bloqueá el horario por otro motivo (sin OT) —</div>
-<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px">${['Mantenimiento','Visita mecánico','Esperando cliente','Limpieza','Ajuste de máquina','Feriado'].map(mt=>`<button type="button" onclick="Q('b-motivo').value='${mt}'" style="font-size:11px;padding:3px 8px">${mt}</button>`).join('')}</div>
-<div class="fr"><div class="fg"><label>Motivo / nota libre</label><input id="b-motivo" placeholder="Ej: mantenimiento, esperando OK del cliente..."></div></div>
+<div style="text-align:center;font-size:11px;color:#aaa;margin:6px 0">— o bloqueá el horario por paro / mantenimiento (tiempo improductivo, sin OT) —</div>
+<input type="hidden" id="b-cat">
+<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px">${BLOQUEO_CATS.map(c=>`<button type="button" onclick="Q('b-cat').value='${c.id}';if(!Q('b-motivo').value)Q('b-motivo').value='${c.label}';document.querySelectorAll('.blq-chip').forEach(x=>x.style.outline='');this.style.outline='2px solid ${c.color}'" class="blq-chip" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid ${c.color};color:${c.color};background:#fff">${c.label}</button>`).join('')}</div>
+<div class="fr"><div class="fg"><label>Detalle del paro (opcional)</label><input id="b-motivo" placeholder="Ej: se rompió la cinta de transporte, hubo que cambiarla..."></div></div>
 <div class="fr"><div class="fg"><label>Duración</label><select id="b-dur"><option value="1">30 min</option><option value="2">1 hora</option><option value="3">1:30 hs</option><option value="4">2 horas</option><option value="6">3 horas</option><option value="8">4 horas</option></select></div><div class="fg"><label>Nota (OT)</label><input id="b-nota" placeholder="Opcional..."></div></div>
 <div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="savBloque('${data}')"><i class="ti ti-check"></i>Guardar</button></div>`;
 }
@@ -6863,12 +7279,14 @@ function mEditBloque(data){
 <div class="kv"><span class="kk">Máquina / Externo</span><span class="kval">${maq}</span></div>
 <div class="kv"><span class="kk">Fecha</span><span class="kval">${DIAS[d.getDay()]} ${d.getDate()}/${MESES[d.getMonth()]}</span></div>
 <div class="kv"><span class="kk">Hora</span><span class="kval">${slot}</span></div>
-${b.bloqueo?`<div class="kv"><span class="kk">Motivo</span><span class="kval" style="max-width:70%"><input value="${(b.texto||'').replace(/"/g,'&quot;')}" onchange="bloqueSetTexto('${maq}','${fecha}','${slot}',this.value)" style="width:100%;font-size:12px"></span></div>`:''}
+${b.bloqueo?`<div class="kv"><span class="kk">Categoría</span><span class="kval" style="max-width:72%"><select onchange="bloqueSetCat('${maq}','${fecha}','${slot}',this.value)" style="width:100%;font-size:12px">${BLOQUEO_CATS.map(c=>`<option value="${c.id}"${(b.cat||'otro')===c.id?' selected':''}>${c.label}</option>`).join('')}</select></span></div>
+<div class="kv"><span class="kk">Detalle</span><span class="kval" style="max-width:72%"><input value="${(b.texto||'').replace(/"/g,'&quot;')}" onchange="bloqueSetTexto('${maq}','${fecha}','${slot}',this.value)" style="width:100%;font-size:12px" placeholder="Ej: se rompió la cinta de transporte..."></span></div>`:''}
 ${ot?`<div class="kv"><span class="kk">OT</span><span class="kval"><span class="badge ${otCol(ot.id)}">${ot.num}</span> ${ot.descripcion}</span></div>`:''}
 ${ot?`<div class="kv"><span class="kk">Cliente</span><span class="kval">${cNom(ot.clienteId)}</span></div><div class="kv"><span class="kk">Entrega</span><span class="kval">${ot.entrega||'—'}</span></div>`+(()=>{const m=ot.material||{},im=ot.impresion||{};let r='';if(m.material||m.grs||m.fx)r+=`<div class="kv"><span class="kk">Material / pliego</span><span class="kval">${m.material||''} ${m.marca||''} ${m.grs?m.grs+'g':''}${(m.fx&&m.fy)?' · '+m.fx+'×'+m.fy+' cm':''}</span></div>`;if(im.colores||im.frente||im.dorso)r+=`<div class="kv"><span class="kk">Colores</span><span class="kval">${im.colores||''}${im.frente?' · Frente: '+im.frente:''}${im.dorso?' / Dorso: '+im.dorso:''}</span></div>`;if(im.piezas||im.maquina)r+=`<div class="kv"><span class="kk">Cantidad / máquina</span><span class="kval">${im.piezas?Number(im.piezas).toLocaleString('es-AR')+' pzs':''}${im.maquina?' · '+im.maquina:''}</span></div>`;return r;})():''}
 ${b.extra?`<div class="kv"><span class="kk">Pasada</span><span class="kval" style="color:#7c2fb0;font-weight:600">↻ ${b.pasada||'Pasada'}</span></div>`:''}
 ${b.pasoNombre?`<div class="kv"><span class="kk">Paso</span><span class="kval">${b.pasoNombre}</span></div>`:''}
 ${b.nota?`<div class="kv"><span class="kk">Nota</span><span class="kval">${b.nota}</span></div>`:''}
+${(ot&&Array.isArray(ot.procesosExtra)&&ot.procesosExtra.length)?`<div class="kv"><span class="kk">Extras</span><span class="kval" style="max-width:72%">${ot.procesosExtra.map(pe=>`<span style="display:inline-block;background:#f3e8fb;color:#7c2fb0;border-radius:5px;padding:1px 7px;margin:1px;font-size:11px">↻ ${cotEsc(pe.nombre)} · ${_modToHoras(pe.mods||0)} h${pe.noCosteado?' · <b>no costeado</b>':''}</span>`).join(' ')}</span></div>`:''}
 </div>
 ${(()=>{if(!ot)return'';const r=estadoPrevio(ot);
 const chip=(lbl,st)=>st===null?'':`<span class="seg-chip" style="background:${st==='ok'?'#c0dd97':st==='parcial'?'#fac775':'#f7c1c1'};color:${st==='ok'?'#27500a':st==='parcial'?'#633806':'#791f1f'}">${lbl} ${st==='ok'?'✓':st==='parcial'?'en curso':'falta'}</span>`;
@@ -6877,7 +7295,29 @@ return `<div style="border:1px solid ${r.listo?'#3b6d11':'#fac775'};background:$
 <div style="display:flex;gap:6px;flex-wrap:wrap">${chip('Diseño',r.dis)}${chip('Chapas (CTP)',r.ctp)}${chip('Papel cortado',r.papel)}</div>
 </div>`;})()}
 <div class="fr"><div class="fg"><label>Duración planificada</label><select id="eb-dur">${[[1,'30 min'],[2,'1 hora'],[3,'1:30 hs'],[4,'2 horas'],[5,'2:30 hs'],[6,'3 horas'],[8,'4 horas'],[10,'5 horas'],[12,'6 horas'],[16,'8 horas']].map(([v,l])=>`<option value="${v}"${(b.dur||1)===v?' selected':''}>${l}</option>`).join('')}</select></div><div class="fg" style="align-self:end;font-size:11px;color:#888;padding-bottom:7px">También podés estirar el bloque arrastrando su borde inferior.</div></div>
-<div class="mf"><button onclick="cm()">Cerrar</button><button class="bd" onclick="delBloque('${maq}','${fecha}','${slot}');cm()"><i class="ti ti-trash"></i>Eliminar bloque</button>${ot&&!bloqueHecho(b,maq)?`<button class="bs" onclick="bloqueMarcarHecho('${maq}','${fecha}','${slot}');cm();render()"><i class="ti ti-circle-check"></i>Marcar ${esMaqImpresion(maq)?'impresa':'hecha'}</button>`:''}<button class="bp" onclick="resizeBloque('${maq}','${fecha}','${slot}',parseInt(Q('eb-dur').value));sk('planificacion');cm();render()"><i class="ti ti-check"></i>Guardar duración</button></div>`;
+${(!b.bloqueo&&ot)?`<div style="background:#eef4fb;border:1px solid #cfe0f2;border-radius:8px;padding:9px 11px;margin-top:8px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;flex-wrap:wrap;gap:4px">
+    <span style="font-size:12px;color:#185fa5;font-weight:600"><i class="ti ti-clock-play"></i> Tiempo real de producción</span>
+    <span style="font-size:11px;color:#666">${ot.modEstim?`Estimado OT: <b>${_modToHoras(ot.modEstim)} h</b> · `:''}Planificado: <b>${_modToHoras(b.dur||1)} h</b></span>
+  </div>
+  <div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+    <div class="fg" style="margin:0"><label>¿Cuánto tardó realmente?</label><select id="eb-real">${[[1,'30 min'],[2,'1 hora'],[3,'1:30 hs'],[4,'2 horas'],[5,'2:30 hs'],[6,'3 horas'],[7,'3:30 hs'],[8,'4 horas'],[10,'5 horas'],[12,'6 horas'],[16,'8 horas']].map(([v,l])=>`<option value="${v}"${(b.modReal||b.dur||1)===v?' selected':''}>${l}</option>`).join('')}</select></div>
+    <button class="bp" onclick="bloqueRegistrarReal('${maq}','${fecha}','${slot}',parseInt(Q('eb-real').value))"><i class="ti ti-player-track-next"></i> Registrar y correr el plan</button>
+  </div>
+  ${b.modReal?`<div style="font-size:11px;color:#7a5199;margin-top:6px">Real registrado: <b>${_modToHoras(b.modReal)} h</b>${(b.modReal-(b.dur||1))?` (${b.modReal>b.dur?'+':''}${_modToHoras(b.modReal-(b.dur||1))} h vs planificado)`:''}</div>`:''}
+</div>`:''}
+${b.bloqueo?`<div style="background:#fdf0f0;border:1px solid #f2d0d0;border-radius:8px;padding:9px 11px;margin-top:8px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;flex-wrap:wrap;gap:4px">
+    <span style="font-size:12px;color:${bloqCatColor(b)};font-weight:600"><i class="ti ti-alert-octagon"></i> Paro de máquina · tiempo improductivo</span>
+    <span style="font-size:11px;color:#666">Planificado: <b>${_modToHoras(b.dur||1)} h</b> · Hoy en ${maq}: <b>${improductivoDia(maq,fecha)} h</b></span>
+  </div>
+  <div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+    <div class="fg" style="margin:0"><label>¿Cuánto duró realmente el paro?</label><select id="eb-real">${[[1,'30 min'],[2,'1 hora'],[3,'1:30 hs'],[4,'2 horas'],[5,'2:30 hs'],[6,'3 horas'],[7,'3:30 hs'],[8,'4 horas'],[10,'5 horas'],[12,'6 horas'],[16,'8 horas']].map(([v,l])=>`<option value="${v}"${(b.modReal||b.dur||1)===v?' selected':''}>${l}</option>`).join('')}</select></div>
+    <button class="bp" onclick="bloqueRegistrarReal('${maq}','${fecha}','${slot}',parseInt(Q('eb-real').value))"><i class="ti ti-player-track-next"></i> Registrar y correr el plan</button>
+  </div>
+  ${b.modReal?`<div style="font-size:11px;color:#a33;margin-top:6px">Duración real: <b>${_modToHoras(b.modReal)} h</b>${(b.modReal-(b.dur||1))?` (${b.modReal>b.dur?'+':''}${_modToHoras(b.modReal-(b.dur||1))} h vs planificado)`:''}</div>`:''}
+</div>`:''}
+<div class="mf"><button onclick="cm()">Cerrar</button><button class="bd" onclick="delBloque('${maq}','${fecha}','${slot}');cm()"><i class="ti ti-trash"></i>Eliminar bloque</button>${(ot&&!b.bloqueo)?`<button onclick="bloqueExtraAbrir('${maq}','${fecha}','${slot}')" style="background:#f3e8fb;color:#7c2fb0;border-color:#c9a3e6"><i class="ti ti-plus"></i>Proceso extra</button>`:''}${ot&&!bloqueHecho(b,maq)?`<button class="bs" onclick="bloqueMarcarHecho('${maq}','${fecha}','${slot}');cm();render()"><i class="ti ti-circle-check"></i>Marcar ${esMaqImpresion(maq)?'impresa':'hecha'}</button>`:''}<button class="bp" onclick="resizeBloque('${maq}','${fecha}','${slot}',parseInt(Q('eb-dur').value));sk('planificacion');cm();render()"><i class="ti ti-check"></i>Guardar duración</button></div>`;
 }
 function savBloque(data){
   const[maq,fecha,slot]=data.split('|');
@@ -6885,6 +7325,7 @@ function savBloque(data){
   const ot2=parseInt(Q('b-ot2')?.value)||0;
   const pasada=(Q('b-pasada')?.value||'').trim();
   const motivo=(Q('b-motivo')?.value||'').trim();
+  const cat=(Q('b-cat')?.value||'').trim();
   const pasoNombre=Q('b-paso')?.value||'',dur=parseInt(Q('b-dur')?.value)||1,nota=Q('b-nota')?.value||'';
   let base;
   if(otId){
@@ -6894,9 +7335,9 @@ function savBloque(data){
   }else if(ot2){
     const oChk=S.ordenes.find(x=>x.id===ot2);if(oChk&&bloqueoSinAprobar(oChk,'planificar'))return;
     base={otId:ot2,extra:true,pasada:pasada||'Pasada',nota};
-  }else if(motivo){
-    base={bloqueo:true,texto:motivo,nota};
-  }else{alert('Elegí una OT, una pasada/reimpresión, o escribí un motivo para bloquear el horario.');return;}
+  }else if(motivo||cat){
+    base={bloqueo:true,cat:cat||'otro',texto:motivo||bloqCatLabel(cat)||'Bloqueado',nota};
+  }else{alert('Elegí una OT, una pasada/reimpresión, o una categoría de paro para bloquear el horario.');return;}
   if(!S.planificacion[maq])S.planificacion[maq]={};
   if(!S.planificacion[maq][fecha])S.planificacion[maq][fecha]={};
   const idx=ALL_SLOTS.indexOf(slot);
@@ -7013,9 +7454,11 @@ function crearBloqueDrop(maq,fecha,slot,otId){
   if(!S.planificacion)S.planificacion={};
   if(!S.planificacion[maq])S.planificacion[maq]={};
   if(!S.planificacion[maq][fecha])S.planificacion[maq][fecha]={};
-  const libres=slotsLibres(maq,fecha,slot,2,null); // 1 hora por defecto
-  if(!libres.length){alert('Ese horario está ocupado.');return;}
   const o=S.ordenes.find(x=>x.id===otId);
+  // Duración por defecto = horas estimadas de la OT (en módulos de 30 min); si no tiene, 1 hora
+  const durDef=(o&&o.modEstim)?o.modEstim:2;
+  const libres=slotsLibres(maq,fecha,slot,durDef,null);
+  if(!libres.length){alert('Ese horario está ocupado.');return;}
   // si la OT tiene un paso de impresión con esta máquina, lo vincula
   const paso=o?(o.pasos||[]).find(p=>p.nombre.includes('('+maq+')'))||(maq==='Pre-prensa'?(o.pasos||[]).find(p=>/pre-?prensa/i.test(p.nombre)):maq==='Guillotina'?(o.pasos||[]).find(p=>/papel|guillotina/i.test(p.nombre)):null):null;
   libres.forEach((s,i)=>{S.planificacion[maq][fecha][s]=i===0?{otId,pasoNombre:paso?paso.nombre:'',nota:'',dur:libres.length}:{cont:true};});
@@ -7052,6 +7495,9 @@ function bloqueMarcarHecho(maq,fecha,slot){
 }
 // Editar el texto de un bloqueo (motivo)
 function bloqueSetTexto(maq,fecha,slot,val){const b=((S.planificacion[maq]||{})[fecha]||{})[slot];if(!b)return;b.texto=val;sk('planificacion');}
+function bloqueSetCat(maq,fecha,slot,val){const b=((S.planificacion[maq]||{})[fecha]||{})[slot];if(!b)return;b.cat=val;if(!b.texto||BLOQUEO_CATS.some(c=>c.label===b.texto))b.texto=bloqCatLabel(val);sk('planificacion');render();}
+// Tiempo improductivo (paros/mantenimiento) de una máquina en una fecha, en horas
+function improductivoDia(maq,fecha){const day=(S.planificacion[maq]||{})[fecha]||{};let mods=0;for(const s in day){const b=day[s];if(b&&!b.cont&&b.bloqueo)mods+=(b.dur||1);}return mods/2;}
 // ¿La OT ya tiene un bloque planificado en cualquier máquina/día? (para no volver a elegirla)
 function otPlanificada(otId){
   const P=S.planificacion||{};
@@ -7092,6 +7538,137 @@ function onRzUp(){
   document.body.style.userSelect='';
   if(_rz){resizeBloque(_rz.maq,_rz.fecha,_rz.slot,_rz.dur);sk('planificacion');render();}
   _rz=null;
+}
+// ===== Cascada de atrasos: registrar duración real y correr el plan =====
+function planSlotUsable(s){return s!=='13:00';} // 13:00–13:30 = corte del mediodía, no se produce
+function planDiaSig(fecha){const d=new Date(fecha+'T12:00:00');do{d.setDate(d.getDate()+1);}while(d.getDay()===0);return d.toISOString().slice(0,10);}
+function planDiaPrev(fecha){const d=new Date(fecha+'T12:00:00');do{d.setDate(d.getDate()-1);}while(d.getDay()===0);return d.toISOString().slice(0,10);}
+// Comparar dos posiciones (fecha,idx): <0 si a va antes que b
+function planCmp(fa,ia,fb,ib){return fa<fb?-1:fa>fb?1:(ia-ib);}
+// Avanzar (fecha,idx) 'n' módulos USABLES (saltea el corte del mediodía y los domingos). n puede ser negativo.
+function planAvanzar(fecha,idx,n){
+  let f=fecha,i=idx,step=n>0?1:-1,rem=Math.abs(n|0),guard=0;
+  while(rem>0&&guard++<6000){
+    i+=step;
+    if(i>=ALL_SLOTS.length){f=planDiaSig(f);i=0;}
+    else if(i<0){f=planDiaPrev(f);i=ALL_SLOTS.length-1;}
+    if(!planSlotUsable(ALL_SLOTS[i]))continue; // el módulo del mediodía no cuenta
+    rem--;
+  }
+  return {fecha:f,idx:i};
+}
+// Fin (fecha,idx) de un bloque que arranca en (fecha,idx) y dura 'dur' módulos, desbordando al día siguiente
+function finDeBloque(fecha,idx,dur){let i=idx+dur,f=fecha;while(i>=ALL_SLOTS.length){i-=ALL_SLOTS.length;f=planDiaSig(f);}return {fecha:f,idx:i};}
+// Escribe un bloque (ancla + continuaciones) dentro del día; si no entra, trunca visualmente pero conserva dur lógico
+function writeBloque(maq,fecha,idx,dur,blObj){
+  if(!S.planificacion[maq])S.planificacion[maq]={};
+  if(!S.planificacion[maq][fecha])S.planificacion[maq][fecha]={};
+  const day=S.planificacion[maq][fecha];
+  const room=Math.min(dur,ALL_SLOTS.length-idx);
+  for(let i=0;i<room;i++){const s=ALL_SLOTS[idx+i];day[s]=i===0?Object.assign({},blObj,{dur:dur,cont:false}):{cont:true};}
+}
+// Primer arranque libre (fecha,idx) >= dado con 'dur' módulos usables contiguos (sin cruzar el mediodía), saltando de día
+function planBuscarRun(maq,fecha,startIdx,dur){
+  let f=fecha,idx=Math.max(0,startIdx),guard=0;
+  while(guard++<3000){
+    if(idx>=ALL_SLOTS.length){f=planDiaSig(f);idx=0;continue;}
+    let ok=true;
+    for(let i=0;i<dur;i++){
+      const j=idx+i;
+      if(j>=ALL_SLOTS.length){ok=false;break;}
+      const s=ALL_SLOTS[j];
+      if(!planSlotUsable(s)){ok=false;break;}
+      if(((S.planificacion[maq]||{})[f]||{})[s]){ok=false;break;}
+    }
+    if(ok)return {fecha:f,idx};
+    idx++;
+  }
+  return null;
+}
+function bloqueRegistrarReal(maq,fecha,slot,realMods){
+  const dia=(S.planificacion[maq]||{})[fecha];if(!dia)return;
+  const b=dia[slot];if(!b||b.cont)return;
+  realMods=Math.max(1,realMods|0);
+  const plan=b.dur||1;
+  const delta=realMods-plan;
+  b.modReal=realMods;
+  const idx0=ALL_SLOTS.indexOf(slot);
+  // Bloques de trabajo posteriores en esta máquina (no continuaciones, no bloqueos de motivo fijos)
+  const P=S.planificacion[maq]||{};
+  const post=[];
+  for(const f in P){const day=P[f];for(const s in day){const bl=day[s];if(!bl||bl.cont||bl.bloqueo)continue;const i=ALL_SLOTS.indexOf(s);const despues=(f>fecha)||(f===fecha&&i>idx0);if(despues)post.push({bl:JSON.parse(JSON.stringify(bl)),f,s,dur:bl.dur||1});}}
+  post.sort((x,y)=> x.f<y.f?-1:x.f>y.f?1:(ALL_SLOTS.indexOf(x.s)-ALL_SLOTS.indexOf(y.s)));
+  if(delta===0){sk('planificacion');cm();render();return;}
+  if(post.length){
+    const verbo=delta>0?'correr más tarde':'adelantar';
+    if(!confirm(`El trabajo tardó ${_modToHoras(realMods)} h (planificado ${_modToHoras(plan)} h).\n\nSe van a ${verbo} ${_modToHoras(Math.abs(delta))} h los ${post.length} bloque(s) siguientes de ${maq}, desbordando al día siguiente si hace falta.\n\n¿Reacomodar el plan?`)){sk('planificacion');cm();render();return;}
+  }
+  // Liberar continuaciones del bloque actual y todos los posteriores de la grilla
+  for(let i=1;i<plan&&idx0+i<ALL_SLOTS.length;i++)delete dia[ALL_SLOTS[idx0+i]];
+  post.forEach(x=>{const pi=ALL_SLOTS.indexOf(x.s);for(let i=0;i<x.dur&&pi+i<ALL_SLOTS.length;i++)delete S.planificacion[maq][x.f][ALL_SLOTS[pi+i]];});
+  // Reescribir el bloque actual con su duración real (mantiene su arranque; no pisa un bloqueo posterior)
+  {const day=S.planificacion[maq][fecha];const room=Math.min(realMods,ALL_SLOTS.length-idx0);
+   for(let i=0;i<room;i++){const s=ALL_SLOTS[idx0+i];if(i>0&&day[s]&&day[s].bloqueo)break;day[s]=i===0?Object.assign({},b,{dur:realMods,cont:false}):{cont:true};}}
+  // Correr cada posterior por el delta (preserva su día/hueco), sin bajar del fin del bloque actual y sin solaparse
+  let cursor=finDeBloque(fecha,idx0,realMods);
+  post.forEach(x=>{
+    const t=planAvanzar(x.f,ALL_SLOTS.indexOf(x.s),delta); // posición corrida por el atraso/adelanto
+    let sf=t.fecha,si=t.idx;
+    if(planCmp(sf,si,cursor.fecha,cursor.idx)<0){sf=cursor.fecha;si=cursor.idx;}
+    const run=planBuscarRun(maq,sf,si,x.dur);
+    if(!run)return;
+    writeBloque(maq,run.fecha,run.idx,x.dur,x.bl);
+    cursor=finDeBloque(run.fecha,run.idx,x.dur);
+  });
+  sk('planificacion');cm();render();
+}
+// ===== Proceso / pasada extra no planificado (ej. barniz para salvar el trabajo) =====
+function bloqueExtraAbrir(maq,fecha,slot){
+  const b=((S.planificacion[maq]||{})[fecha]||{})[slot];if(!b||b.cont||b.bloqueo)return;
+  window._extraCtx={maq,fecha,slot};
+  let ov=document.getElementById('extra-ov');
+  if(!ov){ov=document.createElement('div');ov.id='extra-ov';ov.style.cssText='position:fixed;inset:0;z-index:100002;background:rgba(15,25,35,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px';document.body.appendChild(ov);}
+  const durOpts=[[1,'30 min'],[2,'1 hora'],[3,'1:30 hs'],[4,'2 horas'],[6,'3 horas']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  ov.innerHTML=`<div style="background:#fff;border-radius:12px;max-width:480px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.4)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><strong style="font-size:15px;color:#7c2fb0"><i class="ti ti-plus"></i> Proceso / pasada extra</strong><button onclick="bloqueExtraCerrar()">✕</button></div>
+    <div style="font-size:12px;color:#666;margin-bottom:12px">Un paso que no estaba previsto (ej. una pasada de barniz para que no se manche). Se agrega al plan justo después de este trabajo y corre lo que sigue.</div>
+    <div class="fg" style="margin-bottom:9px"><label>¿Qué se hizo?</label><input id="extra-nom" placeholder="Ej: Pasada de barniz" style="width:100%"></div>
+    <div class="fr"><div class="fg"><label>Tiempo</label><select id="extra-dur">${durOpts}</select></div><div class="fg"><label>Motivo</label><input id="extra-mot" placeholder="Ej: se manchaba en la impresión"></div></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#a35b00;margin-top:8px;cursor:pointer"><input type="checkbox" id="extra-nc" checked style="width:15px;height:15px;accent-color:#a35b00"> No estaba costeado (marcarlo como costo/tiempo extra)</label>
+    <div class="mf" style="margin-top:14px"><button onclick="bloqueExtraCerrar()">Cancelar</button><button class="bp" onclick="bloqueExtraAgregar()"><i class="ti ti-check"></i> Agregar al plan</button></div>
+  </div>`;
+  setTimeout(()=>{const el=Q('extra-nom');if(el)el.focus();},60);
+}
+function bloqueExtraCerrar(){const ov=document.getElementById('extra-ov');if(ov)ov.remove();}
+function bloqueExtraAgregar(){
+  const ctx=window._extraCtx||{};const {maq,fecha,slot}=ctx;
+  const dia=(S.planificacion[maq]||{})[fecha];const b=dia&&dia[slot];if(!b){bloqueExtraCerrar();return;}
+  const nom=((Q('extra-nom')||{}).value||'Proceso extra').trim().slice(0,60)||'Proceso extra';
+  const mods=Math.max(1,parseInt((Q('extra-dur')||{}).value)||1);
+  const motivo=((Q('extra-mot')||{}).value||'').trim().slice(0,120);
+  const nc=(Q('extra-nc')||{}).checked!==false;
+  const ot=S.ordenes.find(o=>o.id===b.otId);
+  if(ot){if(!Array.isArray(ot.procesosExtra))ot.procesosExtra=[];ot.procesosExtra.push({nombre:nom,mods,horas:mods/2,motivo,noCosteado:nc,fecha:new Date().toISOString().slice(0,10),maq});sk('ordenes');}
+  const idx0=ALL_SLOTS.indexOf(slot);const plan=b.dur||1;
+  const P=S.planificacion[maq]||{};const post=[];
+  for(const f in P){const day=P[f];for(const s in day){const bl=day[s];if(!bl||bl.cont||bl.bloqueo)continue;const i=ALL_SLOTS.indexOf(s);const despues=(f>fecha)||(f===fecha&&i>idx0);if(despues)post.push({bl:JSON.parse(JSON.stringify(bl)),f,s,dur:bl.dur||1});}}
+  post.sort((x,y)=> x.f<y.f?-1:x.f>y.f?1:(ALL_SLOTS.indexOf(x.s)-ALL_SLOTS.indexOf(y.s)));
+  post.forEach(x=>{const pi=ALL_SLOTS.indexOf(x.s);for(let i=0;i<x.dur&&pi+i<ALL_SLOTS.length;i++)delete S.planificacion[maq][x.f][ALL_SLOTS[pi+i]];});
+  const extraBl={otId:b.otId,extra:true,pasada:nom,nota:motivo,noCosteado:nc,pasoNombre:''};
+  // El bloque extra va justo después del actual
+  let cursor=finDeBloque(fecha,idx0,plan);
+  const run=planBuscarRun(maq,cursor.fecha,cursor.idx,mods);
+  if(run){writeBloque(maq,run.fecha,run.idx,mods,extraBl);cursor=finDeBloque(run.fecha,run.idx,mods);}
+  // Los posteriores se corren la duración del extra (preservan su día/hueco), sin solaparse
+  post.forEach(x=>{
+    const t=planAvanzar(x.f,ALL_SLOTS.indexOf(x.s),mods);
+    let sf=t.fecha,si=t.idx;
+    if(planCmp(sf,si,cursor.fecha,cursor.idx)<0){sf=cursor.fecha;si=cursor.idx;}
+    const r=planBuscarRun(maq,sf,si,x.dur);
+    if(r){writeBloque(maq,r.fecha,r.idx,x.dur,x.bl);cursor=finDeBloque(r.fecha,r.idx,x.dur);}
+  });
+  sk('planificacion');
+  bloqueExtraCerrar();cm();render();
 }
 function moverBloque(m0,f0,s0,m1,f1,s1){
   const b=((S.planificacion[m0]||{})[f0]||{})[s0];
@@ -7241,7 +7818,8 @@ function mEditProv(id){const p=S.proveedores.find(x=>x.id===id);if(!p)return'';c
         nombre:it.nombre||'',
         desc:it.desc||'',
         filas:(it.filas||[{qty:0,precio:0,subtotal:0}]).map(f=>({qty:f.qty||0,precio:f.precio||0,subtotal:f.subtotal||0})),
-        costeo:it.costeo?JSON.parse(JSON.stringify(it.costeo)):undefined
+        costeo:it.costeo?JSON.parse(JSON.stringify(it.costeo)):undefined,
+        estrTipo:it.estrTipo,estrFamilia:it.estrFamilia
       }));
       _renderItems();
       const mt=document.querySelector('.mt2');
@@ -7273,6 +7851,7 @@ function mEditProv(id){const p=S.proveedores.find(x=>x.id===id);if(!p)return'';c
     if(_cc)c.costoTotal=_cc;
     if(typeof addDiasHabiles==='function')c.entrega=addDiasHabiles(fechaCot,plazo);
     sk('cotizaciones');cm();render();
+    try{estrAprender(c.tipoTrabajo,rawItems);}catch(e){}
   }window.__undoStack=window.__undoStack||[];window.__undoShadow=window.__undoShadow||{};window.__undoCols=['clientes','proveedores','cotizaciones','ordenes'];window.__undoClone=function(v){try{return JSON.parse(JSON.stringify(v));}catch(e){return v;}};window.__undoLabel=function(k){var m={clientes:'cliente',proveedores:'proveedor',cotizaciones:'cotización',ordenes:'orden de trabajo'};return m[k]||k;};window.__undoSnapshotBaseline=function(){if(typeof S==='undefined')return;window.__undoCols.forEach(function(k){if(S[k]===undefined)return;var sh=window.__undoShadow[k];var stale=(Array.isArray(sh)&&sh.length===0&&Array.isArray(S[k])&&S[k].length>0);if(sh===undefined||stale){window.__undoShadow[k]=window.__undoClone(S[k]);}});};window.__undoBtnRender=function(){var b=document.getElementById('undo-fab');if(window.__undoStack.length>0){if(!b){b=document.createElement('button');b.id='undo-fab';b.setAttribute('style','position:fixed;bottom:20px;left:20px;z-index:9999;background:#444;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;gap:6px');b.onclick=function(){window.doUndo();};document.body.appendChild(b);}var last=window.__undoStack[window.__undoStack.length-1];b.innerHTML='<i class="ti ti-arrow-back-up"></i> Deshacer ('+window.__undoStack.length+')';b.title='Deshacer último cambio en '+window.__undoLabel(last.k);}else{if(b)b.remove();}};window.doUndo=function(){if(!window.__undoStack.length)return;if(typeof S==='undefined')return;var e=window.__undoStack.pop();S[e.k]=e.prev;window.__undoShadow[e.k]=window.__undoClone(e.prev);window.__undoSkipPush=true;try{sk(e.k);}finally{window.__undoSkipPush=false;}if(typeof render==='function')render();window.__undoBtnRender();};var __origSk=sk;sk=function(k){try{if(!window.__undoSkipPush&&window.__undoCols.indexOf(k)>=0){window.__undoSnapshotBaseline();if(window.__undoShadow[k]!==undefined){window.__undoStack.push({k:k,prev:window.__undoShadow[k]});if(window.__undoStack.length>20)window.__undoStack.shift();}window.__undoShadow[k]=window.__undoClone(S[k]);window.__undoBtnRender();}}catch(e){console.warn('undo',e);}return __origSk(k);};var __origRender=render;render=function(){var r=__origRender.apply(this,arguments);try{window.__undoSnapshotBaseline();window.__undoBtnRender();}catch(e){}return r;};// Costos estimados pre-cargados al crear la ficha: máquina de impresión (viene de la OT/cotización) + defaults
 function _maqImpDeOT(ot){try{const a=(ot&&ot.asignaciones)||{};for(const kk in a){if(/^Impresi[oó]n/i.test(kk)&&a[kk]&&a[kk].nombre)return a[kk].nombre;}}catch(e){}return '';}
 function _ceAuto(ot){const maq=_maqImpDeOT(ot);const fijos={chapas:{proveedor:'CTP Coma',monto:0},corte:{proveedor:'Guillotina Coma',monto:0},cajas:{proveedor:'Stock Coma',monto:0}};if(maq)fijos.impresion={proveedor:maq,monto:0};return {fijos:fijos,procesos:[],directos:[]};}
@@ -7534,6 +8113,61 @@ function savCot(st){
   const costoCosteos=rawItems.reduce((a,it)=>a+((it.costeo&&it.costeo.calc&&it.costeo.calc.total)||0),0);
   S.cotizaciones.push({id,num,clienteId:cid,fecha:fechaCot,validez:Q('cv').value,entrega,plazo,maquina:'',items,itemsVariantes:rawItems,subtotal:sub,iva,total:sub+iva,estado:st,notas:Q('cno2').value,tipoTrabajo,vendedor,costoTotal:costoCosteos||0,costos:null,variantes:[],pesoEstimado});
   sk('cotizaciones');cm();render();
+  try{estrAprender(tipoTrabajo,rawItems);}catch(e){}
+}
+// ===== Aprendizaje: sugerir sumar a la plantilla los ítems nuevos que aparecieron =====
+function estrNorm(s){return String(s||'').toLowerCase().replace(/[^a-záéíóúñ0-9 ]/gi,' ').replace(/\s+/g,' ').trim();}
+function estrItemToken(nombre){const n=estrNorm(nombre);return n.split(' ')[0]||n;} // primera palabra como raíz (cuerpo, fondo, tapa...)
+function estrEstructuraDe(tipoTrabajo,rawItems){
+  const arr=S.cotEstructuras||[];if(!arr.length)return -1;
+  // 1) si algún ítem trae la familia marcada (armado por estructura o IA)
+  const fam=(rawItems||[]).map(it=>it&&it.estrFamilia).find(Boolean);
+  if(fam){const i=arr.findIndex(e=>estrNorm(e.nombre)===estrNorm(fam));if(i>=0)return i;}
+  // 2) por tipo de trabajo (única coincidencia)
+  if(tipoTrabajo){const idxs=arr.map((e,i)=>e.tipoTrabajo&&estrNorm(e.tipoTrabajo)===estrNorm(tipoTrabajo)?i:-1).filter(i=>i>=0);if(idxs.length===1)return idxs[0];}
+  return -1;
+}
+function estrAprender(tipoTrabajo,rawItems){
+  const ei=estrEstructuraDe(tipoTrabajo,rawItems);if(ei<0)return;
+  const e=S.cotEstructuras[ei];const existentes=(e.items||[]).map(it=>estrItemToken(it.nombre));
+  // ítems de la cotización con nombre propio que NO están en la plantilla
+  const vistos={};const nuevos=[];
+  (rawItems||[]).forEach(it=>{
+    const nom=(it.nombre||'').trim();if(!nom)return;
+    const tok=estrItemToken(nom);
+    if(!tok||tok.length<3)return;
+    if(existentes.includes(tok))return;
+    if(vistos[tok])return;vistos[tok]=1;
+    nuevos.push({nombre:nom.slice(0,60),tipo:['pieza','insumo','proceso','manoobra'].includes(it.estrTipo)?it.estrTipo:'pieza'});
+  });
+  if(!nuevos.length)return;
+  estrAprenderOverlay(ei,nuevos);
+}
+function estrAprenderOverlay(ei,nuevos){
+  const e=S.cotEstructuras[ei];if(!e)return;
+  window._estrAprEi=ei;window._estrAprNuevos=nuevos;
+  let ov=document.getElementById('estr-aprender');
+  if(!ov){ov=document.createElement('div');ov.id='estr-aprender';ov.style.cssText='position:fixed;bottom:20px;right:20px;z-index:100002;background:#fff;border:1px solid #7db3e8;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:14px;max-width:360px;font-size:13px';document.body.appendChild(ov);}
+  let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong style="color:#185fa5"><i class="ti ti-bulb"></i> Aprender de esta cotización</strong><button onclick="estrAprenderCerrar()" style="border:none;background:none;cursor:pointer;font-size:15px;color:#999">✕</button></div>
+    <div style="color:#666;margin-bottom:8px">Apareció${nuevos.length>1?'n':''} ${nuevos.length} ítem${nuevos.length>1?'s':''} que no está${nuevos.length>1?'n':''} en la plantilla de <strong>${cotEsc(e.nombre)}</strong>. ¿Sumar${nuevos.length>1?'los':'lo'} como opcional${nuevos.length>1?'es':''}?</div>
+    <div style="max-height:180px;overflow:auto;margin-bottom:10px">`;
+  nuevos.forEach((n,i)=>{h+=`<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;cursor:pointer"><input type="checkbox" class="estr-apr-chk" data-i="${i}" checked style="width:15px;height:15px;accent-color:#185fa5"><span style="flex:1">${cotEsc(n.nombre)} <span style="font-size:10px;color:#888">(${ESTR_TIPO_LBL[n.tipo]||n.tipo})</span></span></label>`;});
+  h+=`</div><div style="display:flex;justify-content:flex-end;gap:8px">
+      <button onclick="estrAprenderCerrar()" style="font-size:12px">Ahora no</button>
+      <button class="bp" onclick="estrAprenderAplicar()" style="font-size:12px"><i class="ti ti-plus"></i> Agregar a la plantilla</button>
+    </div>`;
+  ov.innerHTML=h;
+}
+function estrAprenderCerrar(){const ov=document.getElementById('estr-aprender');if(ov)ov.remove();}
+function estrAprenderAplicar(){
+  const ei=window._estrAprEi;const nuevos=window._estrAprNuevos||[];
+  const e=S.cotEstructuras[ei];if(!e){estrAprenderCerrar();return;}
+  if(!Array.isArray(e.items))e.items=[];
+  const marcados=[...document.querySelectorAll('#estr-aprender .estr-apr-chk:checked')].map(c=>parseInt(c.dataset.i));
+  nuevos.forEach((n,i)=>{if(!marcados.includes(i))return;e.items.push({nombre:n.nombre,tipo:n.tipo||'pieza',opcional:true,nota:'',defMaterial:'',defColores:''});});
+  costosSave('cotEstructuras');
+  estrAprenderCerrar();
+  if(typeof toast==='function')toast('Plantilla de '+e.nombre+' actualizada');
 }
 // Cambiar el estado de una cotización (ej. borrador → enviada) desde la lista
 function cotSetEstado(id,st){const c=S.cotizaciones.find(x=>x.id==id);if(!c)return;c.estado=st;sk('cotizaciones');updateCotResults();}
@@ -7741,7 +8375,7 @@ function generarPDFCotizacion(cotIdOrIdx,byIdx){
   const $c=v=>v!=null?'$ '+Number(v).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}):'$ 0,00';
   // Fechas en DD/MM/AAAA (el conversor automático de la app no alcanza al iframe del PDF)
   const _fFecha=s=>{if(!s)return '';const m=String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${m[3]}/${m[2]}/${m[1]}`:String(s);};
-  const filas=(c.items||[]).map(i=>`<tr><td style="white-space:pre-line;vertical-align:top">${_descHtml(i.desc)}</td><td style="text-align:center;vertical-align:top">${Number(i.qty).toLocaleString('es-AR')}</td><td style="text-align:right">${$c(i.precio)}</td><td style="text-align:right">${$c(i.subtotal)}</td></tr>`).join('');
+  const filas=(c.items||[]).map(i=>`<tr><td class="num">${Number(i.qty).toLocaleString('es-AR')}</td><td class="desc">${_descHtml(i.desc)}</td><td class="money">${$c(i.precio)}</td><td class="money">${$c(i.subtotal)}</td></tr>`).join('');
   const _notasRaw=(c.notas||'')
     .replace(/Plazo de entrega:\s*\d+\s*d[ií]as h[áa]biles/i,`Plazo de entrega: ${c.plazo||10} días hábiles`)
     .replace(/Mantenimiento de oferta:\s*\d+\s*d[ií]as h[áa]biles/i,'Mantenimiento de oferta: 10 días hábiles');
@@ -7760,9 +8394,9 @@ function generarPDFCotizacion(cotIdOrIdx,byIdx){
       const filas2=(it.filas||[]).map((f,fi)=>{
         const esBase=fi===0;
         const label=esBase?'':` <span style="font-size:8pt;color:#888;font-style:italic">(variante ${fi})</span>`;
-        return `<tr><td style="white-space:pre-line;vertical-align:top">${_descHtml(it.desc)}${label}</td><td style="text-align:center;vertical-align:top">${f.qty?Number(f.qty).toLocaleString('es-AR'):'—'}</td><td style="text-align:right">${f.precio?$c(f.precio):'—'}</td><td style="text-align:right">${f.subtotal?$c(f.subtotal):'—'}</td></tr>`;
+        return `<tr><td class="num">${f.qty?Number(f.qty).toLocaleString('es-AR'):'—'}</td><td class="desc">${_descHtml(it.desc)}${label}</td><td class="money">${f.precio?$c(f.precio):'—'}</td><td class="money">${f.subtotal?$c(f.subtotal):'—'}</td></tr>`;
       }).join('');
-      bloquesItems+=`${it.nombre?`<div style="font-weight:700;color:#185fa5;font-size:11.5pt;margin:2px 0 4px">${it.nombre}</div>`:''}<table style="margin-bottom:14px"><thead><tr><th>Descripción</th><th style="text-align:center;width:65px">Cant.</th><th style="text-align:right;width:110px">Precio unit.</th><th style="text-align:right;width:110px">Subtotal</th></tr></thead><tbody>${filas2}</tbody></table>`;
+      bloquesItems+=`${it.nombre?`<div style="font-weight:700;color:#185fa5;font-size:11.5pt;margin:2px 0 4px">${it.nombre}</div>`:''}<table style="margin-bottom:14px"><thead><tr><th style="text-align:center;width:54px">Cant.</th><th style="text-align:left">Descripción</th><th style="text-align:right;width:100px">Precio unit.</th><th style="text-align:right;width:110px">Subtotal</th></tr></thead><tbody>${filas2}</tbody></table>`;
     });
     if(cotConVariantes(itemsV)){
       // Con variantes de cantidad no se muestra un total: cada fila tiene su precio
@@ -7775,8 +8409,8 @@ function generarPDFCotizacion(cotIdOrIdx,byIdx){
     }
   }else{
     // Sin variantes: tabla única clásica
-    const filasSolas=(c.items||[]).map(i=>`<tr><td style="white-space:pre-line;vertical-align:top">${_descHtml(i.desc)}</td><td style="text-align:center;vertical-align:top">${Number(i.qty).toLocaleString('es-AR')}</td><td style="text-align:right">${$c(i.precio)}</td><td style="text-align:right">${$c(i.subtotal)}</td></tr>`).join('');
-    bloquesItems=`<table><thead><tr><th>Descripción</th><th style="text-align:center;width:65px">Cant.</th><th style="text-align:right;width:110px">Precio unit.</th><th style="text-align:right;width:110px">Subtotal</th></tr></thead><tbody>${filasSolas||'<tr><td colspan="4">—</td></tr>'}</tbody></table>
+    const filasSolas=(c.items||[]).map(i=>`<tr><td class="num">${Number(i.qty).toLocaleString('es-AR')}</td><td class="desc">${_descHtml(i.desc)}</td><td class="money">${$c(i.precio)}</td><td class="money">${$c(i.subtotal)}</td></tr>`).join('');
+    bloquesItems=`<table><thead><tr><th style="text-align:center;width:54px">Cant.</th><th style="text-align:left">Descripción</th><th style="text-align:right;width:100px">Precio unit.</th><th style="text-align:right;width:110px">Subtotal</th></tr></thead><tbody>${filasSolas||'<tr><td colspan="4">—</td></tr>'}</tbody></table>
 <div class="totales"><div class="totales-box"><div class="tot-row"><span>Subtotal sin IVA</span><span>${$c(c.subtotal)}</span></div><div class="tot-row"><span>IVA 21%</span><span>${$c(c.iva)}</span></div><div class="tot-row grand"><span>TOTAL</span><span>${$c(c.total)}</span></div></div></div>`;
   }
   const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
@@ -7792,9 +8426,12 @@ function generarPDFCotizacion(cotIdOrIdx,byIdx){
   .cli-sec{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;background:#f5f5f3;border-radius:6px;padding:9px 13px}
   .cli-blk label{font-size:7pt;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:1px}
   .cli-blk span{font-size:10.5pt;font-weight:500}
-  table{width:100%;border-collapse:collapse;margin-bottom:10px}
-  th{background:#185fa5;color:#fff;padding:5px 8px;font-size:8.5pt;text-align:left;font-weight:600}
-  td{padding:4px 8px;font-size:10pt;border-bottom:0.5px solid #e0e0e0}
+  table{width:100%;border-collapse:collapse;margin-bottom:10px;table-layout:fixed}
+  th{background:#185fa5;color:#fff;padding:6px 9px;font-size:8.5pt;text-align:left;font-weight:600}
+  td{padding:6px 9px;font-size:10pt;border-bottom:0.5px solid #e0e0e0;vertical-align:top;line-height:1.4;word-break:normal;overflow-wrap:break-word;hyphens:auto}
+  td.desc{text-align:left;white-space:pre-line}
+  td.num{text-align:center}
+  td.money{text-align:right;white-space:nowrap}
   tr:last-child td{border-bottom:none}
   .totales{display:flex;justify-content:flex-end;margin-bottom:12px}
   .totales-box{width:240px;border:0.5px solid #ddd;border-radius:6px;overflow:hidden}
