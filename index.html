@@ -2445,6 +2445,8 @@ function cotDesdeItem(ii){
         // Procesos / terminaciones: los que están en las tablas se agregan; los que no, van a "faltan"
         (s.procesos||[]).forEach(nm=>{const code=aiMatchProc(nm);if(code){if(!cotW.otros.some(o=>o.cod===code))cotW.otros.push({cod:code,cant:1,auto:'pliegos'});}else if(nm&&nm.trim())faltan.push('Costo de: '+nm);});
         try{cotAutoPoses(0);}catch(e){}
+        // El laminado debe coincidir con el pliego de impresión: ajustar a la variante del mismo material con esa medida
+        try{cotLamAutoMatch(0);}catch(e){}
       }
       cotW._aiFaltantes=faltan;
     }
@@ -2504,6 +2506,43 @@ function cotEmbedCerrar(){
   const ov=document.getElementById('cot-embed');
   if(ov)ov.remove();
 }
+// Ver el desglose completo del costeo para una cantidad (base o variante), read-only
+function cotVerDesglose(cant){
+  if(!cotW||!(+cant>0)){return;}
+  cotW.piezas=cotPiezasDe(cotW);
+  let r;try{r=cotCalc(cotW,+cant);}catch(e){alert('No se pudo calcular el desglose.');return;}
+  const f=v=>'$ '+cotFmt(v||0);
+  let rows='';
+  (r.piezasDet||[]).forEach(pd=>{
+    const comp=[];
+    if(pd.papelCosto)comp.push(['Papel'+(pd.papel&&pd.papel.descripcion?' · '+pd.papel.descripcion:''),pd.papelCosto]);
+    if(pd.impCosto)comp.push(['Impresión'+(pd.imp&&pd.imp.descripcion?' · '+pd.imp.descripcion:''),pd.impCosto]);
+    if(pd.chapasCosto)comp.push(['Chapas CTP',pd.chapasCosto]);
+    if(pd.lamCosto)comp.push(['Laminado'+(pd.lamMin?' (mínimo)':''),pd.lamCosto]);
+    (pd.procPzDet||[]).forEach(x=>{if(x.costo)comp.push([x.concepto||'Proceso',x.costo]);});
+    rows+=`<tr style="background:#f4f8fc"><td colspan="2" style="font-weight:700;color:#185fa5;padding:6px 8px">${cotEsc(pd.nombre||'Pieza')} <span style="font-size:10px;color:#888;font-weight:400">· ${cotFmt(pd.pliegosNetos)} pliegos${pd.millares?' · '+cotFmtDec(pd.millares,3)+' mill.':''}</span></td></tr>`;
+    if(!comp.length)rows+=`<tr><td style="padding:4px 8px 4px 20px;color:#aaa">sin costos</td><td></td></tr>`;
+    comp.forEach(([lbl,val])=>{rows+=`<tr><td style="padding:4px 8px 4px 20px;color:#555">${cotEsc(lbl)}</td><td style="padding:4px 8px;text-align:right">${f(val)}</td></tr>`;});
+  });
+  const com=[];(r.otrosDet||[]).forEach(x=>{if(x.costo)com.push([x.concepto||'Proceso',x.costo]);});
+  if(r.manCosto)com.push(['Líneas manuales',r.manCosto]);
+  if(com.length){rows+=`<tr style="background:#f4f8fc"><td colspan="2" style="font-weight:700;color:#185fa5;padding:6px 8px">Procesos y servicios comunes</td></tr>`;com.forEach(([lbl,val])=>{rows+=`<tr><td style="padding:4px 8px 4px 20px;color:#555">${cotEsc(lbl)}</td><td style="padding:4px 8px;text-align:right">${f(val)}</td></tr>`;});}
+  const margPct=r.venta>0?Math.round((r.venta-r.total)/r.venta*100):0;
+  let ov=document.getElementById('cot-desg');
+  if(!ov){ov=document.createElement('div');ov.id='cot-desg';ov.style.cssText='position:fixed;inset:0;z-index:100004;background:rgba(15,25,35,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px';document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)cotVerDesgloseCerrar();});}
+  ov.innerHTML=`<div style="background:#fff;border-radius:12px;max-width:520px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.4);margin:10px 0">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong style="font-size:15px;color:#185fa5"><i class="ti ti-list-details"></i> Desglose — ${cotFmt(+cant)} unidades</strong><button onclick="cotVerDesgloseCerrar()">✕</button></div>
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">${rows}</table>
+    <div style="border-top:1.5px solid #185fa5;margin-top:10px;padding-top:8px">
+      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Costo total</span><strong>${f(r.total)}</strong></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;color:#888;font-size:11px"><span>Margen ${margPct}%</span><span>${f(r.margenMonto)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:15px;color:#185fa5"><strong>Precio de venta</strong><strong>${f(r.venta)}</strong></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Unitario</span><strong>$ ${cotFmtDec(r.unitario,2)}</strong></div>
+    </div>
+    <div class="mf" style="margin-top:12px"><button class="bp" onclick="cotVerDesgloseCerrar()">Cerrar</button></div>
+  </div>`;
+}
+function cotVerDesgloseCerrar(){const ov=document.getElementById('cot-desg');if(ov)ov.remove();}
 // Siembra las 5 variantes de impresión digital (Xerox V180). El costo por pliego se guarda en
 // primerMillar EN USD (se convierte a pesos con el dólar efectivo). Se edita en Tablas de costos.
 const XEROX_VER=2;
@@ -2789,14 +2828,14 @@ function rCotizador(){
     <div><strong style="font-size:12px">Variantes de cantidad</strong> <span style="font-size:10px;color:#888">— mismo trabajo, otras cantidades. Van todas juntas al PDF: ${cotEsc(w.nombre||'trabajo')} ${cotFmt(w.cantidad)}${(w.variantes||[]).filter(v=>v.cantidad>0).map(v=>' / '+cotFmt(v.cantidad)).join('')}</span></div>
     <button class="bs" onclick="cotVarAdd()" style="font-size:11px"><i class="ti ti-copy-plus"></i> Agregar variante</button></div>
   <table style="width:100%;border-collapse:collapse;font-size:12px">
-  <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th style="width:130px">Cantidad</th><th style="text-align:right">Pliegos netos</th><th style="text-align:right">Peso</th><th style="text-align:right">Total costo</th><th style="text-align:right">Precio venta</th><th style="text-align:right">Unitario</th><th style="width:30px"></th></tr>
+  <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th style="width:130px">Cantidad</th><th style="text-align:right">Pliegos netos</th><th style="text-align:right">Peso</th><th style="text-align:right">Total costo</th><th style="text-align:right">Precio venta</th><th style="text-align:right">Unitario</th><th style="width:58px;text-align:center">Ver</th></tr>
   <tr style="border-top:0.5px solid rgba(0,0,0,.06);background:#f4f8fc">
     <td style="padding:6px;font-weight:700;color:#185fa5">BASE · ${cotFmt(w.cantidad)}</td>
     <td id="cz-base-pl" style="text-align:right;padding:6px">${cotFmt(r.pliegosNetos)}</td>
     <td id="cz-base-peso" style="text-align:right;padding:6px">${cotFmtDec(r.pesoKg,1)} kg</td>
     <td id="cz-base-costo" style="text-align:right;padding:6px">$ ${cotFmt(r.total)}</td>
     <td id="cz-base-venta" style="text-align:right;padding:6px;font-weight:700;color:#185fa5">$ ${cotFmt(r.venta)}</td>
-    <td id="cz-base-unit" style="text-align:right;padding:6px">$ ${cotFmtDec(r.unitario,2)}</td><td></td></tr>`;
+    <td id="cz-base-unit" style="text-align:right;padding:6px">$ ${cotFmtDec(r.unitario,2)}</td><td style="text-align:center"><button onclick="cotVerDesglose(${w.cantidad||0})" title="Ver desglose de esta cantidad" style="border:none;background:none;color:#185fa5;cursor:pointer;font-size:15px"><i class="ti ti-list-details"></i></button></td></tr>`;
   (w.variantes||[]).forEach((v,i)=>{
     const rv=cotCalc(w,v.cantidad);
     h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.06)">
@@ -2806,7 +2845,7 @@ function rCotizador(){
     <td id="cz-var-${i}-costo" style="text-align:right;padding:6px">$ ${cotFmt(rv.total)}</td>
     <td id="cz-var-${i}-venta" style="text-align:right;padding:6px;font-weight:700;color:#185fa5">$ ${cotFmt(rv.venta)}</td>
     <td id="cz-var-${i}-unit" style="text-align:right;padding:6px">$ ${cotFmtDec(rv.unitario,2)}</td>
-    <td style="text-align:center"><button onclick="cotVarDel(${i})" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>`;
+    <td style="text-align:center;white-space:nowrap">${v.cantidad>0?`<button onclick="cotVerDesglose(${v.cantidad})" title="Ver desglose de esta cantidad" style="border:none;background:none;color:#185fa5;cursor:pointer;font-size:15px"><i class="ti ti-list-details"></i></button>`:''}<button onclick="cotVarDel(${i})" title="Eliminar variante" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>`;
   });
   h+=`</table>
   <div style="font-size:10px;color:#aaa;margin-top:6px"><i class="ti ti-info-circle"></i> Cada variante recalcula todas las piezas y procesos automáticos con la misma configuración.</div></div>`;
