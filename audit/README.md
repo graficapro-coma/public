@@ -1,85 +1,99 @@
-# Re-auditoría de preparación — Gráfica Pro (COMA)
+# Gráfica Pro — Production-Readiness / Acquisition Audit
 
-**Fecha:** re-auditoría post-correcciones.
-**Encuadre real:** herramienta **interna** de COMA, desarrollada a medida por el dueño (25 años de oficio) con asistencia. **No se vende.**
-**Método:** 6 dominios auditados con lente estricta de comprador; el veredicto se interpreta en el contexto real de uso interno.
-**Comparación:** contra la primera auditoría (que dio **2,5/10 · NO-GO**) para medir el progreso tras los arreglos.
+**Date:** 2026-09-16
+**Method:** 6 independent expert reviews (architecture, security, performance, backend/DB/API, frontend/UX, product/launch). Each scored a rubric 1–10 against the actual code in `index.html`, `netlify/functions/interpretar.js`, `netlify.toml`, `firebase-config.js`, `firestore.rules`, `tests/pruebas.js`.
+**Lens:** A skeptical buyer/investor looking for reasons *not* to buy. Deliberately harsh.
 
 ---
 
-## Puntaje global
+## Executive summary
 
-- **Como herramienta interna para COMA: 6,4 / 10 → GO.**
-- **Como producto para vender a terceros: ~4 / 10 → NO-GO** (no es el objetivo).
+Gráfica Pro is a **working, genuinely useful print-shop ERP** that COMA's team is productive with. It covers quoting, work orders, production tracking, planning, paper/stock, an AI order-interpreter, and a capacity dashboard. There is real craft in places (incremental Firestore writes, a save-retry path, input sanitization, pinned dependencies, a real login).
 
-| Dimensión | Antes | Ahora | Riesgo actual |
+But judged **as a tradeable asset**, it is not close to ready. The value lives in the owner's domain knowledge, not in transferable, defensible software. It is one **~8,600-line HTML file** with no modules, no build, no meaningful test coverage, **one author, and a single git commit**. Authorization is cosmetic (a regex on the user's own email + CSS hiding), the AI endpoint is an open denial-of-wallet, the "backup" silently omits the entire pricing catalog, and the whole security model depends on Firestore rules that **could not be verified as deployed** (`firestore.rules:23` has the tenant filter commented out). It is hardcoded to a single company, so it cannot be resold without a rewrite.
+
+### Domain scores
+
+| Domain | Score /10 | Risk |
+|---|---|---|
+| Architecture / maintainability | 3.0 | High |
+| Security / auth / data protection | 3.5 | High (Critical if rules undeployed) |
+| Performance / scalability | 4.0 | High (at scale) |
+| Backend / database / API reliability | 3.0 | High |
+| Frontend / UX / state management | 3.5 | High |
+| Product / business risk / launch readiness | 3.4 | No-Go (as acquisition) |
+
+### Overall purchase-readiness: **3 / 10**
+
+### Recommendation: **NO-GO as an acquisition / product.**
+As a tradeable asset it is a rewrite carrying a bus-factor of one, cosmetic access control, an open billing liability, and unverified data-confidentiality controls. **However**, the same evidence supports a clear **GO for COMA's continued internal use** — provided the six "must-fix before launch" items below are closed first, because two of them (Firestore rules, backup completeness) are live risks of data breach and data loss *today*.
+
+### Risk levels
+- **Technical debt: HIGH** (borderline Critical — single-file monolith, no build, no real tests)
+- **Security: HIGH** (→ **CRITICAL** if Firestore rules are not deployed as strict)
+- **Performance: HIGH at scale** (acceptable at today's ~4-user, low-record volume)
+- **Maintainability: HIGH**
+
+---
+
+## Top 10 critical issues (ranked by severity)
+
+1. **Firestore security rules unverifiable / possibly open — CRITICAL.** Browser writes directly to Firestore with a public project config (`index.html` `ld`/`sv` L205–259); `firestore.rules:23` has the company-email restriction **commented out**. If default-open or undeployed, all client PII, CUITs, prices and financials are world-readable/writable. This alone blocks any deal.
+2. **Backup omits the pricing engine & restore wipes it — CRITICAL data loss.** `descargarBackup` (`index.html:2944-2950`) excludes `cotTrabajos`, `cotPapeles/Impresion/Chapas/Laminados/Otros/Config`, `cotEstructuras`, `insumosItems/Movs`, `vendedores`. `restaurarBackup` (`~3020`) restores the reduced set, so a "restore" **deletes the entire quoting catalog**. A live `wipeDatos()` (`~3031`) still exists.
+3. **No real authorization — HIGH/Critical.** Roles are a client-side regex on the user's own email (`puedeVerFinanzas()` `index.html:670`) enforced only by CSS `display:none` (`674`) and `alert()+return` in `nav()` (`2870`). Trivially bypassed from DevTools; any logged-in user can read/write finance data.
+4. **Open, unauthenticated AI endpoint (denial-of-wallet) — HIGH.** `netlify/functions/interpretar.js:5` — `Access-Control-Allow-Origin:'*'`, no auth, no rate limit, up to 4 base64 images with no size cap, `max_tokens:8000`. Anyone on the internet can burn the Anthropic key and inflate the bill.
+5. **Zero atomicity / no transactions — HIGH.** No `writeBatch`/`runTransaction` anywhere; `sv()` loops individual `setDoc`/`deleteDoc` (`index.html:219-252`) and the `_config` blob does racy read-modify-write (`253-258`). Generating an OT fans out to 3+ non-atomic writes → orphaned/partial records on failure.
+6. **Client-side ID generation (max+1) collides under concurrency — HIGH.** `nid` (`~718`) / `nidCot` (`~738`) compute the next number from existing max. Two users creating a cotización/OT at once produce duplicate visible numbers and cross-linked records (a class of bug already hit and patched once this project).
+7. **Attribute-context XSS — HIGH.** ~74 `innerHTML` sinks; the save-time sanitizer strips only `<>` not quotes (`index.html:283`); non-whitelisted fields (CUIT, email, phone) are interpolated raw into `href`/attributes (`~4879-4880`). XSS inside a finance session = full compromise given client-only roles.
+8. **Single-file monolith, no build, no modules — HIGH (maintainability / key-person).** One ~8,600-line `index.html`, ~555 global functions, no `package.json`/lockfile, state spread across ~30 loose `let`s + ~125 `window.*` refs. No safe seam to change or extend; one author.
+9. **No server-side pagination + full-collection in memory + full re-render — HIGH (scaling ceiling).** `ld()` (`209-211`) `getDocs` the whole subcollection with no `limit`; `cargarDatos` (`435-437`) loads all 8 collections at login; `onSnapshot` (`492-512`) `JSON.stringify`s entire arrays then triggers a full `#pg` `innerHTML` rebuild on every write for every client.
+10. **No safety net — HIGH (ops/business).** Silent `catch(e){}` on a system of record; no monitoring/error tracking; no automated Firestore backup (manual JSON only); deploy-straight-to-prod; a single git commit makes "rollback" hollow; tests (`tests/pruebas.js`) re-implement `uid/sanTxt/_pagina/save` inline and never exercise the shipped code.
+
+*Not in the top 10 but material:* single-tenant hardcoding (COMA identity, fleet names `['Coma','Edu','Walter','Torreflet']`, `projectId:"graficapro-coma"`) — the #1 blocker specifically for *resale*; zero accessibility (WCAG AA fail — `aria/role/tabindex` = 0 matches); `rCapacidad` calls `capMetricas` twice per machine with per-block `S.ordenes.find` (quadratic).
+
+---
+
+## Top 10 improvements (ranked by ROI)
+
+| # | Improvement | Effort | Payoff |
 |---|---|---|---|
-| Seguridad / datos | 2 | **6,5** | BAJO-MEDIO |
-| Backend / base de datos | 2,5 | **6,5** | MEDIO |
-| Performance / escalabilidad | 2 | **7,0** | MEDIO (Bajo en uso diario) |
-| Frontend / UX | 4,5 | **6,0** | MEDIO |
-| Arquitectura / mantenibilidad | 2 | **4,0** | ALTO |
-| Producto (uso interno) | 3 | **7,5** | — |
-
-### Niveles de riesgo consolidados (antes → ahora)
-- **Seguridad:** CRÍTICO → **BAJO-MEDIO**
-- **Datos / backend:** ALTO → **MEDIO**
-- **Performance:** CRÍTICO → **MEDIO** (Bajo para el trabajo vivo)
-- **Mantenibilidad:** CRÍTICO → **ALTO**
+| 1 | **Deploy & verify strict Firestore rules** (require auth; restrict to company; least-privilege per collection) | Low | Closes the single biggest data-breach risk |
+| 2 | **Fix backup/restore to include ALL `COL_KEYS`+`BLOB_KEYS`** and block `restaurarBackup` from deleting unlisted collections | Low | Prevents catastrophic, silent loss of the pricing catalog |
+| 3 | **Lock down the AI function**: verify a Firebase ID token, cap total payload size, add rate limiting, lower `max_tokens` | Low–Med | Ends denial-of-wallet + latency |
+| 4 | **Automated scheduled Firestore export** (daily) to a bucket | Low | Real disaster recovery, PITR-ish |
+| 5 | **`onSnapshot` → `docChanges()`** and drop the full-array `JSON.stringify` diff | Low | Removes per-write CPU spikes; fewer full re-renders |
+| 6 | **Escape quotes / attribute contexts** (or use `textContent`) in render sinks | Med | Removes the practical XSS path |
+| 7 | **Move ID allocation to a Firestore transaction / counter doc** (or push-ids) | Med | Eliminates concurrency collisions |
+| 8 | **Add a build/minify step** (esbuild) + long-cache hashed asset | Low | Cuts ~450–500 KB initial payload materially |
+| 9 | **Wrap OT/ficha creation in `writeBatch`** | Med | Atomic multi-doc writes; no orphans |
+| 10 | **Add error tracking (e.g. Sentry) and stop silent `catch{}`** | Low | Visibility into the state-divergence failures |
 
 ---
 
-## Recomendación: **GO para uso interno en COMA**
+## What must be fixed **before launch** (non-negotiable)
 
-El sistema pasó de "no usar en producción" a "**usable en producción interna hoy**". Los cuatro problemas que en la primera auditoría hacían inevitable la pérdida de datos o la fuga de información están **resueltos y verificados**:
+1. **Firestore rules deployed and verified strict** (issue #1). Until proven, assume the database is open.
+2. **Backup/restore completeness + automated backups; remove/guard `wipeDatos()`** (issue #2).
+3. **AI endpoint auth + rate limit + payload cap** (issue #4).
+4. **ID-collision fix** for cotización/OT numbers under concurrency (issue #6).
+5. **XSS attribute escaping** on any user-entered field rendered into HTML (issue #7).
+6. **Basic monitoring + a real rollback path** (tag releases; keep >1 deploy of history) so failures are visible and reversible (issue #10).
 
-1. Base de Firestore **cerrada** (reglas publicadas: solo usuarios autenticados).
-2. **IDs sin colisión** entre usuarios concurrentes (`uid()`).
-3. **Guardado incremental** (se acabó la reescritura masiva que disparaba la cuota).
-4. **XSS almacenado** cerrado por saneo de entrada.
+## What can wait **until after launch**
 
-Sumado a: roles básicos, integridad referencial, validación de formularios, **backup con recordatorio semanal**, y **control de versiones (git/GitHub)**.
-
-Lo que queda es hoja de ruta de mejora, no bloqueo: deuda técnica del monolito, responsive/tablet, tests formales, auditoría de borrados.
-
----
-
-## Top 10 temas restantes (por severidad, contexto interno)
-
-1. **Deuda técnica del monolito** — 5.000 líneas en un archivo, sin tests formales. (arquitectura)
-2. **Bus factor** — un solo autor; mitigado por git + backup, no eliminado. (producto)
-3. **Edición concurrente del mismo registro** (last-writer-wins). (backend)
-4. **Sin auditoría de borrados/cambios** (quién hizo qué). (seguridad)
-5. **Autorización por rol solo en cliente** (las reglas no distinguen rol). (seguridad)
-6. **Tablas de OT/Cotizaciones sin paginación** — primer punto que se sentirá lento con los años. (performance)
-7. **Render total por `innerHTML`** — pierde scroll; fricción diaria. (frontend)
-8. **Backup manual** (con recordatorio, pero depende del clic). (backend)
-9. **Sin responsive/tablet** — no sirve fuera del escritorio. (frontend)
-10. **MutationObserver global de fechas** — frágil y algo caro. (performance)
-
-## Top 10 mejoras por ROI
-
-1. Preservar el scroll en `render()`. (frontend, S)
-2. Documento técnico de 2 páginas (baja bus factor). (producto, S)
-3. Paginar OT/Cotizaciones con el patrón `PER=25` existente. (performance, S)
-4. Al borrar OT, limpiar su planificación/análisis. (backend, S)
-5. Registro de auditoría de borrados. (seguridad, S)
-6. `escHtml()` en el render de nombres/descripciones (defensa en profundidad). (seguridad, S)
-7. Cargar las cuentas de usuario por rol reales. (producto, S)
-8. Merge de snapshot con `docChanges()`. (backend/performance, M)
-9. Unificar `avP*` y las 3 grillas de costos. (arquitectura, M)
-10. `aria-label` en botones-ícono. (frontend, S)
-
-## Qué debe estar antes de usar en producción interna → **YA ESTÁ**
-Reglas cerradas · IDs seguros · guardado eficiente · backup · versionado. **Se puede usar hoy.**
-
-## Qué puede esperar
-Refactor a módulos/tests · responsive · auditoría de borrados · concurrencia fina · backup automático server-side.
+- Refactor the single file into modules with a build step (issue #8) — high value, but not a live risk.
+- Full accessibility remediation (WCAG) — important for a product, low urgency for 4 internal users.
+- Server-side pagination, list virtualization, incremental rendering (issue #9) — needed only as records grow into the thousands.
+- Replacing the test suite with tests that exercise the shipped code.
+- Multi-tenancy / de-hardcoding COMA — only relevant if the app is ever resold.
 
 ---
 
-## Archivos
-`README.md` (este) · `architecture.md` (4) · `security.md` (6,5) · `performance.md` (7) · `backend-db-api.md` (6,5) · `frontend-ux.md` (6) · `product-launch-readiness.md` (7,5 interno) · `action-plan.md` · `SEGURIDAD-PENDIENTE.md`.
-
-## Conclusión en una línea
-De **NO-GO a GO para uso interno**: los riesgos críticos se cerraron y verificaron. Lo que resta es evolución ordenada de una herramienta que ya resuelve, y muy bien, el problema real de COMA.
+## Reports in this folder
+- `architecture.md` — structure, maintainability, build/deploy
+- `security.md` — auth, authorization, data protection, XSS, secrets
+- `performance.md` — load, render model, scaling, hot loops
+- `backend-db-api.md` — Firestore usage, atomicity, backups, the Netlify function
+- `frontend-ux.md` — state management, rendering, accessibility, UX
+- `product-launch-readiness.md` — business risk, resale value, bus factor, launch ops
+- `action-plan.md` — sequenced remediation plan with owners/effort

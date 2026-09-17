@@ -102,7 +102,7 @@
   <div class="ni fin-only" onclick="nav('balmes')"><i class="ti ti-calendar-stats"></i>Balance mensual</div>
   <div class="ni fin-only" onclick="nav('balaño')"><i class="ti ti-chart-line"></i>Balance anual</div>
   <div style="padding:8px;border-top:0.5px solid rgba(0,0,0,.1);margin-top:auto;flex-shrink:0">
-    <div class="ni fin-only" onclick="descargarBackup()" style="font-size:12px;color:#185fa5;font-weight:500" title="Descargar una copia de seguridad de todos los datos a un archivo en tu computadora"><i class="ti ti-download"></i>Copia de seguridad</div>
+    <div class="ni fin-only" onclick="descargarBackup()" style="font-size:12px;color:#185fa5;font-weight:500" title="Descargar una copia de seguridad de todos los datos a un archivo en tu computadora"><i class="ti ti-download"></i>Copia de seguridad <span id="backup-fecha-nav" style="font-size:10px;color:#999;font-weight:400"></span></div>
     <div class="ni" onclick="doLogout()" style="font-size:12px;color:#a32d2d;font-weight:500"><i class="ti ti-logout"></i>Cerrar sesión</div>
   </div>
 </div>
@@ -181,7 +181,7 @@ async function retrySave(k){
 
 async function initFirebase(){
   const {initializeApp} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-  const {getFirestore,doc,getDoc,setDoc,collection,getDocs,deleteDoc,onSnapshot} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  const {getFirestore,doc,getDoc,setDoc,collection,getDocs,deleteDoc,onSnapshot,runTransaction} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   const {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,createUserWithEmailAndPassword} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
@@ -193,6 +193,7 @@ async function initFirebase(){
   window._fsCol = collection;
   window._fsGetDocs = getDocs;
   window._fsDelDoc = deleteDoc;
+  window._fsRunTxn = runTransaction;
   window._fsAuth = {onAuthStateChanged,signInWithEmailAndPassword,signOut,createUserWithEmailAndPassword};
 }
 
@@ -698,10 +699,8 @@ const _uidSalt=Math.floor(Math.random()*1000);
 function uid(){
   return Math.floor(Date.now()/1000)*1e6 + _uidSalt*1e3 + (_uidC=(_uidC+1)%1000);
 }
-function nid(t){
-  if(!S.ids)S.ids={};
-  // Robusto: el número nuevo es mayor que el máximo NÚMERO visible existente.
-  // OJO: nunca usar x.id como base — los ids internos son timestamps (uid) y dispararían el contador.
+// Máximo número VISIBLE existente para un tipo (base para no repetir con datos ya cargados)
+function _nidMaxVisible(t){
   const cols={ot:S.ordenes,rem:S.remitos,fac:S.facturas,cob:S.cobranzas,ficha:S.fichas,fichas:S.fichas};
   const arr=cols[t];let mx=0;
   if(Array.isArray(arr))for(const x of arr){
@@ -712,11 +711,39 @@ function nid(t){
     else if(isFinite(+x.id)&&+x.id<1e8)n=+x.id; // ids secuenciales viejos
     if(n>mx)mx=n;
   }
-  // Sanear contador corrupto (quedó en las nubes por el bug anterior)
-  let cur=S.ids[t]||1;
-  if(cur>1e8)cur=1;
-  const i=Math.max(cur,mx+1);
-  S.ids[t]=i+1;sk('ids');return i;
+  return mx;
+}
+// Reserva atómica de un número en el contador central de Firestore (gp/_counters).
+// Garantiza que dos usuarios simultáneos NUNCA obtengan el mismo número.
+// next = max(contador guardado, máximo visible) + 1. Si Firestore no está o falla, cae al modo viejo.
+async function _reservarNumero(field,mxVisible){
+  if(window._fsRunTxn&&db&&window._fsDoc){
+    try{
+      const ref=window._fsDoc(db,'gp','_counters');
+      const n=await window._fsRunTxn(db,async(tx)=>{
+        const snap=await tx.get(ref);
+        const data=snap.exists()?snap.data():{};
+        let cur=+data[field]||0;if(cur>1e8)cur=0;
+        const next=Math.max(cur,mxVisible||0)+1;
+        tx.set(ref,{[field]:next},{merge:true});
+        return next;
+      });
+      return n;
+    }catch(e){console.warn('_reservarNumero txn falló, uso fallback',field,e);}
+  }
+  // Fallback (sin transacción): comportamiento anterior basado en S.ids
+  if(!S.ids)S.ids={};
+  let cur=S.ids[field]||1;if(cur>1e8)cur=1;
+  const i=Math.max(cur,(mxVisible||0)+1);
+  S.ids[field]=i+1;sk('ids');
+  return i;
+}
+async function nid(t){
+  if(!S.ids)S.ids={};
+  const mx=_nidMaxVisible(t);
+  const i=await _reservarNumero(t,mx);
+  S.ids[t]=i+1; // espejo local (informativo)
+  return i;
 }
 function getVendedor(){
   if(!currentUser)return'';
@@ -728,16 +755,15 @@ function getCotPrefix(){
   const key=currentUser.email.split('@')[0].toLowerCase();
   return COT_PREFIX_MAP[key]||'C';
 }
-function nidCot(){
+async function nidCot(){
   const prefix=getCotPrefix();
   const idKey='cot_'+prefix;
   if(!S.ids)S.ids={};
-  // Robusto: mayor número existente de ese prefijo + 1 (evita repetir números y colisiones de id)
+  // Máximo número existente de ese prefijo (base para no repetir con lo ya cargado)
   let mx=0;const pfx=prefix+'-';
   (S.cotizaciones||[]).forEach(c=>{if(c&&typeof c.num==='string'&&c.num.indexOf(pfx)===0){const n=parseInt(c.num.slice(pfx.length));if(n>mx)mx=n;}});
-  const i=Math.max((S.ids[idKey]||1),mx+1);
-  S.ids[idKey]=i+1;
-  sk('ids');
+  const i=await _reservarNumero(idKey,mx); // reserva atómica anti-colisión
+  S.ids[idKey]=i+1; // espejo local
   return {id:i,num:`${prefix}-${String(i).padStart(4,'0')}`};
 }
 
@@ -2320,7 +2346,7 @@ async function cotAFormal(id){
     S.clientes.push({id:clienteId,nombre:t.cliente,fantasia:'',cuit:'',iva:'RI',dom:'',domEnt:'',loc:'',prov:'',email:'',tel:'',saldo:0,provisional:true});
     sk('clientes');
   }
-  const {id:cid,num}=nidCot();
+  const {id:cid,num}=await nidCot();
   const fecha=new Date().toISOString().slice(0,10);
   const plazo=10;
   const entrega=(typeof addDiasHabiles==='function')?addDiasHabiles(fecha,plazo):fecha;
@@ -2543,6 +2569,110 @@ function cotVerDesglose(cant){
   </div>`;
 }
 function cotVerDesgloseCerrar(){const ov=document.getElementById('cot-desg');if(ov)ov.remove();}
+// ===== Verificador de paginado (páginas → hojas → pliegos → chapas) — modos revista y cuaderno =====
+function _pagCol(c){const m=String(c==null?'':c).match(/(\d+)\s*\/\s*(\d+)/);if(m)return (+m[1])+(+m[2]);const one=String(c||'').match(/(\d+)/);return one?parseInt(one[1]):0;}
+function cotPagCalc(pg){
+  pg=pg||{};
+  const modo=pg.modo==='cuaderno'?'cuaderno':'revista';
+  const pph=Math.max(1,parseInt(pg.pagsPorHoja)|| (modo==='cuaderno'?2:4)); // revista plegada=4 · cuaderno hoja suelta=2
+  const hpp=Math.max(1,parseInt(pg.hojasPorPliego)||2);   // revista: hojas (plegadas) por pliego SM74
+  const poses=Math.max(1,parseInt(pg.posesPorPliego)||8); // cuaderno: hojitas (poses) por pliego SM74
+  const cant=(cotW&&+cotW.cantidad)||0;
+  const chT=_pagCol(pg.tapaColores||'4/4');
+  const chI=_pagCol(pg.intColores||'4/4');
+  const tPag=Math.max(0,parseInt(pg.tapaPags)||0);
+  const tHojas=Math.ceil(tPag/pph)||0;
+  const tPli=Math.ceil(tHojas/hpp)||0;
+  const o={modo,pph,hpp,poses,cant,chT,chI,tPag,tHojas,tPli,tChapas:tPli*chT};
+  if(modo==='cuaderno'){
+    const hojas=Math.max(0,parseInt(pg.intHojas)||0);   // hojas interiores por unidad (todas iguales)
+    o.intHojas=hojas; o.iPag=hojas*pph;
+    o.iLayouts=hojas>0?1:0;                              // todas iguales = 1 pliego distinto
+    o.iChapas=o.iLayouts*chI;
+    o.iPliegosImpresos=(hojas>0&&cant>0)?Math.ceil(hojas*cant/poses):0;
+    o.totChapas=o.tChapas+o.iChapas;
+  }else{
+    const iPag=Math.max(0,parseInt(pg.intPags)||0);
+    const iHojas=Math.ceil(iPag/pph)||0;
+    const iPli=Math.ceil(iHojas/hpp)||0;
+    o.iPag=iPag; o.iHojas=iHojas; o.iPli=iPli; o.iChapas=iPli*chI;
+    o.totPli=tPli+iPli; o.totChapas=tPli*chT+iPli*chI;
+  }
+  return o;
+}
+function cotPagToggle(){if(!cotW)return;cotW._pagOpen=!cotW._pagOpen;cotRerender();}
+function cotPagModo(m){if(!cotW)return;if(!cotW.paginado)cotW.paginado={};cotW.paginado.modo=m;cotRerender();}
+function cotPagEd(campo,val){
+  if(!cotW)return;if(!cotW.paginado)cotW.paginado={};
+  cotW.paginado[campo]=String(val).replace(/[<>]/g,'').slice(0,10);
+  const box=document.getElementById('cot-pag-result');
+  if(box)box.innerHTML=cotPagResultHTML(cotPagCalc(cotW.paginado));
+}
+function cotPagResultHTML(r){
+  const colT=(cotW.paginado&&cotW.paginado.tapaColores)||'4/4';
+  const colI=(cotW.paginado&&cotW.paginado.intColores)||'4/4';
+  if(r.modo==='cuaderno'){
+    let h=`<table style="width:100%;border-collapse:collapse;font-size:12px">
+      <tr style="text-align:left;color:#888;font-size:9px;text-transform:uppercase"><th style="padding:3px 8px"></th><th style="text-align:center">Hojas / págs</th><th style="text-align:center">Pliegos distintos</th><th style="text-align:center">Chapas</th><th style="text-align:center">Colores</th></tr>`;
+    if(r.tPag>0)h+=`<tr><td style="padding:3px 8px;font-weight:600">Tapa</td><td style="text-align:center">${r.tPag} pág</td><td style="text-align:center;font-weight:700;color:#185fa5">${r.tPli}</td><td style="text-align:center">${r.tChapas}</td><td style="text-align:center;color:#888">${colT}</td></tr>`;
+    if(r.intHojas>0)h+=`<tr><td style="padding:3px 8px;font-weight:600">Interior <span style="font-size:9px;color:#7b3fa0">(hojas iguales)</span></td><td style="text-align:center">${r.intHojas} hojas · ${r.iPag} pág</td><td style="text-align:center;font-weight:700;color:#185fa5">${r.iLayouts} <span style="font-size:9px;color:#888">(repetido)</span></td><td style="text-align:center">${r.iChapas}</td><td style="text-align:center;color:#888">${colI}</td></tr>`;
+    h+=`</table>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,.1);font-size:12.5px;display:flex;gap:18px;flex-wrap:wrap">
+        <span><b>${r.totChapas}</b> chapas en total</span>
+        ${r.cant>0?`<span style="color:#666">Pliegos impresos interior: ${r.intHojas} hojas × ${cotFmt(r.cant)} ej. ÷ ${r.poses} poses = <b>${cotFmt(r.iPliegosImpresos)}</b></span>`:''}
+      </div>
+      <div style="font-size:10px;color:#999;margin-top:5px">Cuaderno/block: cada hojita = ${r.pph} páginas (hoja suelta), interior todo igual → <b>1 solo pliego distinto</b> (pocas chapas), ${r.poses} hojitas por pliego SM74. Ej.: 80 hojas = 160 págs → 1 pliego distinto, y los pliegos impresos salen de la cantidad ÷ poses. Es solo un chequeo, no cambia el costeo.</div>`;
+    return h;
+  }
+  // modo revista (páginas distintas, plegado)
+  const linea=(lbl,pag,hojas,pli,ch,col)=>pag>0?`<tr><td style="padding:3px 8px;font-weight:600">${lbl}</td><td style="text-align:center">${pag} pág</td><td style="text-align:center">${hojas} hoja${hojas!==1?'s':''}</td><td style="text-align:center;font-weight:700;color:#185fa5">${pli} pliego${pli!==1?'s':''}</td><td style="text-align:center">${ch} chapas</td><td style="text-align:center;color:#888">${col||''}</td></tr>`:'';
+  let h=`<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <tr style="text-align:left;color:#888;font-size:9px;text-transform:uppercase"><th style="padding:3px 8px"></th><th style="text-align:center">Páginas</th><th style="text-align:center">Hojas</th><th style="text-align:center">Pliegos distintos</th><th style="text-align:center">Chapas</th><th style="text-align:center">Colores</th></tr>
+    ${linea('Tapa',r.tPag,r.tHojas,r.tPli,r.tChapas,colT)}
+    ${linea('Interior',r.iPag,r.iHojas,r.iPli,r.iChapas,colI)}
+  </table>`;
+  h+=`<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,.1);font-size:12.5px;display:flex;gap:18px;flex-wrap:wrap">
+    <span><b>${r.totPli}</b> pliego${r.totPli!==1?'s':''} distinto${r.totPli!==1?'s':''}</span>
+    <span><b>${r.totChapas}</b> chapas en total</span>
+    ${r.cant>0?`<span style="color:#666">Pliegos impresos (× ${cotFmt(r.cant)} ej., sin demasía): tapa <b>${cotFmt(r.tPli*r.cant)}</b> · interior <b>${cotFmt(r.iPli*r.cant)}</b></span>`:''}
+  </div>
+  <div style="font-size:10px;color:#999;margin-top:5px">Revista plegada: cada hoja = ${r.pph} páginas · ${r.hpp} hojas por pliego. Ej.: interior 24 pág → 6 hojas → 3 pliegos SM74 (2 hojas c/u). Es solo un chequeo, no cambia el costeo.</div>`;
+  return h;
+}
+function cotPaginadoHTML(w){
+  const abierto=!!(w&&w._pagOpen);
+  const pg=(w&&w.paginado)||{};
+  const modo=pg.modo==='cuaderno'?'cuaderno':'revista';
+  const inp=(campo,val,ph,wdt='60px')=>`<input value="${cotEsc(val==null?'':String(val))}" onchange="cotPagEd('${campo}',this.value)" placeholder="${ph||''}" style="width:${wdt};padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px;text-align:center">`;
+  const modBtn=(m,l)=>`<button onclick="cotPagModo('${m}')" style="padding:5px 12px;border-radius:7px;border:1px solid ${modo===m?'#7b3fa0':'rgba(0,0,0,.15)'};background:${modo===m?'#7b3fa0':'#fff'};color:${modo===m?'#fff':'#555'};font-size:11px;font-weight:600;cursor:pointer">${l}</button>`;
+  let h=`<div class="card" style="padding:12px;margin-bottom:12px">
+    <div onclick="cotPagToggle()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer">
+      <strong style="font-size:12px;color:#7b3fa0"><i class="ti ti-book-2"></i> Paginado (verificador de pliegos y chapas)</strong>
+      <i class="ti ti-chevron-${abierto?'up':'down'}" style="color:#888"></i>
+    </div>`;
+  if(abierto){
+    h+=`<div style="display:flex;gap:6px;margin:8px 0">${modBtn('revista','Revista / catálogo (plegado)')}${modBtn('cuaderno','Cuaderno / block (hojas sueltas)')}</div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px">${modo==='cuaderno'?'Hojas interiores todas iguales (una sola plancha). Cada hoja suelta = 2 páginas (anillado / binder tipo libro).':'Revista plegada: cada pliego se dobla; una hoja A3 = 4 páginas A4.'}</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
+      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Páginas tapa</div>${inp('tapaPags',pg.tapaPags,'4')}</div>
+      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Colores tapa</div>${inp('tapaColores',pg.tapaColores||'4/4','4/4','54px')}</div>`;
+    if(modo==='cuaderno'){
+      h+=`<div><div style="font-size:10px;color:#888;margin-bottom:2px">Hojas interior (por unidad)</div>${inp('intHojas',pg.intHojas,'80')}</div>
+      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Colores interior</div>${inp('intColores',pg.intColores||'1/1','1/1','54px')}</div>
+      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Págs. por hoja</div>${inp('pagsPorHoja',pg.pagsPorHoja||2,'2')}</div>
+      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Poses por pliego</div>${inp('posesPorPliego',pg.posesPorPliego||8,'8')}</div>`;
+    }else{
+      h+=`<div><div style="font-size:10px;color:#888;margin-bottom:2px">Páginas interior</div>${inp('intPags',pg.intPags,'24')}</div>
+      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Colores interior</div>${inp('intColores',pg.intColores||'4/4','4/4','54px')}</div>
+      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Págs. por hoja</div>${inp('pagsPorHoja',pg.pagsPorHoja||4,'4')}</div>
+      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Hojas por pliego</div>${inp('hojasPorPliego',pg.hojasPorPliego||2,'2')}</div>`;
+    }
+    h+=`</div>
+    <div id="cot-pag-result" style="background:#faf7fd;border:1px solid #e6d8f5;border-radius:8px;padding:10px">${cotPagResultHTML(cotPagCalc(pg))}</div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
 // Siembra las 5 variantes de impresión digital (Xerox V180). El costo por pliego se guarda en
 // primerMillar EN USD (se convierte a pesos con el dólar efectivo). Se edita en Tablas de costos.
 const XEROX_VER=2;
@@ -2785,6 +2915,8 @@ function rCotizador(){
     <button onclick="cotRevista()" title="Estructura típica: Tapa + Interior (usá ENTRADAS para 16/24/32 págs) + abrochado" style="font-size:12px;color:#7b3fa0;border-color:#7b3fa0"><i class="ti ti-book"></i> + Revista (Tapa + Interior)</button>
     <button onclick="cotBlock()" title="Tapa + Interior con hojas por unidad (block de 25/50/100 hojas, cuaderno anillado)" style="font-size:12px;color:#a35b00;border-color:#a35b00"><i class="ti ti-notebook"></i> + Block / Cuaderno (Interior × hojas)</button>
   </div>`;
+  // ---- PAGINADO DE REVISTA (verificador de pliegos/chapas) ----
+  h+=cotPaginadoHTML(w);
   // ---- PROCESOS COMUNES ----
   h+=`<div class="card" style="padding:12px;margin-bottom:12px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -2941,14 +3073,10 @@ function updateProvTable(){
 // Descarga TODOS los datos a un archivo .json en la computadora del usuario.
 function descargarBackup(){
   try{
-    const backup={
-      _app:'GraficaPro',_version:1,_fecha:new Date().toISOString(),
-      clientes:S.clientes,proveedores:S.proveedores,cotizaciones:S.cotizaciones,
-      ordenes:S.ordenes,remitos:S.remitos,fichas:S.fichas,gastos:S.gastos,
-      planificacion:S.planificacion,analCostos:S.analCostos,recursosAnal:S.recursosAnal,
-      maquinas:S.maquinas,externos:S.externos,fletes:S.fletes,procesos:S.procesos,
-      stockPapel:S.stockPapel,stockMovs:S.stockMovs,ids:S.ids,tiposTrabajo:S.tiposTrabajo
-    };
+    // Backup COMPLETO: todas las colecciones (COL_KEYS) y toda la configuración (BLOB_KEYS),
+    // armado dinámicamente para que nunca vuelva a quedar incompleto al agregar módulos nuevos.
+    const backup={_app:'GraficaPro',_version:2,_fecha:new Date().toISOString()};
+    [...COL_KEYS,...BLOB_KEYS].forEach(k=>{if(S[k]!==undefined)backup[k]=S[k];});
     const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
@@ -2959,6 +3087,7 @@ function descargarBackup(){
     // Registrar la fecha del último backup (compartida entre máquinas vía Firestore)
     if(!S.ids)S.ids={};S.ids._lastBackup=new Date().toISOString().slice(0,10);sk('ids');
     const b=document.getElementById('backup-reminder');if(b)b.remove();
+    if(typeof actualizarBackupNav==='function')actualizarBackupNav();
     const nOts=(S.ordenes||[]).length,nCli=(S.clientes||[]).length,nCot=(S.cotizaciones||[]).length;
     alert(`Copia de seguridad descargada.\n\nIncluye: ${nCli} clientes, ${nCot} cotizaciones, ${nOts} órdenes y todo lo demás.\n\nGuardá el archivo en un lugar seguro (por ejemplo, una carpeta de Drive o un pendrive). Se recomienda hacerlo una vez por semana.`);
   }catch(e){alert('No se pudo generar la copia: '+(e&&e.message||e));}
@@ -2970,8 +3099,21 @@ function backupPendienteEstaSemana(){
   const lunes=_lunesDeEstaSemana();
   return !last||last<lunes; // no hubo backup desde el lunes de esta semana
 }
+function _fmtBackupFecha(){
+  const last=S.ids&&S.ids._lastBackup?new Date(S.ids._lastBackup+'T00:00:00'):null;
+  if(!last)return 'nunca';
+  return String(last.getDate()).padStart(2,'0')+'/'+String(last.getMonth()+1).padStart(2,'0')+'/'+last.getFullYear();
+}
+// Mostrar en el botón del menú la fecha del último backup (y avisar en ámbar si está pendiente)
+function actualizarBackupNav(){
+  const el=document.getElementById('backup-fecha-nav');if(!el)return;
+  const pend=backupPendienteEstaSemana();
+  el.textContent='· última: '+_fmtBackupFecha();
+  el.style.color=pend?'#a35b00':'#999';
+}
 function chequearRecordatorioBackup(){
   if(!puedeVerFinanzas())return; // solo a quien puede hacer el backup
+  actualizarBackupNav();
   const ya=document.getElementById('backup-reminder');
   const ahora=new Date();const dia=ahora.getDay();const hora=ahora.getHours();
   // Mostrar: viernes 16hs+, o sábado/domingo, o cualquier día si ya pasó una semana entera sin copia
@@ -2982,12 +3124,13 @@ function chequearRecordatorioBackup(){
   const toca=backupPendienteEstaSemana()&&(esViernesTarde||esFinde||diasSinBackup>=7);
   if(!toca){if(ya&&ya.dataset.auto==='1')ya.remove();return;}
   if(ya||window._backupReminderCerrado)return; // no repetir ni reabrir si lo cerró
+  // Chip discreto en la esquina inferior izquierda (no tapa botones)
   const div=document.createElement('div');div.id='backup-reminder';div.dataset.auto='1';
-  div.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99998;background:#185fa5;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:center;gap:14px;font-size:13px;box-shadow:0 2px 10px rgba(0,0,0,.25)';
-  const txt=last?`Hace ${diasSinBackup} días que no hacés una copia de seguridad.`:'Todavía no hiciste ninguna copia de seguridad.';
-  div.innerHTML=`<span><i class="ti ti-alert-triangle"></i> ${txt} Es buen momento para el respaldo semanal.</span>`
-    +`<button onclick="descargarBackup()" style="background:#fff;color:#185fa5;border:none;border-radius:7px;padding:6px 14px;font-weight:600;cursor:pointer"><i class="ti ti-download"></i> Descargar copia ahora</button>`
-    +`<button onclick="window._backupReminderCerrado=true;document.getElementById('backup-reminder').remove()" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:7px;padding:6px 12px;cursor:pointer">Ahora no</button>`;
+  div.style.cssText='position:fixed;bottom:16px;left:16px;z-index:99998;background:#fff;color:#333;border:1px solid #e0c48a;border-left:4px solid #d99518;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;font-size:12px;max-width:300px;box-shadow:0 6px 22px rgba(0,0,0,.18)';
+  const txt=last?`Sin copia hace ${diasSinBackup} días (última: ${_fmtBackupFecha()}).`:'Todavía no hiciste ninguna copia de seguridad.';
+  div.innerHTML=`<i class="ti ti-alert-triangle" style="color:#d99518;font-size:16px"></i><span style="flex:1"><b>Respaldo semanal</b><br>${txt}</span>`
+    +`<div style="display:flex;flex-direction:column;gap:5px"><button onclick="descargarBackup()" style="background:#185fa5;color:#fff;border:none;border-radius:7px;padding:6px 11px;font-weight:600;cursor:pointer;white-space:nowrap;font-size:12px"><i class="ti ti-download"></i> Copiar</button>`
+    +`<button onclick="window._backupReminderCerrado=true;document.getElementById('backup-reminder').remove()" style="background:transparent;color:#888;border:1px solid rgba(0,0,0,.15);border-radius:7px;padding:4px 11px;cursor:pointer;font-size:11px">Ahora no</button></div>`;
   document.body.appendChild(div);
 }
 // Restaurar desde un archivo de backup (uso excepcional; pide confirmación fuerte).
@@ -3002,8 +3145,10 @@ function restaurarBackup(){
       if(data._app!=='GraficaPro'){alert('El archivo no es un backup de GraficaPro.');return;}
       if(!confirm('⚠ Esto REEMPLAZA todos los datos actuales por los del backup del '+(data._fecha||'?')+'.\n\n¿Continuar?'))return;
       if(!confirm('Confirmá de nuevo: se pierden los datos actuales y se cargan los del archivo.'))return;
-      const cols=['clientes','proveedores','cotizaciones','ordenes','remitos','fichas','gastos','planificacion','analCostos','recursosAnal','maquinas','externos','fletes','procesos','stockPapel','stockMovs','ids','tiposTrabajo'];
-      cols.forEach(k=>{if(data[k]!==undefined)S[k]=data[k];});
+      // Restaurar TODO lo que traiga el archivo (colecciones + configuración). Las claves
+      // que no estén en el archivo NO se tocan (nunca se borra algo por restaurar un backup viejo).
+      const cols=[...COL_KEYS,...BLOB_KEYS].filter(k=>data[k]!==undefined);
+      cols.forEach(k=>{S[k]=data[k];});
       for(const k of cols){try{await sk(k);}catch(err){console.warn('restore',k,err);}}
       alert('Backup restaurado. La página se va a recargar.');location.reload();
     };
@@ -6727,7 +6872,7 @@ function abrirModalDistribuirOTs(cotId){
   document.body.appendChild(ov);
 }
 
-function confirmarDistribucionOTs(cotId){
+async function confirmarDistribucionOTs(cotId){
   const c=S.cotizaciones.find(x=>x.id==cotId);if(!c)return;
   const items=c.items||[];
   const rows=Array.isArray(window._dotRows)?window._dotRows:items.map((it,ii)=>({rid:ii,ii,piezaIdx:null,piezaNombre:null,primeraDelItem:true}));
@@ -6741,7 +6886,7 @@ function confirmarDistribucionOTs(cotId){
     grupos[nroOT].entradas.push({item:{...it},piezaIdx:row.piezaIdx,piezaNombre:row.piezaNombre,comunes:!!row.primeraDelItem});
     if(!grupos[nroOT].maq&&maq)grupos[nroOT].maq=maq;
   });
-  const baseId=nid('ot');
+  const baseId=await nid('ot');
   const letras=Object.keys(grupos).sort((a,b)=>Number(a)-Number(b));
   const multiOT=letras.length>1;
   const nuevasOTids=[];
@@ -7807,9 +7952,9 @@ function calcFicha(){
   if(Q('f-iva-d'))Q('f-iva-d').textContent=$m(iva);
   if(Q('f-tot-d'))Q('f-tot-d').textContent=$m(sub+iva);
 }
-function savFicha(estado){
+async function savFicha(estado){
   const agf=moneyVal('f-agf'),garb=moneyVal('f-garb'),otras=moneyVal('f-otras'),vend=moneyVal('f-comVend'),total=agf+garb+otras+vend;
-  const id=nid('ficha'),num='F-'+String(id).padStart(4,'0');
+  const id=await nid('ficha'),num='F-'+String(id).padStart(4,'0');
   const otIdManual=parseInt(Q('f-otid')?.value)||null;
   S.fichas.push({id,num,estado,fecha:Q('f-fecha')?.value||'',nPedido:Q('f-np')?.value||'',otId:otIdManual,otIds:otIdManual?[otIdManual]:[],descripcion:Q('f-desc')?.value||'',entregaSolicitada:Q('f-ent')?.value||'',entregaAprox:Q('f-aprox')?.checked||false,observacionesTrabajo:Q('f-obsTrab')?.value||'',agf,garbarinoComision:garb,otrasComisiones:otras,vendedor:Q('f-vend')?.value||'',comisionVendedor:vend,total,iva:parseFloat(Q('f-iva')?.value)||0.21,facRazonSocial:Q('f-razSoc')?.value||'',facCuit:Q('f-cuit')?.value||'',facCondIva:Q('f-condIva')?.value||'RI',facDomicilio:Q('f-domFac')?.value||'',facContacto:Q('f-facCont')?.value||'',facTelefono:Q('f-facTel')?.value||'',facEmail1:Q('f-email1')?.value||'',facEmail2:Q('f-email2')?.value||'',ordenCompra:Q('f-oc')?.checked||false,nOrdenCompra:Q('f-ocNum')?.value||'',observacionesFac:Q('f-obsFac')?.value||'',cobCondPago:Q('f-cobCond')?.value||'',cobFormaPago:Q('f-cobForma')?.value||'',cobDetalle:Q('f-cobDet')?.value||'',cobDiasHorarios:Q('f-cobDias')?.value||'',cobContacto:Q('f-cobCont')?.value||'',cobTelefono:Q('f-cobTel')?.value||'',cobEmail:Q('f-cobEmail')?.value||'',observacionesCob:Q('f-obsCob')?.value||'',ent1Dir:Q('f-e1dir')?.value||'',ent1Cantidad:Q('f-e1cant')?.value||'',ent1Horario:Q('f-e1hor')?.value||'',ent1PedirTurno:Q('f-e1t')?.checked||false,ent1Recibe:Q('f-e1rec')?.value||'',ent1Tel:Q('f-e1tel')?.value||'',ent1Email:Q('f-e1email')?.value||'',ent1Muestras:Q('f-e1m')?.checked||false,ent1CantMuestras:parseInt(Q('f-e1mc')?.value)||0,ent1Obs:Q('f-e1obs')?.value||'',ent2Dir:Q('f-e2dir')?.value||'',ent2Cantidad:Q('f-e2cant')?.value||'',ent2Horario:Q('f-e2hor')?.value||'',ent2PedirTurno:Q('f-e2t')?.checked||false,ent2Recibe:Q('f-e2rec')?.value||'',ent2Tel:Q('f-e2tel')?.value||'',ent2Email:Q('f-e2email')?.value||'',ent2Muestras:Q('f-e2m')?.checked||false,ent2CantMuestras:parseInt(Q('f-e2mc')?.value)||0,ent2Obs:Q('f-e2obs')?.value||''});
   sk('fichas');fichaTab='ver';fichaVerID=id;render();
@@ -8131,7 +8276,7 @@ function _cidOProvisional(hidId,txtId){
   sk('clientes');
   return id;
 }
-function savCot(st){
+async function savCot(st){
   const cid=_cidOProvisional('cot-id','cot-txt');if(!cid){alert('Poné el nombre del cliente (podés escribir solo el nombre; los datos se completan después).');return;}
   const rawItems=_leerItemsDOMNuevo();
   const items=rawItems.map(it=>({desc:_composeItemDesc(it),qty:(it.filas[0]||{}).qty||0,precio:(it.filas[0]||{}).precio||0,subtotal:(it.filas[0]||{}).subtotal||0})).filter(i=>i.desc);
@@ -8145,7 +8290,7 @@ function savCot(st){
   const plazo=parseInt(Q('cplazo')?.value)||10;
   const fechaCot=Q('cf').value;
   const entrega=addDiasHabiles(fechaCot,plazo);
-  const {id,num}=nidCot();
+  const {id,num}=await nidCot();
   const vendedor=getVendedor();
   const tipoTrabajo=Q('cd')?.value||'';
   const pesoEstimado=(typeof _pesoDesdeItems==='function')?_pesoDesdeItems(rawItems):'';
@@ -8210,7 +8355,7 @@ function estrAprenderAplicar(){
 }
 // Cambiar el estado de una cotización (ej. borrador → enviada) desde la lista
 function cotSetEstado(id,st){const c=S.cotizaciones.find(x=>x.id==id);if(!c)return;c.estado=st;sk('cotizaciones');updateCotResults();}
-function chCot(id,st,varIdx){
+async function chCot(id,st,varIdx){
   const i=S.cotizaciones.findIndex(c=>c.id==id);
   if(i<0)return;
   const c=S.cotizaciones[i];
@@ -8226,30 +8371,30 @@ function chCot(id,st,varIdx){
   sk('cotizaciones');
   if(st==='aprobada'){
     const yaOT=S.ordenes.find(o=>o.cotId==id);
-    if(!yaOT) genOT(id,false,null,true);
+    if(!yaOT) await genOT(id,false,null,true);
   }
   cm();render();
 }
-function chCotIdx(idx,st){
+async function chCotIdx(idx,st){
   const c=S.cotizaciones[idx];if(!c)return;
   c.estado=st;
   sk('cotizaciones');
   if(st==='aprobada'){
     const yaOT=S.ordenes.find(o=>o.cotId==c.id);
-    if(!yaOT) genOT(idx,true);
+    if(!yaOT) await genOT(idx,true);
   }
   render();
 }
-function genOT(cotIdOrIdx,byIdx,descComp,noRender){
+async function genOT(cotIdOrIdx,byIdx,descComp,noRender){
   const c=byIdx?S.cotizaciones[cotIdOrIdx]:S.cotizaciones.find(x=>x.id==cotIdOrIdx);
   if(!c)return;
   // Todas las OTs ya generadas para esta cotización comparten el mismo número base, solo cambia el sufijo de letra
   const otsPrevias=S.ordenes.filter(o=>o.cotId==c.id);
   let baseId;
   if(otsPrevias.length>0){
-    baseId=otsPrevias[0].baseId||parseInt(otsPrevias[0].num.replace(/^OT-0*(\d+).*$/,'$1'))||nid('ot');
+    baseId=otsPrevias[0].baseId||parseInt(otsPrevias[0].num.replace(/^OT-0*(\d+).*$/,'$1'))||await nid('ot');
   }else{
-    baseId=nid('ot');
+    baseId=await nid('ot');
   }
   const id=uid(); // id interno único a prueba de colisiones; el número visible reutiliza baseId
   const sufijo=otsPrevias.length===0?'':String.fromCharCode(65+otsPrevias.length); // única sin letra; 2da='B'...
@@ -8292,10 +8437,10 @@ function genOT(cotIdOrIdx,byIdx,descComp,noRender){
   sk('ordenes');
   crearFichaAuto(S.ordenes[S.ordenes.length-1],c);if(!noRender)render();
 }
-function savOT(){
+async function savOT(){
   const cid=gCid('ot-id');if(!cid){alert('Seleccioná un cliente');return;}
   const numManual=Q('ot-num')?.value.trim();
-  const numSeq=nid('ot');const id=uid();const num=numManual?numManual:`OT-${String(numSeq).padStart(4,'0')}`;
+  const numSeq=await nid('ot');const id=uid();const num=numManual?numManual:`OT-${String(numSeq).padStart(4,'0')}`;
   // material
   const material={
     prov:Q('m-prov')?.value||'',papelera:Q('m-papelera')?.value||'',material:Q('m-material')?.value||'',marca:Q('m-marca')?.value||'',
@@ -8402,7 +8547,7 @@ function updateOT(id){
 }
 function avP(otId,nom){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos.find(x=>x.nombre===nom);if(!p)return;const now=new Date();const h=now.toISOString().slice(0,10);if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}const _c=pasosContables(o);const dn=_c.filter(x=>x.estado==='done').length;if(dn===_c.length)o.estado='lista';else if(o.pasos.some(x=>x.estado==='active'))o.estado='en_produccion';sk('ordenes');render();}
 function avPN(otId,idx){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos[idx];const n=Q('np'+idx);if(n&&n.value)p.nota=n.value;const now=new Date();const h=now.toISOString().slice(0,10);if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}const _c=pasosContables(o);const dn=_c.filter(x=>x.estado==='done').length;if(dn===_c.length)o.estado='lista';else if(o.pasos.some(x=>x.estado==='active'))o.estado='en_produccion';sk('ordenes');cm();om('vot',otId);}
-function savRem(){const cid=gCid('rem-id');if(!cid){alert('Seleccioná un cliente');return;}const otId=parseInt(Q('remo').value)||null;const ot=otId?S.ordenes.find(o=>o.id===otId):null;const numSeq=nid('rem'),id=uid(),num=`R-${String(numSeq).padStart(4,'0')}`;S.remitos.push({id,num,clienteId:cid,otNum:ot?.num||'',fecha:Q('rf').value,dir:Q('rd').value,det:Q('rdet').value,estado:'emitido'});sk('remitos');cm();render();}
+async function savRem(){const cid=gCid('rem-id');if(!cid){alert('Seleccioná un cliente');return;}const otId=parseInt(Q('remo').value)||null;const ot=otId?S.ordenes.find(o=>o.id===otId):null;const numSeq=await nid('rem'),id=uid(),num=`R-${String(numSeq).padStart(4,'0')}`;S.remitos.push({id,num,clienteId:cid,otNum:ot?.num||'',fecha:Q('rf').value,dir:Q('rd').value,det:Q('rdet').value,estado:'emitido'});sk('remitos');cm();render();}
 function mkRem(id,st){const i=S.remitos.findIndex(r=>r.id===id);if(i>=0){S.remitos[i].estado=st;sk('remitos');cm();render();}}
 function savGas(){const c=Q('gc')?.value.trim();if(!c){alert('Ingresá el concepto');return;}const id=uid();S.gastos.push({id,concepto:c,tipo:Q('gti').value,monto:parseFloat(Q('gm').value)||0,mes:Q('gme').value});sk('gastos');cm();render();}
 function delGas(id){if(!confirm('¿Eliminar?'))return;S.gastos=S.gastos.filter(g=>g.id!==id);sk('gastos');render();}
@@ -8559,9 +8704,9 @@ function delProv(id){const p=S.proveedores.find(x=>x.id==id);if(!p)return;if(!co
 function _cotTieneOTs(cotId){return S.ordenes.filter(o=>o.cotId==cotId).length;}
 function delCot(id){const c=S.cotizaciones.find(x=>x.id==id);if(!c)return;const n=_cotTieneOTs(id);if(n){alert(`No se puede eliminar la cotización ${c.num}: tiene ${n} orden(es) de trabajo asociada(s).`);return;}if(!confirm(`¿Eliminar la cotización ${c.num}?\nEsta acción no se puede deshacer.`))return;S.cotizaciones=S.cotizaciones.filter(x=>x.id!=id);sk('cotizaciones');render();}
 function delCotIdx(idx){const c=S.cotizaciones[idx];if(!c)return;const n=_cotTieneOTs(c.id);if(n){alert(`No se puede eliminar la cotización ${c.num}: tiene ${n} orden(es) de trabajo asociada(s).`);return;}if(!confirm(`¿Eliminar la cotización ${c.num}?\nEsta acción no se puede deshacer.`))return;S.cotizaciones.splice(idx,1);sk('cotizaciones');render();}
-function dupCot(id){
+async function dupCot(id){
   const orig=S.cotizaciones.find(x=>x.id==id);if(!orig)return;
-  const {id:newId,num}=nidCot(); // nº correcto (nid('cot') devolvía siempre 1 y pisaba la C-0001)
+  const {id:newId,num}=await nidCot(); // nº correcto y reservado atómicamente (anti-colisión)
   const hoy=new Date().toISOString().slice(0,10);
   // Copia profunda de todos los campos, reemplazando solo lo que debe ser nuevo
   const nueva=Object.assign({},JSON.parse(JSON.stringify(orig)),{
@@ -8579,13 +8724,13 @@ function dupCot(id){
   // Abrir modal de edición de la nueva cotización para que pueda ajustar antes de confirmar
   setTimeout(()=>{mEditCot(newId);},50);
 }
-function omCotNuevaOT(cotId){
+async function omCotNuevaOT(cotId){
   const c=S.cotizaciones.find(x=>x.id==cotId);if(!c)return;
   const otsPrev=S.ordenes.filter(o=>o.cotId==cotId);
   const proxLetra=String.fromCharCode(65+otsPrev.length);
   const desc=prompt('Descripción de la OT complementaria '+proxLetra+'\n(Ej: Tapa, Interior, Refuerzo, Acetato)','');
   if(desc===null)return; // canceló
-  genOT(cotId,false,desc||('Componente '+proxLetra));
+  await genOT(cotId,false,desc||('Componente '+proxLetra));
   // reabrir el modal con la cotizacion actualizada
   cm();
   setTimeout(()=>omCot(cotId),50);

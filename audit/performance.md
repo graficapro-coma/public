@@ -1,123 +1,136 @@
-# Auditoría de PERFORMANCE y ESCALABILIDAD — GraficaPro (COMA)
+# Gráfica Pro — Performance & Scalability Audit
 
-**Fecha:** 2026-07-11
-**Alcance:** `GRAFICA PRO/index.html` (~5.000 líneas, SPA de un solo archivo + Firestore).
-**Encuadre:** Herramienta **interna** de imprenta. Volumen real: pocos usuarios simultáneos (2-6), **decenas a cientos de OTs por mes**. NO es un SaaS masivo. La escalabilidad se evalúa contra ESE volumen y un horizonte de **2-3 años de datos acumulados**.
-
-> **Nota:** esta auditoría reemplaza la versión previa (2026-07-10, que puntuaba 2/10 CRITICAL). Aquella evaluaba el código ANTES de dos mejoras hoy aplicadas: (1) guardado incremental en `sv()` con cache `_docJson` — ya no reescribe la colección entera en cada guardado; y (2) índices `Map` `_cliIndex`/`_provIndex` — eliminan el O(n) por lookup de `cNom`/`pNom`. Esos dos hallazgos, que eran los bloqueantes, están corregidos, y por eso el puntaje sube fuerte.
-
-> Estimación de datos a 2-3 años usada como base: ~100-200 OTs/mes → **3.000-7.000 órdenes** acumuladas, más una cantidad similar de cotizaciones, y varios miles de fichas/gastos/remitos. Clientes/proveedores en el orden de cientos.
+**Scope:** Performance/scalability only. Acquisition due-diligence. Evidence-based, exact file/function/line.
+**Artifacts reviewed:** `index.html` (8,619 lines, single-file SPA), `netlify/functions/interpretar.js` (99 lines).
+**Method:** static analysis + occurrence counts via ripgrep. No production code modified. No runtime profiling (no deployed instance profiled), so wall-clock numbers below are complexity-derived estimates, not measurements.
 
 ---
 
-## Puntaje general: **7,0 / 10**
+## Executive summary
 
-Para el volumen real de COMA, el sistema **aguanta cómodo hoy y sigue siendo usable a 2-3 años**, con lentitud creciente y localizada en un par de vistas concretas. Las dos mejoras aplicadas sacaron de encima los dos problemas más caros (cuota de escrituras de Firestore y lookups O(n)). Lo que queda son cuellos de botella de **renderizado** y **sincronización**: molestos y previsibles, pero no fatales a esta escala.
+**Overall performance score: 4 / 10.**
+**Risk rating: HIGH.**
 
----
+The app is a functional single-file SPA that works fine at *current* data volume (hundreds of records) but has three structural properties that degrade **super-linearly** as `cotizaciones`/`ordenes` grow into the thousands and as concurrent users increase:
 
-## Rúbrica (1-10)
+1. **Full-`innerHTML` re-render on nearly every state change** — no diffing, no virtualization; entire page template strings rebuilt and reparsed.
+2. **Every collection held fully in memory** (`S`) with **no server-side pagination**; `onSnapshot` streams whole collections and, on each event, does a full `JSON.stringify` of both local and remote arrays before a full re-render — across 6 collections, on every write, for every connected client.
+3. **Hot render paths perform nested O(records) scans** (`S.ordenes.find` inside per-block/per-machine loops).
 
-| # | Criterio | Puntaje | Resumen |
-|---|----------|:------:|---------|
-| 1 | Escrituras a Firestore / guardado incremental (`sv`) | **9** | Corregido: solo escribe el doc que cambió. |
-| 2 | Carga inicial y modelo de lectura (sin paginación/archivado) | **6** | Trae TODAS las colecciones enteras al abrir. |
-| 3 | Sincronización en tiempo real (`activarSincronizacion` / `onSnapshot`) | **5** | Compara colecciones enteras con `JSON.stringify` y re-renderiza todo. |
-| 4 | Renderizado y DOM (`render`, `innerHTML` total, sin virtualización) | **5** | Re-render total, pierde scroll; tablas OT/Cotizaciones sin paginar. |
-| 5 | Búsqueda y filtrado (`updateOTResults`, `updateSegResults`) | **7** | Filtra arrays completos por tecla; barato al volumen real. |
-| 6 | Lookups e indexación (`cNom`/`pNom`, `_cliIndex`/`_provIndex`) | **9** | Índices `Map` O(1) con invalidación por referencia/longitud. |
-| 7 | `MutationObserver` global de fechas | **4** | Reformatea fechas recorriendo todo el DOM en cada cambio. |
-| 8 | Agregaciones y cálculos por vista (`rDash`, `updateSegResults`, `rCalSemanal`, balances) | **6** | O(n) repetidos; acotados por filtrar entregadas/canceladas. |
+None are fatal today; all are the kind of debt that turns a snappy tool into a 3–5 second-per-click tool at 10× data, and the fix touches the core architecture, not the edges.
 
 ---
 
-### Justificación por criterio
+## Rubric
 
-**1. Guardado incremental — 9/10.**
-`sv()` (líneas 300-341) compara cada ítem contra un cache JSON por documento (`window._docJson[k][sid]`) y **escribe solo los que cambiaron** (`if(js!==null&&cache[sid]===js)continue;`, 324). Los eliminados se detectan con `_knownIds` (307-313). Esto elimina el problema histórico de reescribir la colección entera en cada tecleo (el que disparaba el consumo de escrituras +2800%). Costo residual: cada `sk('ordenes')` recorre TODO el array comparando (O(n) con un `JSON.stringify` por ítem, 321-327). A 5.000 órdenes, tipear un importe hace ~5.000 `stringify` en memoria antes de decidir que solo 1 cambió — es CPU local, no cuota, del orden de pocas decenas de ms. Aceptable; por eso no es 10.
-
-**2. Carga inicial / modelo de lectura — 6/10.**
-`cargarDatos()` (506-539) hace `Promise.all` sobre TODAS las claves (`COL_KEYS`+`BLOB_KEYS`, 508-510) y trae cada colección **completa** (`ld()` hace `getDocs` de la colección entera). No hay paginación de servidor, ni archivado de OTs viejas, ni carga diferida por vista. A cientos de docs es instantáneo; a 5.000-7.000 órdenes + otras tantas cotizaciones son miles de documentos leídos en cada apertura. En lecturas de Firestore sigue siendo barato para pocos usuarios (no revienta cuota), pero el **tiempo de arranque** y la **RAM del navegador** crecen lineal con la historia. Sin archivado, cada año que pasa el arranque es más lento aunque el trabajo "vivo" sea el mismo puñado de OTs.
-
-**3. Sincronización en tiempo real — 5/10.**
-`activarSincronizacion()` (542-575) registra `onSnapshot` sobre 6 colecciones (`clientes, proveedores, cotizaciones, ordenes, fichas, gastos`). En cada callback:
-- Reconstruye el array remoto completo (`snap.docs.map(...)`, 554).
-- Hace `JSON.stringify(S[k])` **y** `JSON.stringify(docs)` (556-557) — serializa la colección ENTERA dos veces para comparar.
-- Si difieren, reasigna `S[k]` y llama `render()` (567): re-render total de la página actual.
-
-A 5.000 órdenes, cada escritura de **cualquier** usuario dispara en las demás pantallas dos serializaciones de un array de miles de objetos + un re-render completo. Son decenas de ms por evento; con dos personas cargando OTs en simultáneo se nota un "parpadeo"/lag. No es incorrecto funcionalmente, pero es el patrón menos escalable que queda. (`remitos` no está sincronizado en vivo, solo se carga al abrir.)
-
-**4. Renderizado / DOM — 5/10.**
-`render()` (885-890) hace `Q('pg').innerHTML=fns[curPg]()`: **reconstruye la página entera** en cada cambio. Se pierde el scroll, se pierde foco/estado de inputs no controlados, y se re-parsea un string HTML grande. No hay virtualización. Mitigante importante: las vistas más pesadas (Dashboard, Tablero de seguimiento) filtran `estado!=='entregada'&&estado!=='cancelada'` (1054, 1358), así que **solo renderizan trabajo vivo** (acotado) sin importar la historia. **Problema concreto:** las tablas de **Órdenes de trabajo** (`updateOTResults`, 1210) y **Cotizaciones** (`updateCotResults`, 1176) renderizan **TODAS las filas sin paginar**, a diferencia de Clientes/Proveedores que sí paginan (`PER=25`, línea 226; `updateCliTable` 896-912). Cuando `S.ordenes` llegue a miles, abrir "Órdenes de trabajo" sin filtro construirá un `<table>` de miles de filas (con `pasosContables` por fila) en un solo string — el primer lugar donde se va a sentir lento.
-
-**5. Búsqueda y filtrado — 7/10.**
-`updateOTResults`, `updateSegResults`, `updateCliTable`, `updateCotResults` filtran el array completo en cada pulsación de tecla (`oninput`), sin debounce ni índice de texto. Es O(n) por tecla. A cientos-miles de registros es fluido (filtrar 5.000 objetos en JS son <5 ms). Baja de 10 solo porque, combinado con el re-render total (criterio 4), tipear en la búsqueda de OT reconstruye toda la tabla en cada letra. Al volumen real: no molesta.
-
-**6. Lookups / indexación — 9/10.**
-`_cliIndex()`/`_provIndex()` (707-717) construyen un `Map` id→objeto y lo cachean, invalidándolo cuando cambia la referencia del array o su longitud. `cNom`/`pNom`/`cNomCorto`/`pNomCorto` (852-855) son ahora O(1). Esto elimina el O(n) por celda que antes hacía O(n²) cada tabla con nombres de cliente. Muy bien resuelto. Detalle menor: la invalidación por *longitud* no detecta una edición in-place sin cambio de largo, pero como el `Map` guarda **referencias** a los objetos, las ediciones de campos se reflejan igual. Correcto.
-
-**7. `MutationObserver` global de fechas — 4/10.**
-El IIFE de 3569-3595 instala un `MutationObserver` sobre `document.body` con `subtree:true, childList:true` (3586-3591) que, ante cada nodo agregado, corre un `TreeWalker` por todo el subárbol para reescribir `AAAA-MM-DD` → `DD/MM/AAAA`. Como `render()` reemplaza `innerHTML` con un bloque HTML grande, **cada re-render dispara el observer con toda la página como nodos nuevos**, y el TreeWalker recorre todos los nodos de texto de la vista recién pintada. Es trabajo O(nodos) *encima* de cada render, frágil (regex sobre texto visible) y caro justo en las vistas con tablas grandes. Es el peor patrón por relación costo/beneficio: un formateo cosmético que se paga en cada pintado.
-
-**8. Agregaciones por vista — 6/10.**
-- `rDash`/`updateDashResults` (1042): varios `S.ordenes.filter(...)` encadenados sobre el total (1054-1062), reducidos enseguida a `activas`. Acotado.
-- `updateSegResults` (1352): filtra a activas y por fila evalúa `segMatch`/`pasosContables`; conjunto acotado a trabajo vivo. OK.
-- `rCalSemanal` (2231): dentro del doble bucle de slots × 6 días hace `S.ordenes.find(o=>o.id===bl.otId)` (2263) — búsqueda lineal por celda ocupada; además `otsAct.filter(...)` y `planeadaAca` recorren órdenes/planificación varias veces por render. A miles de órdenes, pintar una semana hace muchas búsquedas lineales; no es crítico (los bloques por semana son pocos), pero es O(n) evitable con el mismo patrón `Map` que ya existe para clientes.
-- Balances (`rBalMes`/`rBalAño`): agregan sobre colecciones completas; a 2-3 años son miles de registros sumados en JS — del orden de milisegundos, aceptable.
+| # | Criterion | Score | Weight |
+|---|-----------|:-----:|:------:|
+| 1 | Initial load / payload | 5 | 15% |
+| 2 | Rendering architecture | 4 | 20% |
+| 3 | Data loading & scaling model | 3 | 20% |
+| 4 | Hot compute loops (big-O) | 4 | 15% |
+| 5 | Persistence write model | 5 | 10% |
+| 6 | Realtime sync overhead | 3 | 15% |
+| 7 | Memory / listener hygiene | 7 | 5% |
+| 8 | AI serverless function | 6 | — |
+| | **Weighted overall** | **~4.0** | |
 
 ---
 
-## Top 5 riesgos (de mayor a menor)
+### 1. Initial load / payload — 5/10
 
-1. **Tablas de OT y Cotizaciones sin paginación** (`updateOTResults` 1210, `updateCotResults` 1176). **Primer lugar que se va a sentir lento**: al no filtrar por estado ni paginar, la vista "Órdenes de trabajo" completa construirá un string HTML de miles de `<tr>` una vez que crezca la historia. Clientes/Proveedores ya paginan; OT/Cotizaciones no.
+- **Single monolithic `index.html`, 8,619 lines.** All application JS is inline in one `<script>` block spanning **lines 122–8619** (~8,500 lines of code in one tag). At the stated ~120k tokens this is roughly **450–500 KB of uncompressed source** shipped as one document. Netlify serves it gzip/brotli-compressed (≈90–120 KB over the wire) with ETag/304 on repeat visits, which softens this — but:
+  - **No minification / no build step.** All comments, whitespace, and Spanish explanatory prose ship to the client and are parsed on every cold load. Grep shows dozens of full-sentence comments in the hot code.
+  - **No code splitting.** The cotizador math (`cotCalc`, line 1661), planning grid, balances, AI modal, etc. all parse up-front even though a given session may touch one screen.
+  - **Embedded base64 logo** inline at **line 147** (`window._appLogo`, a full JPEG data URI) is parsed as part of the main script and re-injected as favicon 3× (line 150).
+  - **3 Firebase ESM modules** dynamically imported from `gstatic.com` at runtime (`initFirebase`, lines 183–185: firebase-app, firebase-firestore, firebase-auth) — extra round-trips on the critical path, gated behind a 10 s race timeout (line 324).
+- Net: acceptable for an internal tool over broadband; the score is capped because there is **no build pipeline at all**, so nothing prevents the payload from growing unbounded as features are added to the one file.
 
-2. **`MutationObserver` global + re-render total** (3586 + 885). Cada `render()` repinta toda la página y dispara un `TreeWalker` sobre todo el DOM nuevo. El costo se multiplica exactamente en las vistas grandes del riesgo #1. Además pierde scroll y foco en cada cambio (fricción de UX que empeora con el tamaño de la tabla).
+### 2. Rendering architecture — 4/10
 
-3. **`onSnapshot` comparando colecciones enteras con `JSON.stringify`** (556-557). Con dos usuarios cargando en simultáneo, cada guardado ajeno serializa dos veces la colección completa y re-renderiza. A miles de órdenes genera lag perceptible en tiempo real y trabajo desperdiciado (re-render aunque el cambio no afecte la vista abierta).
+- **`render()` (line 2880) rebuilds `Q('pg').innerHTML` wholesale** from a template-string function per page (`fns` map, line 2881): `pg.innerHTML=fns[curPg]()` (line 2886).
+- Occurrence counts (whole file): **`render()` referenced 199×**, **`render();` called 135×**, **`.innerHTML=` 68×**. Combined with **35** inline `onclick="render()" / onchange="render()" / oninput=` handlers, this means most user interactions trigger a **full teardown + rebuild + reparse** of the active page's DOM subtree.
+- **Consequences:**
+  - Full reflow/repaint of the page container on every change.
+  - **Loss of transient DOM state** — focus, scroll, uncommitted input, `<details>` open state. The code visibly fights this: `render()` manually saves/restores `scrollTop` (lines 2884–2893) and several flows re-`focus()` inputs via `setTimeout` (e.g. lines 1319, 5853, 6160). These are symptoms of the anti-pattern, not fixes.
+  - Some lists were partially rescued — `updateCliTable`/`updateProvTable`/`updateCotResults`/`updateSegResults`/`updateDashResults` write only into a `tbody`/results `div` and support client pagination (`PER=25`, line 142). Good. But the *surrounding* page is still fully rebuilt whenever `render()` is called from a tab/filter click (e.g. `fSeg='atr';render()` line 3441).
+- **Worst offenders (no virtualization):**
+  - `updateSegResults` (line 3416): the `'todas'` tab does `S.ordenes.slice()` (line 3424) and builds one `<tr>` per order with `SEG_COLS` cells each — a single giant HTML string, no windowing. At 3,000 orders this is ~3,000 rows × ~10 columns injected at once.
+  - `updateDashResults` (line 3065) runs **6+ separate `.filter` passes** over `S.ordenes` (lines 3077–3085) every render.
 
-4. **Carga completa de todas las colecciones al abrir, sin archivado** (`cargarDatos` 508-510). Tiempo de arranque y memoria crecen linealmente con TODA la historia, aunque el trabajo activo sea siempre chico. Sin archivado de OTs entregadas, cada año la app arranca más lenta.
+### 3. Data loading & scaling model — 3/10
 
-5. **`sk('ordenes')` recorre y serializa todo el array en cada guardado** (`sv` 321-327). Ya no es problema de cuota (solo escribe lo cambiado), pero el barrido O(n) con un `JSON.stringify` por ítem se paga en CPU local en cada tecleo sobre una OT. Molesto recién a varios miles de órdenes.
+- **Whole collections resident in memory** in global `S`. On login, `cargarDatos` (line 433) loads **all** `COL_KEYS` + `BLOB_KEYS` (lines 435–437) via `ld(k)` which does `getDocs` over the **entire** subcollection: `window._fsGetDocs(window._fsCol(db,'gp',k,'docs'))` then `snap.docs.map(...)` (lines 209–211). **No `limit()`, no `where()`, no cursor.**
+- `COL_KEYS` (line 201) = `clientes, proveedores, cotizaciones, ordenes, remitos, fichas, gastos, cotTrabajos`. Every one is pulled in full at startup. At thousands of `ordenes`/`cotizaciones` this is a large initial read (Firestore bills per doc read, and the browser holds the full object graph).
+- **Pagination is client-side only** (`PER=25`, `pCot`/`pOT`/`slice`, e.g. lines 2908, 3271). It reduces DOM rows rendered but does **nothing** for network/read cost or memory — the full dataset is already downloaded and in RAM.
+- **Realtime listeners on 6 collections** — `activarSincronizacion` (line 482) attaches `onSnapshot` to `clientes, proveedores, cotizaciones, ordenes, fichas, gastos` (`COLS_SYNC`, line 487). Each listener receives the **entire** collection snapshot on any change (line 494 `snap.docs.map(d=>d.data().v)`).
+- **Trajectory:** at 5,000 orders + 5,000 quotes, initial load = ~10k doc reads streamed to the client, held in memory, mirrored by 6 always-open listeners. This is the single biggest scalability ceiling.
+
+### 4. Hot compute loops — 4/10
+
+Occurrence counts: **`.find` 192×, `.filter` 195×, `.forEach` 256×, `.map` 162×** across the file. Most `S.ordenes.find(x=>x.id===...)` in *event handlers* are fine (one lookup per user action). The problem is the ones **inside render loops**:
+
+- **`capMetricas` (line 5644)** — for a machine, iterates every planned day × every slot, and for each production block calls `S.ordenes.find(x=>x.id===b.otId)` (line 5652). Complexity **O(days × slots × |ordenes|)** per machine.
+  - **`rCapacidad` (line 5666) calls it twice per machine:** once in the `conAct` filter (line 5670) and again in the `rows.map` (line 5680). So the capacity screen is **O(2 × machines × days × slots × |ordenes|)**. With ~9 machines, a year of planning, and thousands of orders, this is the most expensive single screen.
+- **`rPlan` (line 4170)** — `S.maquinas.forEach` (line 4176) with a `S.ordenes.filter` **per machine** (line 4177), plus extra full `S.ordenes.filter` scans for the "Pre-prensa" and "Guillotina" cards (lines 4181, 4186). **O(machines × |ordenes|)** just to draw the machine cards.
+- **`rCalSemanal` / `rTallerDiario` (rendered from rPlan, line 4202)** — per-slot `S.ordenes.find(o=>o.id===bl.otId)` at lines 4453, 4650, 7320, 7328, 7704, 7762. Grid render is **O(slots × |ordenes|)**.
+- **`cotCalc` (line 1661)** — called **16×** across the codebase (grep), including inside per-variant loops (`cotCalc(cotW,v.cantidad)` at lines 1896, 2270, 2484, 2840). Each call does 4× `.find` over config arrays (`cotPapeles`, `cotImpresion`, `cotChapas`, `cotLaminados`, lines 1676/1691/1706/1708) **per piece**. Config arrays are small, so this is O(variants × pieces × config) and only bites in the quote editor with many variants — moderate, not critical.
+- **`rankingVendedores` (line 5730)** iterates all `fichas`, and `costoFicha`→`_costoRealOT` does object lookups (line 5721) — linear, acceptable.
+
+### 5. Persistence write model — 5/10
+
+- `sk(k)` → `sv(k,v)` (lines 291, 219). For `COL_KEYS`, `sv` iterates the **entire** array, `JSON.stringify`-ing every item to compare against a cache and writing only changed docs (lines 240–249). This is a **genuine improvement** over the old "rewrite whole collection every keystroke" model (documented in the comment at line 234) and is correctly debounced (`_costosSaveT` ~700 ms, lines 901/959; `_estrSaveT` 600 ms line 921).
+- **But** every save is still **O(|collection|) in stringify work** on the client even when one field changed, because the diff requires serializing all items. At thousands of records, a debounced save of `ordenes` stringifies the whole array. Tolerable at current scale, a latency spike at 10×.
+- `JSON.parse(JSON.stringify(...))` deep-clone pattern appears **23×** (grep) — used for undefined-stripping (line 246) and config sanitize (line 256); each is a full serialize/parse of the value.
+
+### 6. Realtime sync overhead — 3/10
+
+- The `onSnapshot` callback (lines 492–535) on **every** remote event, for **each** of 6 collections, does:
+  - `JSON.stringify(S[k]||[])` **and** `JSON.stringify(docs)` over the **entire** collection to detect change (lines 496–497) — **O(|collection|) serialization per event**.
+  - On any genuine change, rebuilds `_knownIds` and `_docJson` caches by stringifying every doc again (lines 508–511) and then calls **full `render()`** (line 512).
+- **Amplification:** in a multi-user shop, one user editing one order fires a snapshot on **every** connected client, each of which stringifies the whole `ordenes` array twice and rebuilds the entire visible page. At thousands of orders × several concurrent users, this is the most likely source of perceived "the app froze" jank.
+- The anti-echo/anti-clobber machinery (lines 468–531, `_saveEnCurso`, `_snapPend`, 2.2 s deferral) is clever and necessary given the model, but it is **complexity compensating for the wrong architecture** (syncing whole collections instead of deltas). `snap.docChanges()` is available and unused.
+
+### 7. Memory / listener hygiene — 7/10
+
+- **Listeners are cleaned up before re-subscribe:** `activarSincronizacion` unsubscribes prior listeners (`_snapshotUnsubs.forEach(u=>u())`, lines 485–486). Good.
+- **Timers are singletons or cleared:** `window._backupTimer` single `setInterval` (line 342, 10-min poll); debounce timers use `clearTimeout` before re-set (lines 901, 921, 959). No obvious runaway-interval leak.
+- **18 `addEventListener` total.** One mild concern: `ov.addEventListener('paste', aiPasteHandler)` (line 6160) is attached each time the AI modal opens; if `ov` is the same reused node across opens, handlers could stack. Low severity (single modal, function reference is stable so duplicates are deduped by the browser only if same reference — worth a look, not a blocker).
+- `URL.createObjectURL` blobs are revoked (lines 2958, 8565). Good.
+
+### 8. AI serverless function (`interpretar.js`) — 6/10
+
+- **`max_tokens: 8000`** (line 82) with `tool_choice` forced — the model may generate up to 8k output tokens; combined with a large system prompt (lines 24–40, embeds full catalogs via `JSON.stringify`) this drives **latency and cost** on every call. Most quote interpretations need a fraction of that; the ceiling is high and there's no streaming, so the client waits for the full completion.
+- **Images:** up to **4** base64 images (line 21), downscaled client-side to max **1600 px, JPEG q0.85** (`aiDownscale`, lines 6184–6193). A 1600 px JPEG ≈ 200–500 KB → ~270–670 KB base64 each; 4 of them ≈ **1–2.7 MB** JSON body. Under Netlify's **6 MB** synchronous-function limit in the typical case, but a pathological 4-image request approaches it — no explicit total-size guard exists (only per-count `.slice(0,4)` and per-item mediaType filter, lines 19–21).
+- **Cold starts:** standard Netlify Lambda cold-start (~0.5–2 s) added to a multi-second model call; acceptable for an occasional assist feature.
+- **Pedido truncated to 8,000 chars** (line 15) — sensible guard. CORS `*` (line 5) is a security note, out of scope here.
+- Reasonable overall; main lever is dropping `max_tokens` and adding a total payload-size check.
 
 ---
 
-## Top 3 quick wins (bajo esfuerzo, alto impacto)
+## Top risks blocking approval
 
-1. **Paginar / limitar las tablas de OT y Cotizaciones** igual que ya se hace con Clientes/Proveedores (`PER=25`), o mostrar por defecto solo activas + buscador. Ataca directo el riesgo #1 con un patrón que ya existe en el código. *(Máximo impacto por menor esfuerzo.)*
+1. **Whole-collection in-memory model with no server-side pagination (lines 201, 209–211, 433–437).** Initial load reads and holds *every* order/quote/invoice. This is the hard scaling ceiling — it caps how large a single tenant's dataset can get before login itself becomes slow and memory-heavy. **Blocker for any customer with multi-year history.**
+2. **Full-collection `JSON.stringify` + full `render()` on every realtime event, ×6 collections, ×every client (lines 492–512).** Multi-user editing at scale produces cross-client full re-renders. **Blocker for concurrent-user scaling.**
+3. **`rCapacidad` calling `capMetricas` twice per machine, each O(days×slots×|ordenes|) with an inner `S.ordenes.find` (lines 5652, 5670, 5680).** The capacity screen degrades quadratically. **Blocker for the reporting/analytics value proposition at scale.**
 
-2. **Acotar el `MutationObserver`**: en lugar de observar `document.body` con `subtree:true`, formatear las fechas al generar el HTML de cada render (o aplicarlo una sola vez al contenedor `#pg` recién pintado, sin observer permanente). Elimina un costo O(nodos) por cada render y quita fragilidad.
+## Quick wins (low risk, high leverage — no architecture change)
 
-3. **Cortocircuitar el eco del propio usuario en `onSnapshot`**: usar `snap.docChanges()` y `snap.metadata.hasPendingWrites` para ignorar los ecos propios y aplicar solo los docs cambiados, evitando el doble `JSON.stringify` de la colección entera y el re-render total.
+- **Add a build step** (esbuild/terser) to minify + strip comments from `index.html`. Immediate ~40–60% source-size cut, zero behavior change.
+- **Replace whole-array stringify diffing in `onSnapshot` with `snap.docChanges()`** (lines 494–512) — react only to added/modified/removed docs; skip the O(n) double-stringify.
+- **Build an `id → order` Map once per render** and reuse it in `capMetricas`, `rCalSemanal`, `rTallerDiario` instead of `S.ordenes.find` per block (lines 5652, 4453, 4650, 7320, 7328, 7704, 7762). Turns O(slots×|ordenes|) into O(slots).
+- **Compute `capMetricas` once per machine** in `rCapacidad`: merge the `conAct` filter (line 5670) and `rows.map` (line 5680) into a single pass. Halves the most expensive screen instantly.
+- **Memoize the dashboard's 6 filter passes** (lines 3077–3085) into a single loop.
+- **Lower AI `max_tokens`** (line 82) to a realistic ceiling (~2000–3000) and add a total-payload byte guard before the fetch (line 78).
 
----
+## Deeper refactors (required for true scale)
 
-## Refactors (mayor esfuerzo, valor a mediano plazo)
-
-- **Render con actualización parcial del DOM** en vez de `innerHTML` total: repintar solo `tbody`/filas afectadas. Conserva scroll y foco y elimina de raíz los riesgos #2 y #3. Es el cambio estructural más grande (hoy el patrón "todo por string" es el ADN de la app).
-- **Archivado de OTs entregadas**: colección/estado "archivado" que no se carga al abrir, con vista bajo demanda. Mantiene arranque y RAM constantes sin importar los años de historia (ataca riesgo #4).
-- **Virtualización de tablas** (render solo de filas visibles) para vistas que puedan crecer sin filtro. Solo si se descarta la paginación del quick win #1.
-- **Índice `Map` id→orden** reutilizable (como `_cliIndex`) para eliminar los `S.ordenes.find(...)` en `rCalSemanal` y handlers.
-- **Debounce en los buscadores** (`oninput`) para no re-renderizar en cada tecla.
-
----
-
-## Evidencia (ubicaciones)
-
-- Guardado incremental con cache por doc: `sv()` — **300-341** (comparación `cache[sid]===js`, 321-327).
-- Índices de lookup O(1): `_cliIndex`/`_provIndex` — **707-717**; consumidores `cNom`/`pNom` — **852-855**.
-- Carga completa de todas las colecciones al abrir: `cargarDatos()` — **506-539** (`Promise.all`, 508-510).
-- Sincronización en vivo con `JSON.stringify` de colección entera + `render()`: `activarSincronizacion()` — **542-575** (comparación 556-558).
-- Re-render total por `innerHTML`: `render()` — **885-890**.
-- Tablas sin paginar: `updateOTResults` — **1210**; `updateCotResults` — **1176**. Contraste con paginación: `updateCliTable`/`updateProvTable` — **896-928**; `PER=25` — **226**.
-- `MutationObserver` global de fechas + `TreeWalker`: IIFE — **3569-3595** (observer 3586-3591).
-- Búsquedas lineales por tecla: `updateSegResults` — **1352-1407**; `updateDashResults` — **1042-1149**.
-- O(n) por celda en calendario: `rCalSemanal` — **2231-2307** (`S.ordenes.find` en 2263).
-- Colecciones: `COL_KEYS` — **282**; `BLOB_KEYS` — **284** (`remitos` no sincronizado en vivo).
+- **Server-side pagination / lazy loading.** Query `ordenes`/`cotizaciones` with `where`/`orderBy`/`limit` + cursors; load lists on demand instead of the full collection at login (rework `ld`, `cargarDatos`, lines 205–216, 433). This is the single change that unblocks large tenants.
+- **Incremental rendering instead of full `innerHTML` rebuild.** Adopt a diffing layer (a lightweight vdom, or targeted `update*` functions for *every* screen the way `updateSegResults` already does for its table) so `render()` (line 2886) stops tearing down and reparsing whole pages. Removes the focus/scroll-restoration hacks as a side effect.
+- **List virtualization** for `updateSegResults` "todas" and any unbounded table (line 3424) so row count no longer scales with dataset.
+- **Delta-based sync** end to end (write deltas, listen to `docChanges`, patch `S` in place, targeted re-render of affected rows only) — replaces the whole `activarSincronizacion` + anti-clobber machinery (lines 468–540) with something that scales to thousands of records and multiple users.
+- **Split the 8,600-line file into modules** with code splitting so screens load their code on demand.
 
 ---
 
-## Veredicto
-
-- **Puntaje general:** 7,0 / 10.
-- **Nivel de riesgo de performance:** **Medium** (con tendencia a Low para el trabajo diario *vivo*; la nota Medium la aporta la degradación previsible de las vistas OT/Cotizaciones completas y el combo re-render + MutationObserver a medida que se acumula historia).
-- **¿Aguanta el uso interno a 2-3 años?** **Sí, aguanta** — con pocos usuarios y cientos de OTs por mes seguirá siendo funcional; lo primero en sentirse lento serán las tablas completas de Órdenes y Cotizaciones y el arranque, todos resolubles con los tres quick wins (paginar, acotar el MutationObserver y filtrar el `onSnapshot`) sin tocar la arquitectura.
+*Prepared for acquisition performance/scalability due diligence. Findings are static-analysis-based; recommend a runtime profiling pass (Chrome Performance panel on a seeded 5,000-order dataset) to confirm the estimated big-O breakpoints before close.*
