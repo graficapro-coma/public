@@ -2443,7 +2443,18 @@ function cotDesdeItem(ii){
     });
     // Precarga del costeo con lo sugerido por la IA: medidas, papel, la máquina MÁS ECONÓMICA, procesos. El humano revisa.
     if(item.aiSug){
-      const s=item.aiSug;const pz=cotW.piezas&&cotW.piezas[0];const faltan=[];
+      const s=item.aiSug;const faltan=[];
+      // REVISTA / CATÁLOGO / CUADERNO: si la IA dio el paginado, armo Tapa + Interior (N pliegos) automáticamente
+      const _esRevista=s.revista&&(+s.revista.intPags||+s.revista.tapaPags);
+      if(_esRevista){
+        cotW.paginado={modo:'revista',tapaPags:+s.revista.tapaPags||4,intPags:+s.revista.intPags||0,tapaColores:s.revista.tapaColores||s.colores||'4/4',intColores:s.revista.intColores||s.colores||'4/4',pagsPorHoja:4,hojasPorPliego:2};
+        cotPagAplicar(true); // arma tapa (1 pliego) + interior (por páginas) con chapas e impresión
+        const pcR=aiMatchPapel(s.material,s.gramaje);
+        (cotW.piezas||[]).forEach(p=>{if(pcR&&!p.papelCod)p.papelCod=pcR;});
+        if(!pcR)faltan.push('Papel'+(s.material?' ('+s.material+(s.gramaje?' '+s.gramaje+'g':'')+')':''));
+        try{cotAutoPoses(0);}catch(e){}try{cotAutoPoses(1);}catch(e){}
+      }
+      const pz=(!_esRevista)&&cotW.piezas&&cotW.piezas[0];
       if(pz){
         if(s.medidaAbierta){if(+s.medidaAbierta.ancho)pz.piezaW=+s.medidaAbierta.ancho;if(+s.medidaAbierta.alto)pz.piezaH=+s.medidaAbierta.alto;}
         if(s.medidaCerrada)pz.medidaCerrada=s.medidaCerrada;
@@ -2602,6 +2613,32 @@ function cotPagCalc(pg){
 }
 function cotPagToggle(){if(!cotW)return;cotW._pagOpen=!cotW._pagOpen;cotRerender();}
 function cotPagModo(m){if(!cotW)return;if(!cotW.paginado)cotW.paginado={};cotW.paginado.modo=m;cotRerender();}
+// Arma el costeo desde el paginado: Tapa (1 pliego) + Interior (N pliegos vía ENTRADAS), con chapas e impresión.
+// NO toca el papel (lo elige el usuario). Sirve tanto para el botón manual como para la IA.
+function cotPagAplicar(silent){
+  if(!cotW)return;
+  if(!cotW.paginado)cotW.paginado={};
+  const pg=cotW.paginado, r=cotPagCalc(pg), reti=!!pg.retiracion;
+  const chPorPliego=col=>{const c=_pagCol(col);return reti?Math.max(1,Math.round(c/2)):c;};
+  if(!Array.isArray(cotW.piezas)||!cotW.piezas.length)cotW.piezas=cotPiezasDe(cotW);
+  const findPz=re=>cotW.piezas.find(p=>re.test((p.nombre||'').toLowerCase()));
+  let tapa=findPz(/tapa/), inter=findPz(/interior|interno/);
+  if(!tapa){ if(cotW.piezas[0]&&!cotW.piezas[0].papelCod&&!cotW.piezas[0].impCod){tapa=cotW.piezas[0];tapa.nombre='Tapa';} else {tapa=cotPiezaNueva('Tapa');cotW.piezas.push(tapa);} }
+  if(!inter){ inter=cotPiezaNueva('Interior'); cotW.piezas.push(inter); }
+  const setPz=(p,entradas,col)=>{
+    p.entradas=Math.max(1,entradas||1);
+    if(!p.maquina)p.maquina='SM74';
+    if(!p.impCod){const ic=(typeof aiMatchImp==='function')?aiMatchImp(col,p.maquina):0;if(ic)p.impCod=ic;}
+    let cc=(typeof aiMatchChapa==='function')?aiMatchChapa(p.maquina):0;
+    if(!cc)cc=(p.maquina==='SM52')?2:(p.maquina==='SM74')?3:0;
+    if(cc)p.chapasCod=cc;
+    p.chapasCant=chPorPliego(col);
+  };
+  setPz(tapa, r.tPli||1, pg.tapaColores||'4/4');
+  setPz(inter, (r.modo==='cuaderno'?(r.iLayouts||1):(r.iPli||1)), pg.intColores||(r.modo==='cuaderno'?'1/1':'4/4'));
+  if(!(cotW.otros||[]).some(o=>o.cod===3))cotW.otros.push({cod:3,cant:1,auto:'pliegos'}); // abrochado sugerido
+  if(!silent)cotRerender();
+}
 function cotPagEd(campo,val){
   if(!cotW)return;if(!cotW.paginado)cotW.paginado={};
   cotW.paginado[campo]=String(val).replace(/[<>]/g,'').slice(0,10);
@@ -2667,8 +2704,13 @@ function cotPaginadoHTML(w){
       <div><div style="font-size:10px;color:#888;margin-bottom:2px">Págs. por hoja</div>${inp('pagsPorHoja',pg.pagsPorHoja||4,'4')}</div>
       <div><div style="font-size:10px;color:#888;margin-bottom:2px">Hojas por pliego</div>${inp('hojasPorPliego',pg.hojasPorPliego||2,'2')}</div>`;
     }
-    h+=`</div>
-    <div id="cot-pag-result" style="background:#faf7fd;border:1px solid #e6d8f5;border-radius:8px;padding:10px">${cotPagResultHTML(cotPagCalc(pg))}</div>`;
+    h+=`<label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#666;cursor:pointer"><input type="checkbox" ${pg.retiracion?'checked':''} onchange="cotPagEd('retiracion',this.checked?'1':'')" style="width:14px;height:14px;accent-color:#7b3fa0"> Trabajo y retiración (misma pinza) → usa la mitad de chapas</label>
+    </div>
+    <div id="cot-pag-result" style="background:#faf7fd;border:1px solid #e6d8f5;border-radius:8px;padding:10px">${cotPagResultHTML(cotPagCalc(pg))}</div>
+    <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button class="bp" onclick="cotPagAplicar()" style="font-size:12px"><i class="ti ti-wand"></i> Armar el costeo con este paginado (tapa + interior)</button>
+      <span style="font-size:11px;color:#888">Arma Tapa (1 pliego) e Interior (${cotPagCalc(pg).iPli||cotPagCalc(pg).iLayouts||1} pliego/s vía ENTRADAS) con las chapas. Vos solo elegís el papel.</span>
+    </div>`;
   }
   h+=`</div>`;
   return h;
@@ -6433,7 +6475,7 @@ function aiAplicar(data){
     // La descripción que ve el cliente queda limpia; los datos técnicos van a aiSug (interno, no sale en PDF)
     const desc=(ai.descripcion||'').trim();
     const rol=['pieza','insumo','proceso','manoobra'].includes(ai.rol)?ai.rol:'';
-    const it={nombre:String(ai.nombre||'').slice(0,60),desc,filas,aiSug:{maquina:ai.maquina||'',material:ai.material||'',gramaje:ai.gramaje||'',medidaAbierta:ai.medidaAbierta||null,medidaCerrada:ai.medidaCerrada||'',colores:ai.colores||'',laminado:ai.laminado||null,procesos:Array.isArray(ai.procesos)?ai.procesos:[]}};
+    const it={nombre:String(ai.nombre||'').slice(0,60),desc,filas,aiSug:{maquina:ai.maquina||'',material:ai.material||'',gramaje:ai.gramaje||'',medidaAbierta:ai.medidaAbierta||null,medidaCerrada:ai.medidaCerrada||'',colores:ai.colores||'',laminado:ai.laminado||null,revista:ai.revista||null,procesos:Array.isArray(ai.procesos)?ai.procesos:[]}};
     if(rol)it.estrTipo=rol;if(familia)it.estrFamilia=familia;
     items.push(it);
   });
@@ -8258,11 +8300,10 @@ function calcT(){
   if(Q('cot-venta-d'))Q('cot-venta-d').textContent=$m(s+v);
   updMargen();
 }
-function savCotYpdf(){
+async function savCotYpdf(){
   if(window._editandoCotId){updateCot(window._editandoCotId);return;}
-  savCot('enviada');
-  const idx=S.cotizaciones.length-1;
-  if(idx>=0)generarPDFCotizacion(idx,true);
+  const id=await savCot('enviada'); // esperar a que se guarde (numeración atómica) antes del PDF
+  if(id!=null)generarPDFCotizacion(id,false); // por id (no por índice) → siempre la cotización recién creada
 }
 // Id de cliente: el seleccionado, o el existente por nombre exacto, o crea uno provisional con el nombre escrito.
 function _cidOProvisional(hidId,txtId){
@@ -8298,6 +8339,7 @@ async function savCot(st){
   S.cotizaciones.push({id,num,clienteId:cid,fecha:fechaCot,validez:Q('cv').value,entrega,plazo,maquina:'',items,itemsVariantes:rawItems,subtotal:sub,iva,total:sub+iva,estado:st,notas:Q('cno2').value,tipoTrabajo,vendedor,costoTotal:costoCosteos||0,costos:null,variantes:[],pesoEstimado});
   sk('cotizaciones');cm();render();
   try{estrAprender(tipoTrabajo,rawItems);}catch(e){}
+  return id; // devuelve el id de la cotización creada (para generar el PDF correcto)
 }
 // ===== Aprendizaje: sugerir sumar a la plantilla los ítems nuevos que aparecieron =====
 function estrNorm(s){return String(s||'').toLowerCase().replace(/[^a-záéíóúñ0-9 ]/gi,' ').replace(/\s+/g,' ').trim();}
@@ -8580,7 +8622,7 @@ function generarPDFCotizacion(cotIdOrIdx,byIdx){
         const label=esBase?'':` <span style="font-size:8pt;color:#888;font-style:italic">(variante ${fi})</span>`;
         return `<tr><td class="num">${f.qty?Number(f.qty).toLocaleString('es-AR'):'—'}</td><td class="desc">${_descHtml(it.desc)}${label}</td><td class="money">${f.precio?$c(f.precio):'—'}</td><td class="money">${f.subtotal?$c(f.subtotal):'—'}</td></tr>`;
       }).join('');
-      bloquesItems+=`${it.nombre?`<div style="font-weight:700;color:#185fa5;font-size:11.5pt;margin:2px 0 4px">${it.nombre}</div>`:''}<table style="margin-bottom:14px"><thead><tr><th style="text-align:center;width:54px">Cant.</th><th style="text-align:left">Descripción</th><th style="text-align:right;width:100px">Precio unit.</th><th style="text-align:right;width:110px">Subtotal</th></tr></thead><tbody>${filas2}</tbody></table>`;
+      bloquesItems+=`${it.nombre?`<div style="font-weight:700;color:#185fa5;font-size:11.5pt;margin:2px 0 4px">${it.nombre}</div>`:''}<table style="margin-bottom:14px"><thead><tr><th style="text-align:center;width:72px">Cant.</th><th style="text-align:left">Descripción</th><th style="text-align:right;width:96px">Precio unit.</th><th style="text-align:right;width:104px">Subtotal</th></tr></thead><tbody>${filas2}</tbody></table>`;
     });
     if(cotConVariantes(itemsV)){
       // Con variantes de cantidad no se muestra un total: cada fila tiene su precio
@@ -8594,7 +8636,7 @@ function generarPDFCotizacion(cotIdOrIdx,byIdx){
   }else{
     // Sin variantes: tabla única clásica
     const filasSolas=(c.items||[]).map(i=>`<tr><td class="num">${Number(i.qty).toLocaleString('es-AR')}</td><td class="desc">${_descHtml(i.desc)}</td><td class="money">${$c(i.precio)}</td><td class="money">${$c(i.subtotal)}</td></tr>`).join('');
-    bloquesItems=`<table><thead><tr><th style="text-align:center;width:54px">Cant.</th><th style="text-align:left">Descripción</th><th style="text-align:right;width:100px">Precio unit.</th><th style="text-align:right;width:110px">Subtotal</th></tr></thead><tbody>${filasSolas||'<tr><td colspan="4">—</td></tr>'}</tbody></table>
+    bloquesItems=`<table><thead><tr><th style="text-align:center;width:72px">Cant.</th><th style="text-align:left">Descripción</th><th style="text-align:right;width:96px">Precio unit.</th><th style="text-align:right;width:104px">Subtotal</th></tr></thead><tbody>${filasSolas||'<tr><td colspan="4">—</td></tr>'}</tbody></table>
 <div class="totales"><div class="totales-box"><div class="tot-row"><span>Subtotal sin IVA</span><span>${$c(c.subtotal)}</span></div><div class="tot-row"><span>IVA 21%</span><span>${$c(c.iva)}</span></div><div class="tot-row grand"><span>TOTAL</span><span>${$c(c.total)}</span></div></div></div>`;
   }
   const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
@@ -8612,9 +8654,9 @@ function generarPDFCotizacion(cotIdOrIdx,byIdx){
   .cli-blk span{font-size:10.5pt;font-weight:500}
   table{width:100%;border-collapse:collapse;margin-bottom:10px;table-layout:fixed}
   th{background:#185fa5;color:#fff;padding:6px 9px;font-size:8.5pt;text-align:left;font-weight:600}
-  td{padding:6px 9px;font-size:10pt;border-bottom:0.5px solid #e0e0e0;vertical-align:top;line-height:1.4;word-break:normal;overflow-wrap:break-word;hyphens:auto}
+  td{padding:6px 9px;font-size:10pt;border-bottom:0.5px solid #e0e0e0;vertical-align:top;line-height:1.4;word-break:normal;overflow-wrap:break-word;hyphens:none;-webkit-hyphens:none}
   td.desc{text-align:left;white-space:pre-line}
-  td.num{text-align:center}
+  td.num{text-align:center;white-space:nowrap}
   td.money{text-align:right;white-space:nowrap}
   tr:last-child td{border-bottom:none}
   .totales{display:flex;justify-content:flex-end;margin-bottom:12px}
