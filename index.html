@@ -6473,9 +6473,14 @@ function aiCostearOptimo(cotW,colores){
   return best;
 }
 function aiAplicar(data){
+  data=data||{};
   const items=_itemsState();items.length=0;
   const familia=(data.familia||data.estructura||'').trim();
-  (data.items||[]).forEach(ai=>{
+  // Robusto: la IA a veces devuelve items como objeto suelto (o no lo devuelve). Normalizamos a lista.
+  let rawItems=data.items;
+  if(!Array.isArray(rawItems))rawItems=(rawItems&&typeof rawItems==='object')?[rawItems]:[];
+  rawItems.forEach(ai=>{
+    ai=ai||{};
     const cants=(Array.isArray(ai.cantidades)&&ai.cantidades.length)?ai.cantidades:[0];
     const filas=cants.map(q=>({qty:+q||0,subtotal:0,precio:0}));
     // La descripción que ve el cliente queda limpia; los datos técnicos van a aiSug (interno, no sale en PDF)
