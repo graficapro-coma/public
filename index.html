@@ -6402,19 +6402,29 @@ async function aiInterpretar(){
 }
 // Matchear el material sugerido por IA a un código de papel de las tablas
 function aiMatchPapel(material,gramaje){
-  const mats=(S.cotPapeles||[]).filter(p=>p&&p.codigo);if(!mats.length)return 0;
+  const mats=(S.cotPapeles||[]).filter(p=>p&&p.codigo&&p.activo!==false);if(!mats.length)return 0;
   const m=String(material||'').toLowerCase();const g=+gramaje||0;
   const toks=m.replace(/[^a-záéíóúñ ]/gi,' ').split(/\s+/).filter(t=>t.length>=3);
-  const score=p=>{const d=String(p.descripcion||'').toLowerCase();let s=0;
-    if(g&&(+p.gramaje===g||d.includes(String(g))))s+=3;
-    toks.forEach(t=>{if(d.includes(t)||d.includes(t.slice(0,4)))s+=1;});
-    if(/ilus/.test(m)&&/ilus/.test(d))s+=2;
-    if(/(cart|tx|triplex)/.test(m)&&/(tx|cart|triplex)/.test(d))s+=2;
-    if(/obra/.test(m)&&/obra/.test(d))s+=2;
-    if(/(auto|adhes)/.test(m)&&/(auto|adhes)/.test(d))s+=2;
+  // Puntaje de FAMILIA de material (sin mirar el gramaje)
+  const famScore=p=>{const d=String(p.descripcion||'').toLowerCase();let s=0;
+    toks.forEach(t=>{if(t.length>=4&&(d.includes(t)||d.includes(t.slice(0,4))))s+=1;});
+    if(/ilus/.test(m)&&/ilus/.test(d))s+=3;
+    if(/(cart|tx|triplex)/.test(m)&&/(tx|cart|triplex)/.test(d))s+=3;
+    if(/obra/.test(m)&&/obra/.test(d))s+=3;
+    if(/(auto|adhes)/.test(m)&&/(auto|adhes)/.test(d))s+=3;
+    if(/(ilus|cart|obra|auto)/.test(m)&&!/(ilus|cart|tx|triplex|obra|auto|adhes)/.test(d))s-=2; // familia distinta: penaliza
     return s;};
-  let best=null,bs=0;mats.forEach(p=>{const s=score(p);if(s>bs){bs=s;best=p;}});
-  return (bs>=3&&best)?best.codigo:0;
+  // Candidatos de la misma familia de material
+  let cand=mats.map(p=>({p,fs:famScore(p)})).filter(x=>x.fs>0);
+  if(cand.length){
+    // Dentro de la familia, el GRAMAJE decide: exacto o el más cercano. El material desempata.
+    if(g>0)cand.sort((a,b)=>{const da=Math.abs((+a.p.gramaje||0)-g),db=Math.abs((+b.p.gramaje||0)-g);return da!==db?da-db:b.fs-a.fs;});
+    else cand.sort((a,b)=>b.fs-a.fs);
+    return cand[0].p.codigo;
+  }
+  // Sin familia clara: si hay gramaje, el más cercano; si no, no sugerimos (queda en "falta papel")
+  if(g>0){let best=null,bd=1e9;mats.forEach(p=>{const d=Math.abs((+p.gramaje||0)-g);if(d<bd){bd=d;best=p;}});return best?best.codigo:0;}
+  return 0;
 }
 // Matchear los colores sugeridos (ej. "4/4") a un código de impresión
 function aiMatchImp(colores,maquina){

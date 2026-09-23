@@ -95,7 +95,10 @@ Reglas:
     if (!r.ok) return { statusCode: 502, headers: H, body: JSON.stringify({ error: (data && data.error && data.error.message) || 'Error de la IA' }) };
     const block = (data.content || []).find(c => c && c.type === 'tool_use');
     if (!block || !block.input) return { statusCode: 502, headers: H, body: JSON.stringify({ error: 'La IA no devolvió datos estructurados' }) };
-    return { statusCode: 200, headers: H, body: JSON.stringify(block.input) };
+    // Garantizar que items siempre sea una lista (el front recorre data.items)
+    const out = block.input || {};
+    if (!Array.isArray(out.items)) out.items = (out.items && typeof out.items === 'object') ? [out.items] : [];
+    return { statusCode: 200, headers: H, body: JSON.stringify(out) };
   } catch (e) {
     return { statusCode: 500, headers: H, body: JSON.stringify({ error: String((e && e.message) || e) }) };
   }
