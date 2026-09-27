@@ -91,7 +91,7 @@
   <div class="ni" onclick="nav('seg')"><i class="ti ti-traffic-lights"></i>Seguimiento</div>
   <div class="ni" onclick="nav('papel')"><i class="ti ti-stack"></i>Pedidos de papel</div>
   <div class="ni" onclick="nav('insumos')"><i class="ti ti-flask"></i>Stock de insumos</div>
-  <div class="ni" onclick="nav('plan')"><i class="ti ti-calendar-event"></i>Planificación</div>
+  <div class="ni" onclick="nav('plan')"><i class="ti ti-calendar-event"></i>Planificación <span id="badge-plan" style="display:none;margin-left:auto;background:#c0392b;color:#fff;border-radius:10px;padding:0 7px;font-size:10px;font-weight:700;line-height:17px"></span></div>
   <div class="ni" onclick="nav('entregas')"><i class="ti ti-truck-delivery"></i>Entregas y fletes</div>
   <div class="ni" onclick="nav('rem')"><i class="ti ti-clipboard-list"></i>Remitos internos</div>
   <div class="ns">Análisis</div>
@@ -201,7 +201,7 @@ async function initFirebase(){
 // Colecciones que usan subcollections (una doc por registro)
 const COL_KEYS=['clientes','proveedores','cotizaciones','ordenes','remitos','fichas','gastos','cotTrabajos'];
 // Colecciones que siguen como blob (configuración liviana)
-const BLOB_KEYS=['procesos','maquinas','externos','fletes','planificacion','ids','analCostos','recursosAnal','tiposTrabajo','stockPapel','stockMovs','vendedores','cotPapeles','cotImpresion','cotChapas','cotLaminados','cotOtros','cotConfig','insumosItems','insumosMovs','cotEstructuras'];
+const BLOB_KEYS=['procesos','maquinas','externos','fletes','planificacion','ids','analCostos','recursosAnal','tiposTrabajo','stockPapel','stockMovs','vendedores','cotPapeles','cotImpresion','cotChapas','cotLaminados','cotOtros','cotConfig','insumosItems','insumosMovs','cotEstructuras','externosInfo'];
 
 async function ld(k){
   try{
@@ -314,7 +314,8 @@ let S={
   stockMovs:[],  // [{fecha,tipo,material,grs,fx,fy,papelera,cant,otNum,nota}]
   ids:{cot:1,ot:1,rem:1,fac:1,cob:1,ficha:1},
   cotPapeles:[],cotImpresion:[],cotChapas:[],cotLaminados:[],cotOtros:[],cotConfig:{},cotTrabajos:[],
-  cotEstructuras:[] // [{id,nombre,tipoTrabajo,items:[{nombre,tipo,opcional,nota,defMaterial,defColores}]}]
+  cotEstructuras:[], // [{id,nombre,tipoTrabajo,items:[{nombre,tipo,opcional,nota,defMaterial,defColores}]}]
+  externosInfo:{}    // datos de cada proveedor externo (la lista de nombres es S.externos): {nombre:{rubro,contacto,tel,obs}}
 };
 
 async function init(){
@@ -558,6 +559,8 @@ async function iniciarSinMigrar(){
   if(S.ids&&!S.ids._migTipos){['Carpetas','Blocks','Revista / Catálogo','Banners'].forEach(t=>{if(!S.tiposTrabajo.includes(t))S.tiposTrabajo.push(t);});S.ids._migTipos=1;sk('tiposTrabajo');sk('ids');}
   // Estructuras por familia: sembrar las de fábrica una sola vez (no pisa lo que edite el usuario)
   if(!Array.isArray(S.cotEstructuras))S.cotEstructuras=[];
+  if(!S.externosInfo||typeof S.externosInfo!=='object'||Array.isArray(S.externosInfo))S.externosInfo={};
+  if(!Array.isArray(S.externos))S.externos=[];
   if(S.ids&&!S.ids._migEstructuras&&!S.cotEstructuras.length){S.cotEstructuras=JSON.parse(JSON.stringify(COT_ESTRUCTURAS_SEED));S.ids._migEstructuras=1;sk('cotEstructuras');sk('ids');}
   if(!S.clientes||S.clientes.length===0)seed();
   migrarPreprensa2Etapas();
@@ -943,6 +946,58 @@ function costosDel(k,idx){
   if(!confirm('¿Eliminar esta fila?'))return;
   S[k].splice(idx,1);costosSave(k);render();
 }
+// ===== Proveedores externos (imprentas / talleres) — misma lista que "Externos" en Planificación =====
+// Devuelve el nombre tal como está en la lista (sin distinguir mayúsculas); si no existe, lo agrega.
+function asegurarExterno(nombre){
+  const n=String(nombre||'').replace(/[<>]/g,'').trim();if(!n)return '';
+  if(!Array.isArray(S.externos))S.externos=[];
+  const ya=S.externos.find(x=>String(x).trim().toLowerCase()===n.toLowerCase());
+  if(ya)return ya;
+  S.externos.push(n);sk('externos');
+  return n;
+}
+function extTabAdd(){
+  const inp=Q('ext-nuevo');if(!inp)return;
+  const v=inp.value.trim();if(!v)return;
+  asegurarExterno(v);inp.value='';render();
+}
+function extTabEd(i,campo,val){
+  const e=(S.externos||[])[i];if(e==null)return;
+  if(!S.externosInfo||typeof S.externosInfo!=='object')S.externosInfo={};
+  if(!S.externosInfo[e])S.externosInfo[e]={};
+  S.externosInfo[e][campo]=String(val==null?'':val).replace(/[<>]/g,'').slice(0,campo==='obs'?300:80);
+  sk('externosInfo');
+}
+function extTabDel(i){
+  const e=(S.externos||[])[i];if(e==null)return;
+  let act=0;try{const eN=String(e).trim().toLowerCase();act=extItems().filter(x=>x.est!=='recibido'&&String(x.p.extDestino||(x.env&&x.env.prov)||'').trim().toLowerCase()===eN).length;}catch(er){}
+  if(!confirm(`¿Quitar "${e}" de la lista de proveedores externos?${act?`\n\nOjo: tiene ${act} trabajo${act>1?'s':''} activo${act>1?'s':''}; esos trabajos no se modifican.`:''}`))return;
+  S.externos.splice(i,1);sk('externos');
+  if(S.externosInfo&&S.externosInfo[e]){delete S.externosInfo[e];sk('externosInfo');}
+  render();
+}
+function extTabVer(i){const e=(S.externos||[])[i];if(e==null)return;planMaq=e;planOffset=0;nav('plan');}
+// Al generar la OT de un trabajo TERCERIZADO: sin papel / chapas / corte / impresión propios (N/A),
+// y con el paso "Trabajo tercerizado" asignado al proveedor → aparece solo en Planificación › Externos › (proveedor).
+function _otTercerizar(cot,descs,pasos,asignaciones){
+  let prov=null;
+  for(const d of (descs||[])){try{const rv=_costeoDeItemDesc(cot,d);const co=rv&&rv.costeo;if(co&&co.terc&&co.terc.on){prov=String(co.terc.prov||'').trim();break;}}catch(e){}}
+  if(prov===null)return false;
+  if(prov)prov=asegurarExterno(prov)||prov;
+  (pasos||[]).forEach(p=>{const col=pasoCol(p);if(col==='papel'||col==='corte'||col==='imp'||col==='ctp'||(col==='term'&&/^terminaci[oó]n$/i.test(p.nombre||''))){p.estado='na';p.na=true;}});
+  let t=(pasos||[]).find(p=>/^trabajo tercerizado/i.test(p.nombre||''));
+  if(!t){
+    t={nombre:'Trabajo tercerizado',estado:'pending',fecha:'',nota:'',term:true};
+    const iCC=pasos.findIndex(p=>pasoCol(p)==='cc');
+    if(iCC>=0)pasos.splice(iCC,0,t);else pasos.push(t);
+  }
+  t.col='ext';t.esExterno=true;if(prov){t.extDestino=prov;t.nombre='Trabajo tercerizado ('+prov+')';}
+  if(asignaciones){
+    Object.keys(asignaciones).forEach(k=>{if(/impresi|guillotina|ctp/i.test(k))delete asignaciones[k];});
+    asignaciones['Trabajo tercerizado']={tipo:'ext',nombre:prov||'A definir'};
+  }
+  return true;
+}
 // ===== Editor de Estructuras por familia =====
 function estrGuardar(){clearTimeout(window._estrSaveT);window._estrSaveT=setTimeout(()=>costosSave('cotEstructuras'),600);}
 function estrSeed(){S.cotEstructuras=JSON.parse(JSON.stringify(COT_ESTRUCTURAS_SEED));costosSave('cotEstructuras');render();}
@@ -1013,7 +1068,7 @@ function costosAumentoMasivo(){
 }
 function costosSelTodos(v){document.querySelectorAll('.cot-sel').forEach(ch=>ch.checked=v);}
 function rCostos(){
-  const tabs=[['papeles','Papeles'],['impresion','Impresión'],['chapas','Chapas CTP'],['laminados','Laminados'],['otros','Procesos'],['estructuras','Estructuras'],['config','Configuración'],['numeracion','Numeración']];
+  const tabs=[['papeles','Papeles'],['impresion','Impresión'],['chapas','Chapas CTP'],['laminados','Laminados'],['otros','Procesos'],['externos','Proveedores externos'],['estructuras','Estructuras'],['config','Configuración'],['numeracion','Numeración']];
   const cfg=cotCfg();
   let h=`<div class="ph"><div><div class="pt">Tablas de costos</div><div class="ps">Cotizador offset SM52 / SM74 · Dólar efectivo (+${cfg.spreadPct}%): <strong>$ ${cotFmtDec(cotDolarEfectivo(),2)}</strong></div></div>
   <div style="display:flex;gap:6px">${!costosHayDatos()?`<button class="bp" onclick="costosSeed()"><i class="ti ti-database-import"></i> Cargar tablas iniciales del Excel</button>`:''}</div></div>`;
@@ -1133,9 +1188,37 @@ function rCostos(){
     });
     h+=`</table></div>`;
   }
+  if(costosTab==='externos'){
+    const lista=S.externos||[];const inf=S.externosInfo||{};
+    let it=[];try{it=extItems();}catch(e){}
+    const rubros=['Imprenta','Troquelado','Pegado','Laminado','Hot stamping','Encuadernación','Barniz / UV','Corte','Otro'];
+    const cIn=(v,onch,ph,w='100%')=>`<input value="${cotEsc(v||'')}" onchange="${onch}" placeholder="${ph||''}" style="width:${w};padding:4px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px">`;
+    h+=`<div class="card" style="padding:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:11px;color:#888;max-width:640px">Imprentas y talleres externos con los que trabajás (tercerizados, troquelado, pegado, encuadernación…). Es la misma lista que aparece como <b>Externos</b> en Planificación. Cuando tercerizás un trabajo o mandás un proceso afuera con un proveedor nuevo, se agrega solo.</div>
+        <div style="display:flex;gap:6px"><input id="ext-nuevo" placeholder="Nuevo proveedor (ej: Hernán Canal)" onkeydown="if(event.key==='Enter')extTabAdd()" style="padding:6px 8px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px;width:220px"><button class="bp" onclick="extTabAdd()" style="font-size:11px"><i class="ti ti-plus"></i> Agregar</button></div>
+      </div>
+      <datalist id="ext-rubros">${rubros.map(r=>`<option value="${r}">`).join('')}</datalist>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th>Proveedor</th><th style="width:140px">Rubro</th><th style="width:150px">Contacto</th><th style="width:120px">Teléfono</th><th>Observaciones</th><th style="width:110px">Trabajos activos</th><th style="width:60px"></th></tr>`;
+    if(!lista.length)h+=`<tr><td colspan="7" style="padding:14px;color:#999;text-align:center">Todavía no cargaste proveedores externos.</td></tr>`;
+    lista.forEach((e,i)=>{
+      const d=inf[e]||{};const eN=String(e).trim().toLowerCase();
+      const act=it.filter(x=>x.est!=='recibido'&&String(x.p.extDestino||(x.env&&x.env.prov)||'').trim().toLowerCase()===eN).length;
+      h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.06)">
+        <td style="padding:5px 4px;font-weight:700;color:#185fa5;cursor:pointer" onclick="editRec('ext',${i})" title="Clic para cambiar el nombre">${cotEsc(e)} <i class="ti ti-pencil" style="font-size:10px;color:#aaa"></i></td>
+        <td style="padding:5px 4px"><input list="ext-rubros" value="${cotEsc(d.rubro||'')}" onchange="extTabEd(${i},'rubro',this.value)" placeholder="Imprenta…" style="width:100%;padding:4px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px"></td>
+        <td style="padding:5px 4px">${cIn(d.contacto,`extTabEd(${i},'contacto',this.value)`,'Nombre')}</td>
+        <td style="padding:5px 4px">${cIn(d.tel,`extTabEd(${i},'tel',this.value)`,'Tel / WhatsApp')}</td>
+        <td style="padding:5px 4px">${cIn(d.obs,`extTabEd(${i},'obs',this.value)`,'Ej: buen precio en tiradas largas, demora 5 días')}</td>
+        <td style="padding:5px 4px">${act?`<span onclick="extTabVer(${i})" style="cursor:pointer;color:#185fa5;font-weight:700">${act} → ver</span>`:'<span style="color:#bbb">—</span>'}</td>
+        <td style="padding:5px 4px;text-align:center"><button onclick="extTabDel(${i})" title="Quitar de la lista" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>`;
+    });
+    h+=`</table></div></div>`;
+  }
   if(costosTab==='estructuras'){
     const arr=S.cotEstructuras||[];
-    const tipos=(S.tiposTrabajo||[]);
+    const tipos=tiposOrdenados();
     h+=`<div class="card" style="padding:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div style="font-size:11px;color:#888;max-width:640px">Plantillas de ítems típicos por familia (ej. Bolsa, Estuche, Revista, Movie). Al cotizar podés <strong>armar la estructura</strong> y se cargan solos los ítems fijos; los opcionales aparecen para tildar. La IA también las usa para interpretar el pedido.</div>
@@ -1684,10 +1767,24 @@ function cotNuevo(){
     piezas:[cotPiezaNueva('Pieza única')],
     otros:[{cod:1,cant:1,auto:'pliegos'},{cod:17,cant:1,auto:false},{cod:9,cant:1,auto:false}],manuales:[],variantes:[]};
 }
+// Trabajo TERCERIZADO: costo que presupuestó el proveedor para una cantidad.
+// Se carga uno por cantidad (base y variantes) o como precio por unidad. Si falta el de esa cantidad, se escala desde la base.
+function _tercCosto(w,cant){
+  const t=(w&&w.terc)||{};if(!t.on)return 0;
+  cant=+cant||0;
+  const cs=t.costos||{};
+  const val=q=>{const v=cs[String(Math.round(+q||0))];return (v===undefined||v===null||v==='')?null:(+v||0);};
+  let v=val(cant);
+  if(v!=null)return t.pu?v*cant:v;
+  const base=+w.cantidad||0,vb=val(base);
+  if(vb!=null&&base>0)return t.pu?vb*cant:vb*(cant/base);
+  return 0;
+}
 function cotCalc(w,cantOverride){
   const cfg=cotCfg();
   const cant=(cantOverride!=null?cantOverride:w.cantidad)||0;
-  const piezas=cotPiezasDe(w);
+  const tercOn=!!(w.terc&&w.terc.on);
+  const piezas=tercOn?[]:cotPiezasDe(w); // tercerizado: no se cuenta la producción propia
   let papelCosto=0,impCosto=0,chapasCosto=0,lamCosto=0,pesoKg=0,procPzTotal=0;
   let pliegosNetosT=0,pliegosTotT=0,millaresT=0;
   const piezasDet=piezas.map((p,k)=>{
@@ -1784,12 +1881,10 @@ function cotCalc(w,cantOverride){
     const costo=o.ovMonto?(+o.montoOv||0):costoAuto; // monto pisado a mano (cotización de proveedor)
     otrosCosto+=costo;otrosDet.push({idx:i,cod:o.cod,cant:c,modo,concepto:t?t.concepto:'—',proveedor:o.proveedor||'',costo,ov:!!o.ov,ovMonto:!!o.ovMonto});
   });
-  // Líneas manuales: "fijo" (igual en todas las cantidades) o "unidad" (escala proporcional a la cantidad)
+  // Líneas manuales: "fijo" (igual en todas las cantidades), "unidad" (escala proporcional a la cantidad)
+  // o "pu" = $ por unidad (precio unitario × cantidad; ej. encuadernador $800 por cuaderno)
   const _cantBase=+w.cantidad||0;
-  let manCosto=0;(w.manuales||[]).forEach(m=>{
-    if(m.modo==='unidad'&&_cantBase>0)manCosto+=(m.monto||0)*(cant/_cantBase);
-    else manCosto+=(m.monto||0);
-  });
+  let manCosto=0;(w.manuales||[]).forEach(m=>{manCosto+=_manMonto(m,cant,_cantBase);});
   // Mínimo del laminador (arranque de trabajo): si hay laminado y da menos del mínimo, se cobra el mínimo
   const LAM_MIN=(cfg.lamMin!=null?+cfg.lamMin:30000);
   const lamCostoRaw=lamCosto;
@@ -1800,10 +1895,11 @@ function cotCalc(w,cantOverride){
     const conLam=(piezasDet||[]).filter(pd=>pd.lamCosto>0);
     if(conLam.length===1){conLam[0].lamCostoRaw=conLam[0].lamCosto;conLam[0].lamCosto=LAM_MIN;conLam[0].lamMin=true;lamMinEnPieza=true;}
   }
-  const total=papelCosto+impCosto+chapasCosto+lamCosto+otrosCosto+manCosto+procPzTotal;
+  const tercCosto=tercOn?_tercCosto(w,cant):0;
+  const total=papelCosto+impCosto+chapasCosto+lamCosto+otrosCosto+manCosto+procPzTotal+tercCosto;
   const mg=(w.margenPct==null?cfg.margenPct:w.margenPct)/100;
   const venta=mg<1?total/(1-mg):total;
-  return {cant,piezasDet,
+  return {cant,piezasDet,tercOn,tercCosto,tercProv:tercOn?((w.terc&&w.terc.prov)||''):'',
     pliegosNetos:pliegosNetosT,pliegosTot:pliegosTotT,millares:millaresT,
     papelCosto,impCosto,chapasCosto,lamCosto,lamCostoRaw,lamMinAplicado,lamMinEnPieza,lamMin:LAM_MIN,otrosCosto,otrosDet,manCosto,procPzTotal,
     total,venta,margenMonto:venta-total,
@@ -1864,10 +1960,34 @@ function cotLamAutoMatch(k){
     const s=document.getElementById('cz-p'+k+'-lamsel');if(s)s.value=String(match.codigo);
   }
 }
+// ---- Cantidad "en vista": ver el desarrollo completo del costeo para cada cantidad (base o variantes) ----
+// Solo cambia lo que se MUESTRA; la configuración (papel, máquina, poses, procesos) es una sola para todas.
+function _cotCantidades(){
+  if(!cotW)return [];
+  const base=+cotW.cantidad||0;
+  const vs=(cotW.variantes||[]).map(v=>+v.cantidad||0).filter(x=>x>0&&x!==base);
+  return [base,...[...new Set(vs)]];
+}
+function _cotCantVista(){
+  if(!cotW)return null;
+  const cv=+window._cotVistaCant||0;
+  if(!cv||cv===(+cotW.cantidad||0))return null;
+  return (cotW.variantes||[]).some(v=>+v.cantidad===cv)?cv:null;
+}
+function cotVerCant(c){window._cotVistaCant=(+c||null);cotRerender();}
+function cotCantPaso(d){
+  const lista=_cotCantidades();if(lista.length<2)return;
+  const cur=_cotCantVista()||(+cotW.cantidad||0);
+  let i=lista.indexOf(cur);if(i<0)i=0;
+  i=Math.max(0,Math.min(lista.length-1,i+d));
+  cotVerCant(i===0?0:lista[i]);
+}
 // Actualización en vivo SIN re-render (mantiene el foco y el orden de tabulación)
 function cotSync(){
   if(!cotW)return;
-  const r=cotCalc(cotW);
+  const rB=cotCalc(cotW);                 // base (la que se guarda)
+  const _cv=_cotCantVista();
+  const r=_cv?cotCalc(cotW,_cv):rB;       // lo que se muestra (base o la cantidad elegida arriba)
   const set=(id,txt)=>{const el=document.getElementById(id);if(el)el.textContent=txt;};
   const setH=(id,htm)=>{const el=document.getElementById(id);if(el)el.innerHTML=htm;};
   set('cz-netos',cotFmt(r.pliegosNetos));
@@ -1917,12 +2037,12 @@ function cotSync(){
   set('cz-venta','$ '+cotFmt(r.venta));
   set('cz-unit','$ '+cotFmtDec(r.unitario,2));
   // Fila BASE de la tabla de variantes (se actualiza junto con el resto, ej. al cambiar un costo manual)
-  set('cz-base-pl',cotFmt(r.pliegosNetos));
-  set('cz-base-peso',cotFmtDec(r.pesoKg,1)+' kg');
-  set('cz-base-costo','$ '+cotFmt(r.total));
-  set('cz-base-venta','$ '+cotFmt(r.venta));
-  set('cz-base-unit','$ '+cotFmtDec(r.unitario,2));
-  set('cz-unitqty','x '+cotFmt(cotW.cantidad)+' unidades');
+  set('cz-base-pl',cotFmt(rB.pliegosNetos));
+  set('cz-base-peso',cotFmtDec(rB.pesoKg,1)+' kg');
+  set('cz-base-costo','$ '+cotFmt(rB.total));
+  set('cz-base-venta','$ '+cotFmt(rB.venta));
+  set('cz-base-unit','$ '+cotFmtDec(rB.unitario,2));
+  set('cz-unitqty','x '+cotFmt(_cv||cotW.cantidad)+' unidades');
   setH('cz-cli-badge',cotW.clienteId?'<span style="color:#1a7f37">✓ en base</span>':(cotW.cliente?'<span style="color:#a35b00">nuevo — se creará al generar cot. formal</span>':''));
   (cotW.variantes||[]).forEach((v,i)=>{
     const rv=cotCalc(cotW,v.cantidad);
@@ -1936,7 +2056,7 @@ function cotSync(){
 // ---- Edición global ----
 function cotEd(campo,val){
   if(!cotW)cotNuevo();
-  if(campo==='cantidad'){cotW.cantidad=(val===''||val==null)?0:cotNum(val);cotSync();return;}
+  if(campo==='cantidad'){cotW.cantidad=(val===''||val==null)?0:cotNum(val);if((cotW.variantes||[]).length)cotRerender();else cotSync();return;}
   if(campo==='margenPct'){cotW.margenPct=(val===''||val==null)?0:cotNumDec(val);cotSync();return;}
   if(campo==='tipoTrabajo'){
     cotW.tipoTrabajo=String(val).replace(/[<>]/g,'').slice(0,60);
@@ -1980,6 +2100,7 @@ function cotPosesSug(PW,PH,SW,SH){
 // Auto-completar posturas cuando hay medida de pieza + pliego (queda editable)
 function cotAutoPoses(k){
   const p=(cotW&&cotW.piezas)?cotW.piezas[k]:null;if(!p)return;
+  if(p._pag)return; // pieza armada por el paginado: las poses las define el paginado (hojas distintas ≠ copias)
   const dims=cotPapelDims(p);if(!dims)return;
   const sug=cotPosesSug(p.piezaW,p.piezaH,dims[0],dims[1]);
   if(sug>0){
@@ -2070,6 +2191,7 @@ function cotPzEd(k,campo,val){
     cotLamAutoMatch(k);
     cotAutoPoses(k);
     const _mq=cotAutoMaquina(k);
+    if(p._pag&&cotW.paginado)cotPagAplicar(true); // pieza del paginado: si cambió la máquina, recompone impresión/chapas
     if(_mq==='nofit'){const d=cotPapelDims(p);if(d)alert('Ojo: el pliego '+cotFmtDec(Math.max(d[0],d[1]),1)+'×'+cotFmtDec(Math.min(d[0],d[1]),1)+' cm no entra en ninguna máquina.\nSM52: '+cotMaqRango('SM52')+'\nSM74: '+cotMaqRango('SM74')+'\nRevisá el papel.');}
     if(_mq==='nofitX'){const d=cotPapelDims(p);if(d)alert('El pliego '+cotFmtDec(Math.max(d[0],d[1]),1)+'×'+cotFmtDec(Math.min(d[0],d[1]),1)+' cm no entra en la Xerox (máx. '+cotMaqRango('Xerox')+').\nElegí un papel más chico o cambiá a offset (SM52/SM74).');}
     // Redibujar siempre: al cambiar el papel cambian botones de máquina, preview y códigos de impresión
@@ -2178,6 +2300,7 @@ function cotPzMaq(k,m){
   if(p.maquina==='SM74')p.chapasCod=3;
   if(p.maquina==='Xerox'){p.chapasCod=0;p.chapasCant=0;p.demasia=5;} // digital: 5 pliegos, sale bien de la 1ª hoja
   else if(p.demasia===5)p.demasia=cotCfg().demasia; // dejó Xerox: vuelve la demasía offset
+  if(p._pag&&p.maquina&&p.maquina!=='Xerox'&&cotW.paginado)cotPagAplicar(true); // pieza del paginado: recompone impresión y chapas para la máquina nueva
   cotRerender();
 }
 function cotPzAdd(nombre){
@@ -2270,10 +2393,17 @@ function cotPzProcDel(k,i){
   if(!cotW)return;const p=(cotW.piezas||[])[k];if(!p||!Array.isArray(p.procesos))return;
   p.procesos.splice(i,1);cotRerender();
 }
+// Monto de una línea manual para una cantidad: fijo / escala con la cantidad / $ por unidad
+function _manMonto(m,cant,base){
+  if(!m)return 0;
+  if(m.modo==='pu')return (+m.pu||0)*(+cant||0);
+  if(m.modo==='unidad'&&(+base)>0)return (+m.monto||0)*((+cant||0)/(+base));
+  return +m.monto||0;
+}
 function cotManEd(i,campo,val){
   if(!cotW.manuales[i])return;
-  cotW.manuales[i][campo]=campo==='monto'?cotNum(val):String(val).replace(/[<>]/g,'').slice(0,120);
-  if(campo==='modo')cotRerender();else cotSync();
+  cotW.manuales[i][campo]=(campo==='monto'||campo==='pu')?cotNum(val):String(val).replace(/[<>]/g,'').slice(0,120);
+  if(campo==='modo'||campo==='pu')cotRerender();else cotSync();
 }
 function cotManAdd(){cotW.manuales.push({concepto:'',monto:0});cotRerender();}
 function cotManDel(i){cotW.manuales.splice(i,1);cotRerender();}
@@ -2288,7 +2418,7 @@ function cotVarAdd(){
 function cotVarEd(i,val){
   if(!cotW.variantes[i])return;
   cotW.variantes[i].cantidad=cotNum(val);
-  cotSync();
+  cotRerender(); // redibuja para que las pestañas de cantidad de arriba incluyan la nueva
 }
 function cotVarDel(i){cotW.variantes.splice(i,1);cotRerender();}
 // ---- Guardar / cargar ----
@@ -2419,6 +2549,7 @@ function cotDesdeItem(ii){
   const item=_itemsState()[ii];if(!item)return;
   if(!costosHayDatos()){alert('Primero cargá las Tablas de costos (menú Comercial) para poder costear.');return;}
   window._cotEmbed={ii};
+  window._cotVistaCant=null; // al abrir un costeo, se arranca viendo la cantidad base
   if(item.costeo){
     cotW=JSON.parse(JSON.stringify(item.costeo));
     cotW.piezas=cotPiezasDe(cotW);
@@ -2454,7 +2585,8 @@ function cotDesdeItem(ii){
       const _esRevista=s.revista&&(+s.revista.intPags||+s.revista.tapaPags);
       if(_esRevista){
         cotW.paginado={modo:'revista',tapaPags:+s.revista.tapaPags||4,intPags:+s.revista.intPags||0,tapaColores:s.revista.tapaColores||s.colores||'4/4',intColores:s.revista.intColores||s.colores||'4/4',pagsPorHoja:4,hojasPorPliego:2};
-        cotPagAplicar(true); // arma tapa (1 pliego) + interior (por páginas) con chapas e impresión
+        cotW._pagOpen=true;
+        cotPagAplicar(true); // arma tapa + interior (por páginas) con pliegos, poses, chapas e impresión
         const pcR=aiMatchPapel(s.material,s.gramaje);
         (cotW.piezas||[]).forEach(p=>{if(pcR&&!p.papelCod)p.papelCod=pcR;});
         if(!pcR)faltan.push('Papel'+(s.material?' ('+s.material+(s.gramaje?' '+s.gramaje+'g':'')+')':''));
@@ -2545,7 +2677,7 @@ function cotEmbedAplicar(){
   _renderItems();
 }
 function cotEmbedCerrar(){
-  window._cotEmbed=null;
+  window._cotEmbed=null;window._cotVistaCant=null;
   const ov=document.getElementById('cot-embed');
   if(ov)ov.remove();
 }
@@ -2569,6 +2701,7 @@ function cotVerDesglose(cant){
   });
   const com=[];(r.otrosDet||[]).forEach(x=>{if(x.costo)com.push([x.concepto||'Proceso',x.costo]);});
   if(r.manCosto)com.push(['Líneas manuales',r.manCosto]);
+  if(r.tercOn&&r.tercCosto)com.unshift(['Trabajo tercerizado'+(r.tercProv?' — '+r.tercProv:''),r.tercCosto]);
   if(com.length){rows+=`<tr style="background:#f4f8fc"><td colspan="2" style="font-weight:700;color:#185fa5;padding:6px 8px">Procesos y servicios comunes</td></tr>`;com.forEach(([lbl,val])=>{rows+=`<tr><td style="padding:4px 8px 4px 20px;color:#555">${cotEsc(lbl)}</td><td style="padding:4px 8px;text-align:right">${f(val)}</td></tr>`;});}
   const margPct=r.venta>0?Math.round((r.venta-r.total)/r.venta*100):0;
   let ov=document.getElementById('cot-desg');
@@ -2588,138 +2721,344 @@ function cotVerDesglose(cant){
 function cotVerDesgloseCerrar(){const ov=document.getElementById('cot-desg');if(ov)ov.remove();}
 // ===== Verificador de paginado (páginas → hojas → pliegos → chapas) — modos revista y cuaderno =====
 function _pagCol(c){const m=String(c==null?'':c).match(/(\d+)\s*\/\s*(\d+)/);if(m)return (+m[1])+(+m[2]);const one=String(c||'').match(/(\d+)/);return one?parseInt(one[1]):0;}
+// Divide las hojas de una sección en pliegos completos + un pliego con el RESTO (que se imprime con más poses).
+// Ej.: 5 hojas, 2 hojas por pliego → 2 pliegos completos + 1 pliego con 1 hoja × 2 poses.
+function _pagSecc(hojas,hpp){
+  hojas=Math.max(0,parseInt(hojas)||0);hpp=Math.max(1,parseInt(hpp)||1);
+  const full=Math.floor(hojas/hpp),resto=hojas%hpp,out=[];
+  if(full>0)out.push({ent:full,post:1,hojas:full*hpp});
+  if(resto>0)out.push({ent:1,post:Math.max(1,Math.floor(hpp/resto)),hojas:resto});
+  return out;
+}
+// Paginado → secciones (tapa / interior / todo junto), cada una con sus pliegos distintos, poses, chapas e impresos
 function cotPagCalc(pg){
   pg=pg||{};
   const modo=pg.modo==='cuaderno'?'cuaderno':'revista';
-  const pph=Math.max(1,parseInt(pg.pagsPorHoja)|| (modo==='cuaderno'?2:4)); // revista plegada=4 · cuaderno hoja suelta=2
-  const hpp=Math.max(1,parseInt(pg.hojasPorPliego)||2);   // revista: hojas (plegadas) por pliego SM74
-  const poses=Math.max(1,parseInt(pg.posesPorPliego)||8); // cuaderno: hojitas (poses) por pliego SM74
+  const pph=Math.max(1,parseInt(pg.pagsPorHoja)||(modo==='cuaderno'?2:4)); // revista plegada=4 · cuaderno hoja suelta=2
+  const hpp=Math.max(1,parseInt(pg.hojasPorPliego)||2);    // hojas por pliego de máquina (SM74 = 2 hojas A3)
+  const poses=Math.max(1,parseInt(pg.posesPorPliego)||8);  // cuaderno: hojitas iguales por pliego
   const cant=(cotW&&+cotW.cantidad)||0;
-  const chT=_pagCol(pg.tapaColores||'4/4');
-  const chI=_pagCol(pg.intColores||'4/4');
+  const reti=!!pg.retiracion;
+  const chXpl=col=>{const c=_pagCol(col);return reti?Math.max(1,Math.round(c/2)):c;}; // chapas por pliego
+  const colT=pg.tapaColores||(modo==='cuaderno'?'4/0':'4/4'), colI=pg.intColores||(modo==='cuaderno'?'1/1':'4/4');
   const tPag=Math.max(0,parseInt(pg.tapaPags)||0);
-  const tHojas=Math.ceil(tPag/pph)||0;
-  const tPli=Math.ceil(tHojas/hpp)||0;
-  const o={modo,pph,hpp,poses,cant,chT,chI,tPag,tHojas,tPli,tChapas:tPli*chT};
+  const juntos=modo==='revista'&&!!pg.juntos;
+  const o={modo,pph,hpp,poses,cant,reti,juntos,colT,colI,secciones:[]};
   if(modo==='cuaderno'){
-    const hojas=Math.max(0,parseInt(pg.intHojas)||0);   // hojas interiores por unidad (todas iguales)
-    o.intHojas=hojas; o.iPag=hojas*pph;
-    o.iLayouts=hojas>0?1:0;                              // todas iguales = 1 pliego distinto
-    o.iChapas=o.iLayouts*chI;
-    o.iPliegosImpresos=(hojas>0&&cant>0)?Math.ceil(hojas*cant/poses):0;
-    o.totChapas=o.tChapas+o.iChapas;
+    // CUADERNO: medida cerrada → cuántas piezas entran por pliego (según el papel elegido de cada pieza; si no hay, pliego 65×47,5)
+    const W=parseFloat(String(pg.cuadW||'').replace(',','.'))||0, H=parseFloat(String(pg.cuadH||'').replace(',','.'))||0;
+    const dimsDe=rol=>{const pz=((cotW&&cotW.piezas)||[]).find(x=>x._pag===rol);const d=pz?cotPapelDims(pz):null;return d||[47.5,65];};
+    const posesDe=(pw,ph,rol)=>{const d=dimsDe(rol);return cotPosesSug(pw,ph,d[0],d[1])||0;};
+    const tapaTipo=pg.tapaTipo==='dura'?'dura':'blanda';
+    o.tapaTipo=tapaTipo;o.W=W;o.H=H;o.faltaMedida=!(W>0&&H>0);
+    if(pg.tapaTipo!=='sin'){
+      if(tapaTipo==='dura'){
+        // Tapa dura (anillado, sin lomo): 2 LÁMINAS por cuaderno (tapa + contratapa) con vuelta para forrar el cartón.
+        // Se imprimen en Ilustración 170 + laminado; el montaje sobre cartón y el anillado los hace el encuadernador (costo por unidad).
+        const vuelta=parseFloat(String(pg.vuelta||'').replace(',','.'))||2;
+        const fw=+(W+vuelta*2).toFixed(1), fh=+(H+vuelta*2).toFixed(1);
+        const ps=(W>0&&H>0)?posesDe(fw,fh,'tapa'):0;
+        const post=ps>=2?2*Math.floor(ps/2):Math.max(1,ps);
+        o.secciones.push({rol:'tapa',nombre:'Láminas tapa dura',info:`tapa + contratapa (2 diseños) · ${W||'?'}×${H||'?'} + vuelta ${vuelta} → ${fw}×${fh} cm${ps?' · entran '+ps+(ps%2?' (se usan '+post+')':''):''} · Ilus 170 + laminado`,pw:fw,ph:fh,poses:ps,col:colT,ch:chXpl(colT),secc:[{ent:1,post}],cantMult:2,dura:true});
+      }else{
+        // Tapa blanda: tapa + contratapa = 2 piezas y 2 diseños por cuaderno, en el mismo material y la misma plancha (mitad y mitad)
+        const ps=(W>0&&H>0)?posesDe(W,H,'tapa'):0;
+        const post=ps>=2?2*Math.floor(ps/2):Math.max(1,ps);
+        o.secciones.push({rol:'tapa',nombre:'Tapa + contratapa',info:`2 piezas por cuaderno (2 diseños) · ${W||'?'}×${H||'?'} cm${ps?' · entran '+ps+(ps%2?' (se usan '+post+', mitad de cada diseño)':''):''}`,pw:W,ph:H,poses:ps,col:colT,ch:chXpl(colT),secc:[{ent:1,post}],cantMult:2});
+      }
+    }
+    const hojas=Math.max(0,parseInt(pg.intHojas)||0);
+    if(hojas>0){
+      const ovr=parseInt(pg.posesPorPliego)||0;
+      const ps=ovr>0?ovr:((W>0&&H>0)?posesDe(W,H,'int'):0);
+      const p=Math.max(1,ps);
+      if(pg.intDif){
+        // Hojas DIFERENTES (agenda): cada hoja es un diseño → posturas distintas = hojas ÷ lo que entra por pliego; cada una × cantidad
+        const ent=Math.ceil(hojas/p);
+        o.secciones.push({rol:'int',nombre:'Interior (hojas diferentes)',info:`${hojas} hojas distintas = ${hojas*2} pág · ${p} por pliego → ${ent} posturas`,pag:hojas*2,hojas,pw:W,ph:H,poses:ps,col:colI,ch:chXpl(colI),secc:[{ent,post:1}],cantMult:1});
+      }else{
+        // Hojas IGUALES: un solo diseño repetido las veces que entre → hojas × cuadernos ÷ poses
+        o.secciones.push({rol:'int',nombre:'Interior',info:`${hojas} hojas iguales = ${hojas*2} pág · ${p} por pliego`,pag:hojas*2,hojas,pw:W,ph:H,poses:ps,col:colI,ch:chXpl(colI),secc:[{ent:1,post:p}],cantMult:hojas,iguales:true});
+      }
+    }
+    // Encuadernación (tercero, $ por unidad): anillado siempre; montaje de tapa solo en tapa dura.
+    // Si no se cargó en este trabajo, usa lo último que usaste (queda guardado como valor por defecto).
+    const cfg=S.cotConfig||{};
+    const _n=x=>(typeof cotNum==='function')?(cotNum(x)||0):(+x||0);
+    const numOr=(v,d)=>(v===undefined||v===null||v==='')?(d===undefined||d===null||d===''?0:_n(d)):_n(v);
+    o.enc={prov:(pg.encProv!=null&&pg.encProv!=='')?pg.encProv:(cfg.encProv||''),anillado:numOr(pg.encAnillado,cfg.encAnillado),tapado:tapaTipo==='dura'&&pg.tapaTipo!=='sin'?numOr(pg.encTapado,cfg.encTapado):0};
   }else{
     const iPag=Math.max(0,parseInt(pg.intPags)||0);
-    const iHojas=Math.ceil(iPag/pph)||0;
-    const iPli=Math.ceil(iHojas/hpp)||0;
-    o.iPag=iPag; o.iHojas=iHojas; o.iPli=iPli; o.iChapas=iPli*chI;
-    o.totPli=tPli+iPli; o.totChapas=tPli*chT+iPli*chI;
+    if(juntos){ // self-cover: tapa e interior en el mismo papel → todo en los mismos pliegos
+      const tot=tPag+iPag,h=Math.ceil(tot/pph)||0;
+      if(h>0)o.secciones.push({rol:'todo',nombre:'Revista (tapa + interior)',pag:tot,hojas:h,col:colI,ch:chXpl(colI),secc:_pagSecc(h,hpp),cantMult:1});
+    }else{
+      const tH=Math.ceil(tPag/pph)||0,iH=Math.ceil(iPag/pph)||0;
+      if(tH>0)o.secciones.push({rol:'tapa',nombre:'Tapa',pag:tPag,hojas:tH,col:colT,ch:chXpl(colT),secc:_pagSecc(tH,hpp),cantMult:1});
+      if(iH>0)o.secciones.push({rol:'int',nombre:'Interior',pag:iPag,hojas:iH,col:colI,ch:chXpl(colI),secc:_pagSecc(iH,hpp),cantMult:1});
+    }
   }
+  let totPli=0,totCh=0;
+  o.secciones.forEach(sc=>{
+    let ent=0,imp=0;
+    sc.secc.forEach(s=>{ent+=s.ent;imp+=s.ent*Math.ceil((cant*(sc.cantMult||1))/s.post);});
+    sc.ent=ent;sc.chapas=ent*sc.ch;sc.impresos=imp;totPli+=ent;totCh+=sc.chapas;
+  });
+  o.totPli=totPli;o.totChapas=totCh;
   return o;
 }
-function cotPagToggle(){if(!cotW)return;cotW._pagOpen=!cotW._pagOpen;cotRerender();}
-function cotPagModo(m){if(!cotW)return;if(!cotW.paginado)cotW.paginado={};cotW.paginado.modo=m;cotRerender();}
-// Arma el costeo desde el paginado: Tapa (1 pliego) + Interior (N pliegos vía ENTRADAS), con chapas e impresión.
-// NO toca el papel (lo elige el usuario). Sirve tanto para el botón manual como para la IA.
+// El panel se abre solo si el trabajo es revista/catálogo/cuaderno/block o si ya tiene paginado cargado
+function _pagAbierto(w){
+  if(!w)return false;
+  if(w._pagOpen!=null)return !!w._pagOpen;
+  const pg=w.paginado||{};
+  return !!(+pg.tapaPags||+pg.intPags||+pg.intHojas)||/revist|cat[aá]log|cuadern|block/i.test((w.tipoTrabajo||'')+' '+(w.nombre||''));
+}
+function cotPagToggle(){if(!cotW)return;cotW._pagOpen=!_pagAbierto(cotW);cotRerender();}
+function cotPagModo(m){if(!cotW)return;if(!cotW.paginado)cotW.paginado={};cotW.paginado.modo=m;cotPagAplicar(true);cotRerender();}
+// Arma el costeo AUTOMÁTICAMENTE desde el paginado: una pieza por sección (Tapa / Interior, o "todo junto"),
+// con entradas (pliegos distintos), poses, hojas x unidad, impresión y chapas. NO toca el papel (lo elige el usuario).
+// Las piezas que maneja el paginado quedan marcadas (_pag) para poder actualizarlas o quitarlas después.
 function cotPagAplicar(silent){
   if(!cotW)return;
   if(!cotW.paginado)cotW.paginado={};
-  const pg=cotW.paginado, r=cotPagCalc(pg), reti=!!pg.retiracion;
-  const chPorPliego=col=>{const c=_pagCol(col);return reti?Math.max(1,Math.round(c/2)):c;};
+  const pg=cotW.paginado, r=cotPagCalc(pg);
   if(!Array.isArray(cotW.piezas)||!cotW.piezas.length)cotW.piezas=cotPiezasDe(cotW);
-  const findPz=re=>cotW.piezas.find(p=>re.test((p.nombre||'').toLowerCase()));
-  let tapa=findPz(/tapa/), inter=findPz(/interior|interno/);
-  if(!tapa){ if(cotW.piezas[0]&&!cotW.piezas[0].papelCod&&!cotW.piezas[0].impCod){tapa=cotW.piezas[0];tapa.nombre='Tapa';} else {tapa=cotPiezaNueva('Tapa');cotW.piezas.push(tapa);} }
-  if(!inter){ inter=cotPiezaNueva('Interior'); cotW.piezas.push(inter); }
-  const setPz=(p,entradas,col)=>{
-    p.entradas=Math.max(1,entradas||1);
+  const P=cotW.piezas, usados=new Set();
+  const reNom={tapa:/tapa/,int:/interior|interno/,todo:/revista|tapa ?\+ ?interior/};
+  const tomar=(rolKey,nombre,rolBase)=>{
+    let p=P.find(x=>x._pag===rolKey&&!usados.has(x));
+    if(!p&&!/2$/.test(rolKey)&&reNom[rolBase])p=P.find(x=>!x._pag&&!usados.has(x)&&reNom[rolBase].test((x.nombre||'').toLowerCase()));
+    if(!p)p=P.find(x=>!x._pag&&!usados.has(x)&&!x.papelCod&&!x.impCod); // reutiliza una pieza vacía (ej. "Pieza única")
+    if(!p){p=cotPiezaNueva(nombre);P.push(p);}
+    p._pag=rolKey;p.nombre=nombre;usados.add(p);return p;
+  };
+  // Impresión para esos colores en esa máquina, prefiriendo la variante cuyas chapas coinciden (ej. 4/4 con 8 o con 4 si es retiración)
+  const matchImp=(col,maq,ch)=>{
+    const norm=x=>String(x||'').replace(/\s/g,'').toLowerCase();const c=norm(col);
+    const cands=(S.cotImpresion||[]).filter(x=>x&&x.codigo&&x.activo!==false&&x.maquina===maq&&norm(x.descripcion).includes(c));
+    if(!cands.length)return (typeof aiMatchImp==='function')?aiMatchImp(col,maq):0;
+    return (cands.find(x=>+x.chapas===ch)||cands[0]).codigo;
+  };
+  const setPz=(p,s,col,ch,cantMult)=>{
+    p.entradas=Math.max(1,s.ent);p.posturas=Math.max(1,s.post);p.cantMult=Math.max(1,cantMult||1);
     if(!p.maquina)p.maquina='SM74';
-    if(!p.impCod){const ic=(typeof aiMatchImp==='function')?aiMatchImp(col,p.maquina):0;if(ic)p.impCod=ic;}
+    if(!p.impCod||p._pagCol!==col||p._pagCh!==ch){const ic=matchImp(col,p.maquina,ch);if(ic)p.impCod=ic;}
+    p._pagCol=col;p._pagCh=ch;
     let cc=(typeof aiMatchChapa==='function')?aiMatchChapa(p.maquina):0;
     if(!cc)cc=(p.maquina==='SM52')?2:(p.maquina==='SM74')?3:0;
     if(cc)p.chapasCod=cc;
-    p.chapasCant=chPorPliego(col);
+    p.chapasCant=ch;
   };
-  setPz(tapa, r.tPli||1, pg.tapaColores||'4/4');
-  setPz(inter, (r.modo==='cuaderno'?(r.iLayouts||1):(r.iPli||1)), pg.intColores||(r.modo==='cuaderno'?'1/1':'4/4'));
-  if(!(cotW.otros||[]).some(o=>o.cod===3))cotW.otros.push({cod:3,cant:1,auto:'pliegos'}); // abrochado sugerido
+  r.secciones.forEach(sc=>{
+    sc.secc.forEach((s,j)=>{
+      const rolKey=sc.rol+(j?'2':'');
+      const nombre=sc.nombre+(j?' (resto: '+s.hojas+' hoja'+(s.hojas>1?'s':'')+' × '+s.post+' poses)':'');
+      const p=tomar(rolKey,nombre,sc.rol);
+      if(j){const p0=P.find(x=>x._pag===sc.rol);if(p0&&p0.papelCod&&!p.papelCod)p.papelCod=p0.papelCod;} // el resto va en el mismo papel
+      if(!p.papelCod){ // al pasar de "separado" a "todo junto" (o al revés) hereda el papel que ya habías elegido
+        const deQuien={todo:['int','tapa'],int:['todo'],tapa:['todo']}[sc.rol]||[];
+        let src=null;for(const rk of deQuien){src=P.find(x=>x!==p&&x.papelCod&&x._pag===rk);if(src)break;} // prioridad: interior
+        if(src)p.papelCod=src.papelCod;
+      }
+      setPz(p,s,sc.col,sc.ch,sc.cantMult);
+      if(sc.pw>0&&sc.ph>0){ // cuaderno: la pieza lleva su medida (así se ve cómo entra en el pliego)
+        p.piezaW=sc.pw;p.piezaH=sc.ph;p.personalizado=false;
+        if(r.W>0&&r.H>0)p.medidaCerrada=r.W+'x'+r.H;
+      }
+      if(sc.dura){ // láminas de tapa dura: Ilustración 170 + laminado frente (sugeridos; se pueden cambiar)
+        if(!p.papelCod&&typeof aiMatchPapel==='function'){const pc=aiMatchPapel('Ilustración',170);if(pc)p.papelCod=pc;}
+        if(!p.lamCod){
+          const lc=(typeof aiMatchLaminado==='function')?aiMatchLaminado('OPP mate'):0;
+          const l0=lc||((S.cotLaminados||[]).find(x=>x&&x.codigo&&x.activo!==false)||{}).codigo||0;
+          if(l0){p.lamCod=l0;p.lamCaras=1;p._lamAuto=1;}
+        }
+      }
+    });
+  });
+  // Quitar las piezas del paginado que ya no corresponden (ej. se tildó "todo junto" o se borraron las páginas de tapa)
+  cotW.piezas=P.filter(x=>!x._pag||usados.has(x));
+  if(!cotW.piezas.length)cotW.piezas=[cotPiezaNueva('Pieza única')];
+  const ord={tapa:1,tapa2:2,todo:3,todo2:4,int:5,int2:6};
+  cotW.piezas.sort((a,b)=>(ord[a._pag]||99)-(ord[b._pag]||99));
+  // Laminado sugerido en tapa dura: ajustar a la medida del pliego elegido
+  cotW.piezas.forEach((p,k)=>{if(p._lamAuto&&typeof cotLamAutoMatch==='function'){try{cotLamAutoMatch(k);}catch(e){}}});
+  // Terminación sugerida de revista: abrochado (una sola vez; si la sacás, no vuelve a aparecer)
+  if(!Array.isArray(cotW.otros))cotW.otros=[];
+  if(r.modo==='revista'&&r.secciones.length&&!pg._term){
+    if(!cotW.otros.some(o=>o.cod===3))cotW.otros.push({cod:3,cant:1,auto:'pliegos'});
+    pg._term=1;
+  }
+  // Encuadernación de cuadernos (tercero, $ por unidad): líneas manejadas por el paginado
+  if(!Array.isArray(cotW.manuales))cotW.manuales=[];
+  if(r.modo==='cuaderno'&&r.secciones.length&&r.enc){
+    const up=(key,concepto,pu)=>{
+      let m=cotW.manuales.find(x=>x._pag===key);
+      if(!m){m={_pag:key};cotW.manuales.push(m);}
+      m.concepto=concepto;m.modo='pu';m.pu=+pu||0;m.proveedor=r.enc.prov||'';
+    };
+    up('anillado','Encuadernación: anillado',r.enc.anillado);
+    if(r.tapaTipo==='dura'&&pg.tapaTipo!=='sin')up('tapado','Encuadernación: montaje tapa dura (tapa + contratapa)',r.enc.tapado);
+    else cotW.manuales=cotW.manuales.filter(x=>x._pag!=='tapado');
+  }else{
+    cotW.manuales=cotW.manuales.filter(x=>!x._pag); // revista o sin datos: no van las líneas del encuadernador
+  }
   if(!silent)cotRerender();
 }
+// Cada cambio en el paginado rearma el costeo de abajo (y devuelve el foco al campo donde estabas)
 function cotPagEd(campo,val){
   if(!cotW)return;if(!cotW.paginado)cotW.paginado={};
-  cotW.paginado[campo]=String(val).replace(/[<>]/g,'').slice(0,10);
-  const box=document.getElementById('cot-pag-result');
-  if(box)box.innerHTML=cotPagResultHTML(cotPagCalc(cotW.paginado));
+  cotW.paginado[campo]=String(val).replace(/[<>]/g,'').slice(0,40);
+  // Encuadernador y precios: quedan como valor por defecto para los próximos cuadernos
+  if(/^enc(Prov|Anillado|Tapado)$/.test(campo)){if(!S.cotConfig)S.cotConfig={};S.cotConfig[campo]=cotW.paginado[campo];sk('cotConfig');}
+  clearTimeout(window._pagT);
+  window._pagT=setTimeout(()=>{
+    const fid=document.activeElement&&document.activeElement.id;
+    cotPagAplicar(true);cotRerender();
+    if(fid&&/^pag-/.test(fid)){const el=document.getElementById(fid);if(el){el.focus();try{el.select();}catch(e){}}}
+  },0);
 }
 function cotPagResultHTML(r){
-  const colT=(cotW.paginado&&cotW.paginado.tapaColores)||'4/4';
-  const colI=(cotW.paginado&&cotW.paginado.intColores)||'4/4';
-  if(r.modo==='cuaderno'){
-    let h=`<table style="width:100%;border-collapse:collapse;font-size:12px">
-      <tr style="text-align:left;color:#888;font-size:9px;text-transform:uppercase"><th style="padding:3px 8px"></th><th style="text-align:center">Hojas / págs</th><th style="text-align:center">Pliegos distintos</th><th style="text-align:center">Chapas</th><th style="text-align:center">Colores</th></tr>`;
-    if(r.tPag>0)h+=`<tr><td style="padding:3px 8px;font-weight:600">Tapa</td><td style="text-align:center">${r.tPag} pág</td><td style="text-align:center;font-weight:700;color:#185fa5">${r.tPli}</td><td style="text-align:center">${r.tChapas}</td><td style="text-align:center;color:#888">${colT}</td></tr>`;
-    if(r.intHojas>0)h+=`<tr><td style="padding:3px 8px;font-weight:600">Interior <span style="font-size:9px;color:#7b3fa0">(hojas iguales)</span></td><td style="text-align:center">${r.intHojas} hojas · ${r.iPag} pág</td><td style="text-align:center;font-weight:700;color:#185fa5">${r.iLayouts} <span style="font-size:9px;color:#888">(repetido)</span></td><td style="text-align:center">${r.iChapas}</td><td style="text-align:center;color:#888">${colI}</td></tr>`;
-    h+=`</table>
-      <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,.1);font-size:12.5px;display:flex;gap:18px;flex-wrap:wrap">
-        <span><b>${r.totChapas}</b> chapas en total</span>
-        ${r.cant>0?`<span style="color:#666">Pliegos impresos interior: ${r.intHojas} hojas × ${cotFmt(r.cant)} ej. ÷ ${r.poses} poses = <b>${cotFmt(r.iPliegosImpresos)}</b></span>`:''}
-      </div>
-      <div style="font-size:10px;color:#999;margin-top:5px">Cuaderno/block: cada hojita = ${r.pph} páginas (hoja suelta), interior todo igual → <b>1 solo pliego distinto</b> (pocas chapas), ${r.poses} hojitas por pliego SM74. Ej.: 80 hojas = 160 págs → 1 pliego distinto, y los pliegos impresos salen de la cantidad ÷ poses. Es solo un chequeo, no cambia el costeo.</div>`;
-    return h;
-  }
-  // modo revista (páginas distintas, plegado)
-  const linea=(lbl,pag,hojas,pli,ch,col)=>pag>0?`<tr><td style="padding:3px 8px;font-weight:600">${lbl}</td><td style="text-align:center">${pag} pág</td><td style="text-align:center">${hojas} hoja${hojas!==1?'s':''}</td><td style="text-align:center;font-weight:700;color:#185fa5">${pli} pliego${pli!==1?'s':''}</td><td style="text-align:center">${ch} chapas</td><td style="text-align:center;color:#888">${col||''}</td></tr>`:'';
-  let h=`<table style="width:100%;border-collapse:collapse;font-size:12px">
-    <tr style="text-align:left;color:#888;font-size:9px;text-transform:uppercase"><th style="padding:3px 8px"></th><th style="text-align:center">Páginas</th><th style="text-align:center">Hojas</th><th style="text-align:center">Pliegos distintos</th><th style="text-align:center">Chapas</th><th style="text-align:center">Colores</th></tr>
-    ${linea('Tapa',r.tPag,r.tHojas,r.tPli,r.tChapas,colT)}
-    ${linea('Interior',r.iPag,r.iHojas,r.iPli,r.iChapas,colI)}
-  </table>`;
-  h+=`<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,.1);font-size:12.5px;display:flex;gap:18px;flex-wrap:wrap">
+  if(!r.secciones.length)return `<div style="font-size:12px;color:#888"><i class="ti ti-arrow-up"></i> ${r.modo==='cuaderno'?'Cargá la medida cerrada y las hojas del interior':'Cargá las páginas de tapa e interior'} y el costeo de abajo se arma solo.</div>`;
+  let h=(r.modo==='cuaderno'&&r.faltaMedida)?`<div style="font-size:11px;color:#a35b00;margin-bottom:6px"><i class="ti ti-alert-triangle"></i> Falta la medida cerrada: sin ella no puedo calcular cuántas entran por pliego.</div>`:'';
+  h+=`<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <tr style="text-align:left;color:#888;font-size:9px;text-transform:uppercase"><th style="padding:3px 8px">Pieza</th><th>Detalle</th><th style="text-align:center">Pliegos distintos (posturas)</th><th style="text-align:center">Chapas</th><th style="text-align:center">Colores</th><th style="text-align:right">Pliegos impresos*</th></tr>`;
+  r.secciones.forEach(sc=>{
+    const det=sc.secc.map(s=>`<b>${s.ent}</b>${s.post>1?` <span style="font-size:10px;color:#888">(×${s.post} poses)</span>`:''}`).join(' + ');
+    const info=sc.info||`${sc.pag} pág → ${sc.hojas} hoja${sc.hojas!==1?'s':''}`;
+    h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.06)">
+      <td style="padding:4px 8px;font-weight:600;white-space:nowrap">${sc.nombre}</td>
+      <td style="font-size:11px;color:#555">${info}</td>
+      <td style="text-align:center;color:#185fa5">${det}</td>
+      <td style="text-align:center">${sc.chapas}</td>
+      <td style="text-align:center;color:#888">${sc.col}</td>
+      <td style="text-align:right">${r.cant?cotFmt(sc.impresos):'—'}</td></tr>`;
+  });
+  h+=`</table>
+  <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,.1);font-size:12.5px;display:flex;gap:18px;flex-wrap:wrap">
     <span><b>${r.totPli}</b> pliego${r.totPli!==1?'s':''} distinto${r.totPli!==1?'s':''}</span>
-    <span><b>${r.totChapas}</b> chapas en total</span>
-    ${r.cant>0?`<span style="color:#666">Pliegos impresos (× ${cotFmt(r.cant)} ej., sin demasía): tapa <b>${cotFmt(r.tPli*r.cant)}</b> · interior <b>${cotFmt(r.iPli*r.cant)}</b></span>`:''}
+    <span><b>${r.totChapas}</b> chapas en total${r.reti?' (retiración)':''}</span>
+    ${(r.modo==='cuaderno'&&r.enc&&(r.enc.anillado||r.enc.tapado))?`<span style="color:#a35b00"><i class="ti ti-building-factory-2"></i> Encuadernación${r.enc.prov?' ('+cotEsc(r.enc.prov)+')':''}: ${r.enc.anillado?'anillado $'+cotFmt(r.enc.anillado)+' x u.':''}${r.enc.tapado?(r.enc.anillado?' + ':'')+'montaje $'+cotFmt(r.enc.tapado)+' x u.':''}${r.cant?' = <b>$ '+cotFmt((r.enc.anillado+r.enc.tapado)*r.cant)+'</b>':''}</span>`:''}
   </div>
-  <div style="font-size:10px;color:#999;margin-top:5px">Revista plegada: cada hoja = ${r.pph} páginas · ${r.hpp} hojas por pliego. Ej.: interior 24 pág → 6 hojas → 3 pliegos SM74 (2 hojas c/u). Es solo un chequeo, no cambia el costeo.</div>`;
+  <div style="font-size:10px;color:#999;margin-top:5px">${r.modo==='cuaderno'
+    ?`Cuaderno: el interior se carga en hojas (cada hoja = 2 páginas). Hojas iguales → un diseño repetido (hojas × cuadernos ÷ lo que entra). Hojas diferentes → posturas = hojas ÷ lo que entra, cada una × cuadernos. Tapa blanda = tapa + contratapa (2 piezas por cuaderno). Lo que entra por pliego se calcula con la medida y el papel elegido.${r.tapaTipo==='dura'?' Tapa dura: el cartón y el armado cargalos como proceso.':''}`
+    :`Revista plegada: cada hoja = ${r.pph} páginas · ${r.hpp} hojas por pliego (ej. 24 pág → 6 hojas → 3 pliegos). Si sobran hojas, el último pliego va con más poses.`}
+    * sin demasía, × ${cotFmt(r.cant||0)} ej. <b style="color:#1a7f37">El costeo de abajo se arma solo con este paginado — vos elegís el papel de cada pieza.</b></div>`;
   return h;
 }
 function cotPaginadoHTML(w){
-  const abierto=!!(w&&w._pagOpen);
+  const abierto=_pagAbierto(w);
   const pg=(w&&w.paginado)||{};
   const modo=pg.modo==='cuaderno'?'cuaderno':'revista';
-  const inp=(campo,val,ph,wdt='60px')=>`<input value="${cotEsc(val==null?'':String(val))}" onchange="cotPagEd('${campo}',this.value)" placeholder="${ph||''}" style="width:${wdt};padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px;text-align:center">`;
+  const inp=(campo,val,ph,wdt='60px')=>`<input id="pag-${campo}" value="${cotEsc(val==null?'':String(val))}" onchange="cotPagEd('${campo}',this.value)" placeholder="${ph||''}" style="width:${wdt};padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px;text-align:center">`;
   const modBtn=(m,l)=>`<button onclick="cotPagModo('${m}')" style="padding:5px 12px;border-radius:7px;border:1px solid ${modo===m?'#7b3fa0':'rgba(0,0,0,.15)'};background:${modo===m?'#7b3fa0':'#fff'};color:${modo===m?'#fff':'#555'};font-size:11px;font-weight:600;cursor:pointer">${l}</button>`;
   let h=`<div class="card" style="padding:12px;margin-bottom:12px">
     <div onclick="cotPagToggle()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer">
-      <strong style="font-size:12px;color:#7b3fa0"><i class="ti ti-book-2"></i> Paginado (verificador de pliegos y chapas)</strong>
+      <strong style="font-size:12px;color:#7b3fa0"><i class="ti ti-book-2"></i> Paginado — revista / catálogo / cuaderno <span style="font-weight:500;color:#999">(arma el costeo solo)</span></strong>
       <i class="ti ti-chevron-${abierto?'up':'down'}" style="color:#888"></i>
     </div>`;
   if(abierto){
     h+=`<div style="display:flex;gap:6px;margin:8px 0">${modBtn('revista','Revista / catálogo (plegado)')}${modBtn('cuaderno','Cuaderno / block (hojas sueltas)')}</div>
-    <div style="font-size:11px;color:#888;margin-bottom:8px">${modo==='cuaderno'?'Hojas interiores todas iguales (una sola plancha). Cada hoja suelta = 2 páginas (anillado / binder tipo libro).':'Revista plegada: cada pliego se dobla; una hoja A3 = 4 páginas A4.'}</div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px">${modo==='cuaderno'?'Cuaderno: el interior va en <b>hojas</b> (cada hoja suelta = 2 páginas). Las hojas pueden ser todas iguales o todas diferentes (agenda).':'Revista: todo en <b>páginas</b>. Cada pliego se dobla; una hoja A3 = 4 páginas A4.'}</div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
-      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Páginas tapa</div>${inp('tapaPags',pg.tapaPags,'4')}</div>
-      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Colores tapa</div>${inp('tapaColores',pg.tapaColores||'4/4','4/4','54px')}</div>`;
+`;
     if(modo==='cuaderno'){
-      h+=`<div><div style="font-size:10px;color:#888;margin-bottom:2px">Hojas interior (por unidad)</div>${inp('intHojas',pg.intHojas,'80')}</div>
-      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Colores interior</div>${inp('intColores',pg.intColores||'1/1','1/1','54px')}</div>
-      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Págs. por hoja</div>${inp('pagsPorHoja',pg.pagsPorHoja||2,'2')}</div>
-      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Poses por pliego</div>${inp('posesPorPliego',pg.posesPorPliego||8,'8')}</div>`;
+      const lab=t=>`<div style="font-size:10px;color:#888;margin-bottom:2px">${t}</div>`;
+      const selc=(campo,val,opts)=>`<select id="pag-${campo}" onchange="cotPagEd('${campo}',this.value)" style="padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px;background:#fff">${opts.map(([v,l])=>`<option value="${v}"${(val||'')===v?' selected':''}>${l}</option>`).join('')}</select>`;
+      const tt=pg.tapaTipo||'blanda';
+      const rc=cotPagCalc(pg);const intSc=rc.secciones.find(s=>s.rol==='int');
+      h+=`<div>${lab('Medida cerrada (cm)')}${inp('cuadW',pg.cuadW,'15','46px')} × ${inp('cuadH',pg.cuadH,'21','46px')}</div>
+      <div>${lab('Tapa')}${selc('tapaTipo',tt,[['blanda','Blanda (tapa + contratapa)'],['dura','Dura (láminas Ilus 170 + laminado)'],['sin','Sin tapa']])}</div>
+      ${tt!=='sin'?`<div>${lab('Colores tapa')}${inp('tapaColores',pg.tapaColores||'4/0','4/0','54px')}</div>`:''}
+      ${tt==='dura'?`<div>${lab('Vuelta (cm)')}${inp('vuelta',pg.vuelta,'2','46px')}</div>`:''}
+      <div>${lab('Hojas interior')}${inp('intHojas',pg.intHojas,'80')} <span style="font-size:11px;color:#888">${+pg.intHojas>0?'= '+(+pg.intHojas*2)+' pág':''}</span></div>
+      <div>${lab('Colores interior')}${inp('intColores',pg.intColores||'1/1','1/1','54px')}</div>
+      <div>${lab('Hojas del interior')}${selc('intDif',pg.intDif?'1':'',[['','Todas iguales (1 diseño)'],['1','Todas diferentes (agenda)']])}</div>
+      <div>${lab('Entran por pliego')}${inp('posesPorPliego',pg.posesPorPliego,intSc&&intSc.poses?String(intSc.poses)+' auto':'auto','64px')}</div>
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:end;margin:-2px 0 10px;padding:8px 10px;background:#fffaf0;border:1px solid #f0dfb8;border-radius:8px">
+        <div style="font-size:11px;font-weight:700;color:#a35b00;align-self:center"><i class="ti ti-building-factory-2"></i> Encuadernación (tercero)</div>
+        <div>${lab('Encuadernador')}${inp('encProv',pg.encProv!=null?pg.encProv:((S.cotConfig&&S.cotConfig.encProv)||''),'Graficón','120px')}</div>
+        <div>${lab('Anillado $ x unidad')}${inp('encAnillado',pg.encAnillado!=null?pg.encAnillado:((S.cotConfig&&S.cotConfig.encAnillado)||''),'800','76px')}</div>
+        ${tt==='dura'?`<div>${lab('Montaje tapa dura $ x unidad')}${inp('encTapado',pg.encTapado!=null?pg.encTapado:((S.cotConfig&&S.cotConfig.encTapado)||''),'900','76px')}</div>`:''}
+        <div style="font-size:10px;color:#999;align-self:center;max-width:260px">Se cargan como costo por unidad en "Procesos y servicios". Los precios quedan guardados para el próximo cuaderno.</div>
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:end;margin-bottom:10px">`;
     }else{
-      h+=`<div><div style="font-size:10px;color:#888;margin-bottom:2px">Páginas interior</div>${inp('intPags',pg.intPags,'24')}</div>
+      h+=`<div><div style="font-size:10px;color:#888;margin-bottom:2px">Páginas tapa</div>${inp('tapaPags',pg.tapaPags,'4')}</div>
+      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Colores tapa</div>${inp('tapaColores',pg.tapaColores||'4/4','4/4','54px')}</div>
+      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Páginas interior</div>${inp('intPags',pg.intPags,'24')}</div>
       <div><div style="font-size:10px;color:#888;margin-bottom:2px">Colores interior</div>${inp('intColores',pg.intColores||'4/4','4/4','54px')}</div>
       <div><div style="font-size:10px;color:#888;margin-bottom:2px">Págs. por hoja</div>${inp('pagsPorHoja',pg.pagsPorHoja||4,'4')}</div>
       <div><div style="font-size:10px;color:#888;margin-bottom:2px">Hojas por pliego</div>${inp('hojasPorPliego',pg.hojasPorPliego||2,'2')}</div>`;
     }
-    h+=`<label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#666;cursor:pointer"><input type="checkbox" ${pg.retiracion?'checked':''} onchange="cotPagEd('retiracion',this.checked?'1':'')" style="width:14px;height:14px;accent-color:#7b3fa0"> Trabajo y retiración (misma pinza) → usa la mitad de chapas</label>
+    h+=`<div style="display:flex;flex-direction:column;gap:4px">
+      ${modo==='revista'?`<label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#666;cursor:pointer"><input id="pag-juntos" type="checkbox" ${pg.juntos?'checked':''} onchange="cotPagEd('juntos',this.checked?'1':'')" style="width:14px;height:14px;accent-color:#7b3fa0"> Tapa e interior en el <b>mismo papel</b> (todo junto, self-cover)</label>`:''}
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#666;cursor:pointer"><input id="pag-retiracion" type="checkbox" ${pg.retiracion?'checked':''} onchange="cotPagEd('retiracion',this.checked?'1':'')" style="width:14px;height:14px;accent-color:#7b3fa0"> Trabajo y retiración (misma pinza) → mitad de chapas</label>
+    </div>
     </div>
     <div id="cot-pag-result" style="background:#faf7fd;border:1px solid #e6d8f5;border-radius:8px;padding:10px">${cotPagResultHTML(cotPagCalc(pg))}</div>
-    <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <button class="bp" onclick="cotPagAplicar()" style="font-size:12px"><i class="ti ti-wand"></i> Armar el costeo con este paginado (tapa + interior)</button>
-      <span style="font-size:11px;color:#888">Arma Tapa (1 pliego) e Interior (${cotPagCalc(pg).iPli||cotPagCalc(pg).iLayouts||1} pliego/s vía ENTRADAS) con las chapas. Vos solo elegís el papel.</span>
+    <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button onclick="cotPagAplicar()" style="font-size:11px" title="Vuelve a armar las piezas desde el paginado (por si cambiaste algo a mano)"><i class="ti ti-refresh"></i> Rearmar piezas</button>
+      <span style="font-size:11px;color:#888">Cada cambio en el paginado actualiza solo las piezas de abajo (Tapa / Interior). Vos elegís el papel de cada una.</span>
     </div>`;
   }
   h+=`</div>`;
   return h;
+}
+// ===== Trabajo TERCERIZADO: presupuesto de un proveedor en lugar de la producción propia =====
+function cotTercToggle(){if(!cotW)return;if(!cotW.terc)cotW.terc={costos:{}};cotW.terc.on=!cotW.terc.on;cotRerender();}
+function cotTercEd(campo,val){
+  if(!cotW||!cotW.terc)return;
+  if(campo==='pu')cotW.terc.pu=!!val;
+  else if(campo==='prov'){const v=String(val==null?'':val).replace(/[<>]/g,'').trim().slice(0,80);cotW.terc.prov=v?(asegurarExterno(v)||v):'';} // se suma solo a "Proveedores externos"
+  else cotW.terc[campo]=String(val==null?'':val).replace(/[<>]/g,'').slice(0,campo==='obs'?600:80);
+  cotRerender();
+}
+function cotTercCosto(q,val){
+  if(!cotW||!cotW.terc)return;
+  if(!cotW.terc.costos)cotW.terc.costos={};
+  const k=String(Math.round(+q||0)),s=String(val==null?'':val).trim();
+  if(s==='')delete cotW.terc.costos[k];else cotW.terc.costos[k]=cotNum(s);
+  cotRerender();
+}
+function cotTercHTML(w,r){
+  const t=(w&&w.terc)||{};
+  if(!t.on)return `<div style="display:flex;justify-content:flex-end;margin:-4px 0 10px"><button onclick="cotTercToggle()" title="Cargar el presupuesto de otra imprenta en lugar de costear la producción propia" style="font-size:12px;color:#0f6e56;border-color:#0f6e56;background:#eefaf5"><i class="ti ti-building-factory"></i> Tercerizar este trabajo (presupuesto de proveedor)</button></div>`;
+  const lab=x=>`<div style="font-size:10px;color:#888;font-weight:600;text-transform:uppercase;margin-bottom:2px">${x}</div>`;
+  const provs=[...new Set([...(S.externos||[]),...(S.proveedores||[]).map(p=>p&&p.nombre)].filter(Boolean))];
+  const cants=_cotCantidades();
+  let filas='';
+  cants.forEach((q,i)=>{
+    const v=(t.costos||{})[String(Math.round(q))];
+    const tiene=v!==undefined&&v!==null&&v!=='';
+    const usado=_tercCosto(w,q);
+    filas+=`<tr style="border-top:0.5px solid rgba(0,0,0,.06)">
+      <td style="padding:6px;font-weight:700;color:#185fa5">${cotFmt(q)}${i===0?' <span style="font-size:10px;color:#888;font-weight:500">(base)</span>':''}</td>
+      <td style="padding:6px"><input value="${tiene?cotEsc(cotFmtDec(v,2)):''}" onchange="cotTercCosto(${q},this.value)" placeholder="$" style="width:130px;padding:5px 7px;border:1.5px solid #0f6e56;border-radius:6px;font-size:13px;font-weight:700;text-align:right;color:#0f6e56"></td>
+      <td style="padding:6px;text-align:right;font-weight:700">$ ${cotFmt(usado)}${(!tiene&&usado>0)?'<div style="font-size:10px;color:#a35b00;font-weight:500">escalado desde la base — cargá el presupuesto real</div>':''}</td></tr>`;
+  });
+  // Comparación con la producción propia (si ya estaba costeada)
+  const rInt=cotCalc(Object.assign({},w,{terc:null}),r.cant);
+  const prodInt=rInt.papelCosto+rInt.impCosto+rInt.chapasCosto+rInt.lamCosto+rInt.procPzTotal;
+  const tc=r.tercCosto||0;
+  return `<div class="card" style="padding:14px;margin-bottom:12px;border-left:4px solid #0f6e56;background:#f3fbf7">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <strong style="font-size:14px;color:#0f6e56"><i class="ti ti-building-factory"></i> Trabajo tercerizado</strong>
+      <button onclick="cotTercToggle()" style="font-size:11px" title="Vuelve a costear con la producción propia (lo que habías armado se conserva)"><i class="ti ti-arrow-back-up"></i> Volver a producción propia</button>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+      <div style="flex:1;min-width:220px">${lab('Proveedor')}<input list="terc-provs" value="${cotEsc(t.prov||'')}" onchange="cotTercEd('prov',this.value)" placeholder="Ej: Hernán Canal, Imprenta Ya…" style="width:100%;padding:6px 8px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:13px;font-weight:600"><datalist id="terc-provs">${provs.map(n=>`<option value="${cotEsc(n)}">`).join('')}</datalist></div>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#555;cursor:pointer;padding-bottom:6px"><input type="checkbox" ${t.pu?'checked':''} onchange="cotTercEd('pu',this.checked?1:'')" style="width:15px;height:15px;accent-color:#0f6e56"> El presupuesto es <b>precio por unidad</b></label>
+    </div>
+    <table style="width:100%;max-width:620px;border-collapse:collapse;font-size:12px;margin-bottom:10px">
+      <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th style="padding:4px 6px">Cantidad</th><th style="padding:4px 6px">${t.pu?'$ por unidad (presupuesto)':'Costo presupuestado (total)'}</th><th style="padding:4px 6px;text-align:right">Costo que se usa</th></tr>
+      ${filas}
+    </table>
+    <div>${lab('Observaciones')}<textarea onchange="cotTercEd('obs',this.value)" rows="2" placeholder="Ej: incluye troquelado y pegado · entrega en 10 días · presupuesto N° 1234 · válido 15 días" style="width:100%;padding:7px 8px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px;resize:vertical">${cotEsc(t.obs||'')}</textarea></div>
+    ${prodInt>0?`<div style="margin-top:8px;font-size:12px;padding:7px 10px;background:#fff;border:1px solid #d6ece2;border-radius:7px"><i class="ti ti-scale"></i> Comparación para ${cotFmt(r.cant)} u.: producción propia (papel, impresión, chapas, laminado, procesos de pieza) <b>$ ${cotFmt(prodInt)}</b> · tercerizado <b>$ ${cotFmt(tc)}</b> → ${tc>prodInt?`<span style="color:#a32d2d">tercerizar sale $ ${cotFmt(tc-prodInt)} más</span>`:`<span style="color:#1a7f37">tercerizar ahorra $ ${cotFmt(prodInt-tc)}</span>`}</div>`:''}
+    <div style="font-size:10px;color:#888;margin-top:8px"><i class="ti ti-info-circle"></i> Se usa el costo del proveedor en lugar de la producción propia (papel, impresión, chapas, piezas). Flete, procesos y servicios, líneas manuales y margen siguen igual abajo. Al generar la OT, el trabajo figura como externo de este proveedor.</div>
+  </div>`;
 }
 // Siembra las 5 variantes de impresión digital (Xerox V180). El costo por pliego se guarda en
 // primerMillar EN USD (se convierte a pesos con el dólar efectivo). Se edita en Tablas de costos.
@@ -2758,7 +3097,7 @@ function rCotizador(){
   if(!cotW)cotNuevo();
   ensureXeroxImpresion();
   cotW.piezas=cotPiezasDe(cotW);
-  const w=cotW,r=cotCalc(w);
+  const w=cotW,rBase=cotCalc(w),_cv=_cotCantVista(),r=_cv?cotCalc(w,_cv):rBase; // r = lo que se muestra (base o cantidad elegida arriba)
   const emb=!!window._cotEmbed;
   if(emb)cotVista='editor';
   const sel=(opts,val,onch,w2='auto',idAttr='')=>{
@@ -2815,6 +3154,19 @@ function rCotizador(){
     return h;
   }
   // ---- EDITOR ----
+  // Pestañas de cantidad (arriba de todo): ver el desarrollo completo para cada cantidad
+  const _cants=_cotCantidades();
+  if(_cants.length>1){
+    const act=_cv||(+w.cantidad||0);
+    const tab=(c,i)=>{const on=c===act;return `<button onclick="cotVerCant(${i===0?0:c})" style="padding:6px 14px;border-radius:8px;border:1.5px solid ${on?'#185fa5':'rgba(0,0,0,.15)'};background:${on?'#185fa5':'#fff'};color:${on?'#fff':'#333'};font-size:13px;font-weight:700;cursor:pointer">${cotFmt(c)}${i===0?' <span style="font-size:10px;font-weight:600;opacity:.8">· base</span>':''}</button>`;};
+    h+=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;padding:8px 12px;background:#fff;border:1px solid #cfe0f2;border-radius:10px;position:sticky;top:0;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+      <span style="font-size:11px;font-weight:700;color:#185fa5;margin-right:4px"><i class="ti ti-eye"></i> Ver desarrollo para:</span>
+      <button onclick="cotCantPaso(-1)" title="Cantidad anterior" style="padding:5px 10px;font-weight:800">‹</button>
+      ${_cants.map(tab).join('')}
+      <button onclick="cotCantPaso(1)" title="Cantidad siguiente" style="padding:5px 10px;font-weight:800">›</button>
+      ${_cv?`<span style="font-size:11px;color:#a35b00;margin-left:6px"><i class="ti ti-info-circle"></i> Viendo <b>${cotFmt(_cv)}</b> u. La configuración (papel, máquina, poses, procesos) es la misma para todas las cantidades.</span>`:''}
+    </div>`;
+  }
   h+=`<div class="card" style="padding:14px;margin-bottom:12px">
   <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
     <div><div style="font-size:10px;color:#888;font-weight:600">FECHA</div><input type="date" value="${cotEsc(w.fecha)}" onchange="cotEd('fecha',this.value)" style="padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px"></div>
@@ -2823,7 +3175,7 @@ function rCotizador(){
       <datalist id="dl-cot-cli">${(S.clientes||[]).map(c=>`<option value="${cotEsc(c.nombre)}">`).join('')}</datalist></div>
     <div style="min-width:180px"><div style="font-size:10px;color:#888;font-weight:600">TIPO DE TRABAJO <span id="cz-tipo-nota" style="color:#1a7f37;font-weight:400"></span></div>
       <select onchange="cotEd('tipoTrabajo',this.value)" style="width:100%;padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px;background:#fff">
-      <option value="">— Elegir —</option>${(S.tiposTrabajo||[]).map(t=>`<option value="${cotEsc(t)}" ${t===w.tipoTrabajo?'selected':''}>${cotEsc(t)}</option>`).join('')}</select></div>
+      <option value="">— Elegir —</option>${tiposOrdenados().map(t=>`<option value="${cotEsc(t)}" ${t===w.tipoTrabajo?'selected':''}>${cotEsc(t)}</option>`).join('')}</select></div>
     <div style="flex:1.5;min-width:220px"><div style="font-size:10px;color:#888;font-weight:600">NOMBRE DEL TRABAJO</div><input value="${cotEsc(w.nombre)}" onchange="cotEd('nombre',this.value)" placeholder="Ej: Revista institucional A4" style="width:100%;padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px;font-weight:600"></div>
   </div>
   <div style="margin-top:10px"><div style="font-size:10px;color:#888;font-weight:600">DESCRIPCIÓN DEL TRABAJO</div>
@@ -2836,6 +3188,10 @@ function rCotizador(){
   </div>
   <div id="cz-alerta" style="margin-top:8px">${over?`<span style="color:#a35b00;font-weight:700;font-size:12px"><i class="ti ti-alert-triangle"></i> Supera flete propio (${cotFmt(r.cfg.pesoMaxKg)} kg) — considerar flete tercero</span>`:''}</div>
   </div>`;
+  // ---- TERCERIZADO: presupuesto de un proveedor en lugar de la producción propia ----
+  const _tercOn=!!(w.terc&&w.terc.on);
+  h+=cotTercHTML(w,r);
+  if(!_tercOn){ // producción propia: paginado + piezas (si está tercerizado, no se muestran ni se cuentan)
   // ---- PAGINADO (arriba de todo): definir revista/cuaderno y armar la estructura antes de las piezas ----
   h+=cotPaginadoHTML(w);
   // ---- PIEZAS (entradas de máquina) ----
@@ -2965,6 +3321,7 @@ function rCotizador(){
     <button onclick="cotRevista()" title="Estructura típica: Tapa + Interior (usá ENTRADAS para 16/24/32 págs) + abrochado" style="font-size:12px;color:#7b3fa0;border-color:#7b3fa0"><i class="ti ti-book"></i> + Revista (Tapa + Interior)</button>
     <button onclick="cotBlock()" title="Tapa + Interior con hojas por unidad (block de 25/50/100 hojas, cuaderno anillado)" style="font-size:12px;color:#a35b00;border-color:#a35b00"><i class="ti ti-notebook"></i> + Block / Cuaderno (Interior × hojas)</button>
   </div>`;
+  } // fin producción propia
   // ---- PROCESOS COMUNES ----
   h+=`<div class="card" style="padding:12px;margin-bottom:12px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -2991,13 +3348,14 @@ function rCotizador(){
     <td style="text-align:center"><button onclick="cotOtroDel(${o.idx})" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>`;
   });
   (w.manuales||[]).forEach((m,i)=>{
-    const modoManSel=`<select onchange="cotManEd(${i},'modo',this.value)" style="width:100%;padding:4px 5px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:11px;background:#fff"><option value="fijo" ${m.modo!=='unidad'?'selected':''}>fijo (todas las cant.)</option><option value="unidad" ${m.modo==='unidad'?'selected':''}>x cantidad (escala)</option></select>`;
+    const modoManSel=`<select onchange="cotManEd(${i},'modo',this.value)" style="width:100%;padding:4px 5px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:11px;background:#fff"><option value="fijo" ${m.modo!=='unidad'&&m.modo!=='pu'?'selected':''}>fijo (todas las cant.)</option><option value="unidad" ${m.modo==='unidad'?'selected':''}>x cantidad (escala)</option><option value="pu" ${m.modo==='pu'?'selected':''}>$ por unidad</option></select>`;
+    const esPU=m.modo==='pu';
     h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.06);background:#fdfbf2">
     <td style="padding:6px"><input value="${cotEsc(m.concepto)}" onchange="cotManEd(${i},'concepto',this.value)" placeholder="Concepto manual (ej: Anillado, Laca sectorizada mínimo)" style="width:100%;padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px"></td>
     <td style="padding:6px"><input value="${escHtml(m.proveedor||'')}" onchange="cotManEd(${i},'proveedor',this.value)" placeholder="A definir" title="Proveedor sugerido (opcional)" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px"></td>
     <td style="padding:6px">${modoManSel}</td>
-    <td style="padding:6px;text-align:right"><span style="font-size:10px;color:#888">monto $${m.modo==='unidad'?'<br><span style="font-size:9px">(a la cant. base)</span>':''}</span></td>
-    <td style="padding:6px;text-align:right">${ninp(m.monto,`cotManEd(${i},'monto',this.value)`,'98px')}</td>
+    <td style="padding:6px;text-align:right"><span style="font-size:10px;color:#888">${esPU?`$ x unidad<br><span style="font-size:9px;color:#1a7f37;font-weight:700">= $ ${cotFmt((+m.pu||0)*(r.cant||0))}</span>`:`monto $${m.modo==='unidad'?'<br><span style="font-size:9px">(a la cant. base)</span>':''}`}</span></td>
+    <td style="padding:6px;text-align:right">${esPU?ninp(m.pu,`cotManEd(${i},'pu',this.value)`,'98px'):ninp(m.monto,`cotManEd(${i},'monto',this.value)`,'98px')}</td>
     <td style="text-align:center"><button onclick="cotManDel(${i})" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>`;
   });
   h+=`</table>
@@ -3011,11 +3369,11 @@ function rCotizador(){
   <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th style="width:130px">Cantidad</th><th style="text-align:right">Pliegos netos</th><th style="text-align:right">Peso</th><th style="text-align:right">Total costo</th><th style="text-align:right">Precio venta</th><th style="text-align:right">Unitario</th><th style="width:58px;text-align:center">Ver</th></tr>
   <tr style="border-top:0.5px solid rgba(0,0,0,.06);background:#f4f8fc">
     <td style="padding:6px;font-weight:700;color:#185fa5">BASE · ${cotFmt(w.cantidad)}</td>
-    <td id="cz-base-pl" style="text-align:right;padding:6px">${cotFmt(r.pliegosNetos)}</td>
-    <td id="cz-base-peso" style="text-align:right;padding:6px">${cotFmtDec(r.pesoKg,1)} kg</td>
-    <td id="cz-base-costo" style="text-align:right;padding:6px">$ ${cotFmt(r.total)}</td>
-    <td id="cz-base-venta" style="text-align:right;padding:6px;font-weight:700;color:#185fa5">$ ${cotFmt(r.venta)}</td>
-    <td id="cz-base-unit" style="text-align:right;padding:6px">$ ${cotFmtDec(r.unitario,2)}</td><td style="text-align:center"><button onclick="cotVerDesglose(${w.cantidad||0})" title="Ver desglose de esta cantidad" style="border:none;background:none;color:#185fa5;cursor:pointer;font-size:15px"><i class="ti ti-list-details"></i></button></td></tr>`;
+    <td id="cz-base-pl" style="text-align:right;padding:6px">${cotFmt(rBase.pliegosNetos)}</td>
+    <td id="cz-base-peso" style="text-align:right;padding:6px">${cotFmtDec(rBase.pesoKg,1)} kg</td>
+    <td id="cz-base-costo" style="text-align:right;padding:6px">$ ${cotFmt(rBase.total)}</td>
+    <td id="cz-base-venta" style="text-align:right;padding:6px;font-weight:700;color:#185fa5">$ ${cotFmt(rBase.venta)}</td>
+    <td id="cz-base-unit" style="text-align:right;padding:6px">$ ${cotFmtDec(rBase.unitario,2)}</td><td style="text-align:center"><button onclick="cotVerDesglose(${w.cantidad||0})" title="Ver desglose de esta cantidad" style="border:none;background:none;color:#185fa5;cursor:pointer;font-size:15px"><i class="ti ti-list-details"></i></button></td></tr>`;
   (w.variantes||[]).forEach((v,i)=>{
     const rv=cotCalc(w,v.cantidad);
     h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.06)">
@@ -3032,14 +3390,14 @@ function rCotizador(){
   // ---- TOTALES ----
   h+=`<div class="card" style="padding:16px;background:#f8fafd">
   <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:stretch;justify-content:flex-end">
-    <div style="text-align:right;padding:10px 18px;background:#3b4a5a;border-radius:10px"><div style="font-size:10px;color:#c9d4de;font-weight:600">TOTAL COSTO (base)</div><div id="cz-total" style="font-size:20px;font-weight:800;color:#fff">$ ${cotFmt(r.total)}</div><div id="cz-costounit" style="font-size:10px;color:#aeb9c4;margin-top:2px">costo unit. $ ${cotFmtDec(r.costoUnit,2)}</div></div>
+    <div style="text-align:right;padding:10px 18px;background:#3b4a5a;border-radius:10px"><div style="font-size:10px;color:#c9d4de;font-weight:600">TOTAL COSTO (${_cv?cotFmt(_cv)+' u.':'base'})</div><div id="cz-total" style="font-size:20px;font-weight:800;color:#fff">$ ${cotFmt(r.total)}</div><div id="cz-costounit" style="font-size:10px;color:#aeb9c4;margin-top:2px">costo unit. $ ${cotFmtDec(r.costoUnit,2)}</div></div>
     <div style="text-align:center;padding:10px 14px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:10px">
       <div style="font-size:10px;color:#888;font-weight:600">MARGEN %</div>
       <input value="${cotEsc(cotFmtDec(w.margenPct,2))}" onchange="cotEd('margenPct',this.value)" style="width:70px;padding:6px;border:1.5px solid #185fa5;border-radius:8px;font-size:18px;font-weight:800;text-align:center;color:#185fa5">
       <div id="cz-margenmonto" style="font-size:11px;color:#1a7f37;font-weight:700;margin-top:4px">+ $ ${cotFmt(r.margenMonto)}</div>
-      <div style="font-size:9px;color:#aaa">contribución (base)</div></div>
-    <div style="text-align:right;padding:10px 18px;background:#185fa5;border-radius:10px"><div style="font-size:10px;color:#cfe0f2;font-weight:600">PRECIO DE VENTA (base)</div><div id="cz-venta" style="font-size:24px;font-weight:800;color:#fff">$ ${cotFmt(r.venta)}</div><div style="font-size:10px;color:#cfe0f2;margin-top:2px">sin IVA</div></div>
-    <div style="text-align:right;padding:10px 18px;background:#eef8ee;border-radius:10px"><div style="font-size:10px;color:#888;font-weight:600">PRECIO UNITARIO</div><div id="cz-unit" style="font-size:20px;font-weight:800;color:#1a7f37">$ ${cotFmtDec(r.unitario,2)}</div><div id="cz-unitqty" style="font-size:10px;color:#889;margin-top:2px">x ${cotFmt(w.cantidad)} unidades</div></div>
+      <div style="font-size:9px;color:#aaa">contribución (${_cv?cotFmt(_cv)+' u.':'base'})</div></div>
+    <div style="text-align:right;padding:10px 18px;background:#185fa5;border-radius:10px"><div style="font-size:10px;color:#cfe0f2;font-weight:600">PRECIO DE VENTA (${_cv?cotFmt(_cv)+' u.':'base'})</div><div id="cz-venta" style="font-size:24px;font-weight:800;color:#fff">$ ${cotFmt(r.venta)}</div><div style="font-size:10px;color:#cfe0f2;margin-top:2px">sin IVA</div></div>
+    <div style="text-align:right;padding:10px 18px;background:#eef8ee;border-radius:10px"><div style="font-size:10px;color:#888;font-weight:600">PRECIO UNITARIO</div><div id="cz-unit" style="font-size:20px;font-weight:800;color:#1a7f37">$ ${cotFmtDec(r.unitario,2)}</div><div id="cz-unitqty" style="font-size:10px;color:#889;margin-top:2px">x ${cotFmt(_cv||w.cantidad)} unidades</div></div>
   </div></div>`;
   return h;
 }
@@ -3066,6 +3424,7 @@ function render(){
   if(fns[curPg])pg.innerHTML=fns[curPg]();
   if(curPg==='cli'){updateCliTable();}
   if(curPg==='prov'){updateProvTable();}
+  try{actualizarBadgeExt();}catch(e){} // contador de envíos a externos en el menú
   // Restaurar scroll si seguimos en la misma página; si cambiamos de página, arriba
   if(pg){
     const y=mismaPg?(_scrollPorPg[curPg]||0):0;
@@ -3814,6 +4173,7 @@ function bloqueoSinAprobar(o,accion){
 function otRecursosAsignados(o){
   const a=o&&o.asignaciones||{};
   const has=re=>Object.keys(a).some(k=>re.test(k)&&a[k]&&a[k].nombre);
+  if(has(/tercerizado/i))return true; // trabajo tercerizado: lo hace el proveedor externo
   return has(/impresi/i)&&has(/pre-?prensa/i);
 }
 function aprobarOT(otId){
@@ -4347,6 +4707,12 @@ function printCartel(otId){
 }
 function rPlan(){
   let h=`<div class="ph"><div><div class="pt">Planificación</div><div class="ps">Producción — máquinas internas y externos</div></div><button onclick="om('recursos')" style="font-size:11px"><i class="ti ti-settings"></i>Gestionar recursos</button></div>`;
+  // Alerta para logística: trabajos listos para mandar a externo / atrasados en proveedor
+  const _ec=extContadores(), _extIt=extItems();
+  if((_ec.enviar||_ec.atrasados)&&planMaq!=='__ENVIOS__')h+=`<div onclick="planMaq='__ENVIOS__';render()" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:12px;border-radius:10px;background:${_ec.atrasados?'#fdf0f0':'#fff8f0'};border:1px solid ${_ec.atrasados?'#f2c0c0':'#f3d3a8'}">
+    <i class="ti ti-truck-loading" style="font-size:20px;color:${_ec.atrasados?'#a32d2d':'#c05600'}"></i>
+    <div style="flex:1;font-size:13px">${_ec.enviar?`<b>${_ec.enviar}</b> proceso${_ec.enviar>1?'s':''} listo${_ec.enviar>1?'s':''} para enviar a externo`:''}${_ec.enviar&&_ec.atrasados?' · ':''}${_ec.atrasados?`<b style="color:#a32d2d">${_ec.atrasados} atrasado${_ec.atrasados>1?'s':''} en proveedor</b>`:''}</div>
+    <span style="font-size:12px;font-weight:700;color:#185fa5">Ver envíos →</span></div>`;
   {
     // --- Máquinas internas ---
     h+=`<div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px"><i class="ti ti-tool" style="font-size:11px"></i> Máquinas internas</div>`;
@@ -4372,14 +4738,262 @@ function rPlan(){
     // --- Externos ---
     h+=`<div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;margin-top:4px"><i class="ti ti-user" style="font-size:11px"></i> Externos</div>`;
     h+=`<div class="maq-grid">`;
+    // Bandeja de envíos a externos (logística)
+    h+=`<div class="maq-card ${planMaq==='__ENVIOS__'?'on':''}" onclick="planMaq='__ENVIOS__';render()" style="border:1.5px solid #0f6e56;background:${planMaq==='__ENVIOS__'?'#e3f5ee':'#f3fbf7'}"><div style="font-size:11px;color:#0f6e56;margin-bottom:4px;font-weight:600"><i class="ti ti-truck-loading"></i> Logística</div><div style="font-size:14px;font-weight:700">📦 ENVÍOS A EXTERNOS</div>
+      <div style="font-size:11px;margin-top:3px">${_ec.enviar?`<span style="color:#c05600;font-weight:700">${_ec.enviar} para enviar</span>`:'<span style="color:#3b6d11">nada para enviar</span>'}${_ec.enviado?` · ${_ec.enviado} en proveedor`:''}${_ec.atrasados?` · <span style="color:#a32d2d;font-weight:700">${_ec.atrasados} atrasado${_ec.atrasados>1?'s':''}</span>`:''}</div></div>`;
     S.externos.forEach(e=>{
       const pe=S.planificacion[e]||{};const bsem=Object.values(pe).reduce((a,d)=>a+Object.keys(d).length,0);
-      h+=`<div class="maq-card ${planMaq===e?'on':''}" onclick="planMaq='${e.replace(/'/g,"\\'")}';planOffset=0;render()" style="border-left:3px solid #9fe1cb" ondragover="event.preventDefault();this.style.outline='2px dashed #185fa5'" ondragleave="this.style.outline=''" ondrop="this.style.outline='';planDropMaq(event,'${e.replace(/'/g,"\\'")}')"><div style="font-size:10px;color:#888;margin-bottom:3px"><i class="ti ti-user" style="font-size:11px"></i> Externo</div><div style="font-size:13px;font-weight:600">${e}</div>${bsem>0?`<div style="font-size:10px;color:#3b6d11">${bsem} bloque${bsem!==1?'s':''}</div>`:''}</div>`;
+      // Trabajos de este proveedor (procesos externos y trabajos tercerizados de OTs activas)
+      const eN=String(e).trim().toLowerCase();
+      const suyos=_extIt.filter(x=>x.est!=='recibido'&&String(x.p.extDestino||(x.env&&x.env.prov)||'').trim().toLowerCase()===eN);
+      const nAfuera=suyos.filter(x=>x.est==='enviado').length,nPorIr=suyos.filter(x=>x.est!=='enviado').length,nAtr=suyos.filter(x=>x.atraso>0).length;
+      h+=`<div class="maq-card ${planMaq===e?'on':''}" onclick="planMaq='${e.replace(/'/g,"\\'")}';planOffset=0;render()" style="border-left:3px solid #9fe1cb" ondragover="event.preventDefault();this.style.outline='2px dashed #185fa5'" ondragleave="this.style.outline=''" ondrop="this.style.outline='';planDropMaq(event,'${e.replace(/'/g,"\\'")}')"><div style="font-size:10px;color:#888;margin-bottom:3px"><i class="ti ti-user" style="font-size:11px"></i> Externo${(S.externosInfo&&S.externosInfo[e]&&S.externosInfo[e].rubro)?' · '+cotEsc(S.externosInfo[e].rubro):''}</div><div style="font-size:13px;font-weight:600">${e}</div>${suyos.length?`<div style="font-size:10px;color:#185fa5;font-weight:600">${suyos.length} trabajo${suyos.length>1?'s':''}${nAfuera?' · '+nAfuera+' afuera':''}${nPorIr?' · '+nPorIr+' por ir':''}</div>`:''}${nAtr?`<div style="font-size:10px;color:#a32d2d;font-weight:700">${nAtr} atrasado${nAtr>1?'s':''}</div>`:''}${bsem>0?`<div style="font-size:10px;color:#3b6d11">${bsem} bloque${bsem!==1?'s':''}</div>`:''}</div>`;
     });
     h+=`</div>`;
-    if(planMaq==='__TALLER__')h+=rTallerDiario();else if(planMaq)h+=rCalSemanal(planMaq);
+    // Al abrir un externo: sus trabajos arriba del calendario
+    if(planMaq&&S.externos.includes(planMaq))h+=rTrabajosExterno(planMaq,_extIt);
+    if(planMaq==='__TALLER__')h+=rTallerDiario();else if(planMaq==='__ENVIOS__')h+=rEnviosExt();else if(planMaq)h+=rCalSemanal(planMaq);
   }
   return h;
+}
+// ===================== ENVÍOS A EXTERNOS (órdenes de trabajo externas) =====================
+// Un proceso externo (troquelado, pegado, tercerizado…) se puede ENVIAR cuando la impresión y todo lo anterior
+// está listo y el externo anterior ya volvió. La orden externa (OE-0001…) queda guardada dentro del paso de la OT.
+function _extFalta(o,i){
+  const p=(o.pasos||[])[i];if(p&&/^trabajo tercerizado/i.test(p.nombre||''))return '';
+  for(let j=0;j<i;j++){const q=o.pasos[j];if(!q||q.na||q.estado==='na')continue;if(pasoCol(q)==='term')continue;if(q.estado!=='done')return q.nombre||'paso anterior';}
+  return '';
+}
+function _extPendInternos(o,i){return (o.pasos||[]).slice(0,i).filter(q=>q&&pasoCol(q)==='term'&&q.estado!=='done'&&!q.na&&q.estado!=='na'&&!/^terminaci[oó]n$/i.test(q.nombre||'')).map(q=>q.nombre);}
+function extItems(){
+  const out=[];const hoy=new Date();hoy.setHours(0,0,0,0);
+  (S.ordenes||[]).forEach(o=>{
+    if(!o||o.estado==='entregada'||o.estado==='cancelada')return;
+    (o.pasos||[]).forEach((p,i)=>{
+      if(!p||p.na||p.estado==='na'||pasoCol(p)!=='ext')return;
+      const env=p.envio||null;let est;
+      if(p.estado==='done')est='recibido';
+      else if(env||p.estado==='active')est='enviado';
+      else if(!_extFalta(o,i))est='enviar';
+      else est='espera';
+      const atraso=(est==='enviado'&&p.retorno)?Math.round((hoy-new Date(p.retorno+'T00:00:00'))/864e5):0;
+      out.push({o,i,p,env,est,atraso});
+    });
+  });
+  return out;
+}
+function extContadores(){const it=extItems();return {enviar:it.filter(x=>x.est==='enviar').length,enviado:it.filter(x=>x.est==='enviado').length,atrasados:it.filter(x=>x.est==='enviado'&&x.atraso>0).length};}
+function _procNom(p){return String((p&&p.nombre)||'').replace(/\s*\([^)]*\)\s*$/,'');}
+function _fDMY(s){const m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${m[3]}/${m[2]}/${m[1]}`:(s||'');}
+// Fecha de retorno sugerida: 2 días hábiles antes de la entrega de la OT (y nunca antes de mañana); si no hay entrega, en 5 días hábiles
+function _retornoSugerido(o){
+  const d=new Date();d.setHours(12,0,0,0);const hoyS=d.toISOString().slice(0,10);
+  const iso=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+  if(o&&o.entrega){
+    const e=new Date(o.entrega+'T12:00:00');let n=0;while(n<2){e.setDate(e.getDate()-1);if(e.getDay()!==0&&e.getDay()!==6)n++;}
+    const s=iso(e);if(s>hoyS)return s;
+  }
+  return (typeof addDiasHabiles==='function')?addDiasHabiles(hoyS,5):hoyS;
+}
+// Contador rojo en el menú (Planificación): para enviar + atrasados
+function actualizarBadgeExt(){
+  const el=document.getElementById('badge-plan');if(!el)return;
+  let c={enviar:0,atrasados:0};try{c=extContadores();}catch(e){}
+  const n=c.enviar+c.atrasados;
+  el.textContent=n>0?String(n):'';el.style.display=n>0?'inline-block':'none';
+  el.title=n>0?`${c.enviar} para enviar a externo${c.atrasados?' · '+c.atrasados+' atrasado'+(c.atrasados>1?'s':''):''}`:'';
+}
+function rEnviosExt(){
+  const it=extItems();
+  const enviar=it.filter(x=>x.est==='enviar');
+  const enProv=it.filter(x=>x.est==='enviado').sort((a,b)=>b.atraso-a.atraso);
+  const espera=it.filter(x=>x.est==='espera');
+  const recib=it.filter(x=>x.est==='recibido'&&x.env).sort((a,b)=>String(((b.env||{}).recibido||{}).fecha||'').localeCompare(String(((a.env||{}).recibido||{}).fecha||''))).slice(0,15);
+  const trab=o=>cotEsc(o.nombreCorto||o.descripcion||'');
+  const otB=o=>`<span class="badge ${otCol(o.id)}" style="cursor:pointer" onclick="om('vot',${o.id})">${o.num}</span>`;
+  const th=`style="text-align:left;color:#888;font-size:10px;text-transform:uppercase;padding:4px 6px"`;
+  const tit=(ic,txt,n,col)=>`<div style="font-size:12px;font-weight:700;color:${col};margin:14px 0 6px"><i class="ti ${ic}"></i> ${txt} <span style="background:${col};color:#fff;border-radius:10px;padding:0 8px;font-size:11px;margin-left:4px">${n}</span></div>`;
+  let h=`<div class="card" style="padding:14px;margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><strong style="font-size:15px;color:#0f6e56"><i class="ti ti-truck-loading"></i> Envíos a externos</strong><button onclick="planMaq=null;render()" style="font-size:11px"><i class="ti ti-x"></i> Cerrar</button></div>
+    <div style="font-size:11px;color:#888;margin-top:4px">Cuando la impresión (y el externo anterior) está lista, el proceso aparece en "Para enviar". Generá la orden externa, imprimila y mandala con los pliegos. Cuando vuelve, marcalo recibido y el trabajo sigue a la próxima etapa.</div>`;
+  // --- Para enviar ---
+  h+=tit('ti-send','Para enviar',enviar.length,'#c05600');
+  if(!enviar.length)h+=`<div style="font-size:12px;color:#999;padding:6px">Nada pendiente de enviar.</div>`;
+  else{
+    h+=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><tr><th ${th}>OT</th><th ${th}>Trabajo</th><th ${th}>Proceso</th><th ${th}>Proveedor</th><th ${th}>Entrega OT</th><th ${th}></th></tr>`;
+    enviar.forEach(x=>{
+      const pi=_extPendInternos(x.o,x.i);
+      h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.07);background:#fff8f0">
+        <td style="padding:6px">${otB(x.o)}</td>
+        <td style="padding:6px"><b>${trab(x.o)}</b><div style="font-size:10px;color:#888">${cotEsc(cNomCorto(x.o.clienteId)||'')}</div></td>
+        <td style="padding:6px;font-weight:700">${cotEsc(_procNom(x.p))}${pi.length?`<div style="font-size:10px;color:#a35b00;font-weight:500"><i class="ti ti-alert-triangle"></i> ojo, pendiente interno: ${cotEsc(pi.join(', '))}</div>`:''}</td>
+        <td style="padding:6px">${x.p.extDestino?cotEsc(x.p.extDestino):'<span style="color:#a32d2d">a definir</span>'}</td>
+        <td style="padding:6px">${_fDMY(x.o.entrega)||'—'}</td>
+        <td style="padding:6px;text-align:right"><button class="bp" onclick="oeAbrir(${x.o.id},${x.i})" style="font-size:11px;white-space:nowrap"><i class="ti ti-file-export"></i> Generar orden externa</button></td></tr>`;
+    });
+    h+=`</table></div>`;
+  }
+  // --- En proveedor ---
+  h+=tit('ti-building-factory','En proveedor',enProv.length,'#185fa5');
+  if(!enProv.length)h+=`<div style="font-size:12px;color:#999;padding:6px">No hay trabajos afuera.</div>`;
+  else{
+    h+=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><tr><th ${th}>Orden</th><th ${th}>OT</th><th ${th}>Proceso</th><th ${th}>Proveedor</th><th ${th}>Enviado</th><th ${th}>Tiene que volver</th><th ${th}>Pliegos</th><th ${th}></th></tr>`;
+    enProv.forEach(x=>{
+      const e=x.env||{};
+      const vence=x.atraso>0?`<span style="color:#a32d2d;font-weight:700">${_fDMY(x.p.retorno)} · ${x.atraso} día${x.atraso>1?'s':''} de atraso</span>`:(x.atraso===0&&x.p.retorno?`<span style="color:#c05600;font-weight:700">${_fDMY(x.p.retorno)} · hoy</span>`:(x.p.retorno?_fDMY(x.p.retorno):'<span style="color:#999">sin fecha</span>'));
+      h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.07);${x.atraso>0?'background:#fdf0f0':''}">
+        <td style="padding:6px;font-weight:700;color:#0f6e56">${e.num?cotEsc(e.num):'<span style="color:#999;font-weight:400;font-size:10px">sin orden</span>'}</td>
+        <td style="padding:6px">${otB(x.o)}<div style="font-size:10px;color:#888">${trab(x.o)}</div></td>
+        <td style="padding:6px;font-weight:600">${cotEsc(_procNom(x.p))}</td>
+        <td style="padding:6px">${cotEsc(e.prov||x.p.extDestino||'—')}</td>
+        <td style="padding:6px">${_fDMY(e.fechaEnvio)||'—'}</td>
+        <td style="padding:6px">${vence}</td>
+        <td style="padding:6px">${e.pliegos?cotFmt(e.pliegos):'—'}</td>
+        <td style="padding:6px;text-align:right;white-space:nowrap">${e.num?`<button onclick="oePDF(${x.o.id},${x.i})" style="font-size:11px" title="Imprimir la orden externa"><i class="ti ti-printer"></i></button> <button onclick="oeAbrir(${x.o.id},${x.i})" style="font-size:11px" title="Corregir datos o fechas"><i class="ti ti-pencil"></i></button>`:`<button onclick="oeAbrir(${x.o.id},${x.i})" style="font-size:11px"><i class="ti ti-file-export"></i> Generar orden</button>`} <button class="bs" onclick="oeRecibido(${x.o.id},${x.i})" style="font-size:11px"><i class="ti ti-package-import"></i> Recibido</button></td></tr>`;
+    });
+    h+=`</table></div>`;
+  }
+  // --- En espera ---
+  if(espera.length){
+    h+=tit('ti-hourglass','En espera (todavía no se puede enviar)',espera.length,'#888');
+    h+=`<div style="display:flex;flex-direction:column;gap:3px">`+espera.map(x=>`<div style="font-size:12px;padding:4px 6px;border-bottom:0.5px solid rgba(0,0,0,.05)">${otB(x.o)} <b>${cotEsc(_procNom(x.p))}</b>${x.p.extDestino?' → '+cotEsc(x.p.extDestino):''} <span style="color:#888">· falta: ${cotEsc(_extFalta(x.o,x.i))}</span>${x.o.entrega?` <span style="color:#aaa">· entrega ${_fDMY(x.o.entrega)}</span>`:''}</div>`).join('')+`</div>`;
+  }
+  // --- Recibidos ---
+  if(recib.length){
+    h+=tit('ti-circle-check','Recibidos (últimos)',recib.length,'#3b6d11');
+    h+=`<div style="display:flex;flex-direction:column;gap:3px">`+recib.map(x=>{const e=x.env||{},rc=e.recibido||{};const merma=(e.pliegos&&rc.pliegos&&rc.pliegos<e.pliegos)?` <span style="color:#a32d2d">· volvieron ${cotFmt(rc.pliegos)} de ${cotFmt(e.pliegos)} (faltan ${cotFmt(e.pliegos-rc.pliegos)})</span>`:'';return `<div style="font-size:12px;padding:4px 6px;border-bottom:0.5px solid rgba(0,0,0,.05)"><b style="color:#0f6e56">${cotEsc(e.num||'')}</b> ${otB(x.o)} ${cotEsc(_procNom(x.p))} · ${cotEsc(e.prov||'')} · recibido ${_fDMY(rc.fecha)}${merma} <button onclick="oePDF(${x.o.id},${x.i})" style="font-size:10px;padding:1px 6px;margin-left:4px" title="Reimprimir"><i class="ti ti-printer"></i></button></div>`;}).join('')+`</div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
+// Trabajos de UN proveedor externo (se ve al abrir su tarjeta en Planificación)
+function rTrabajosExterno(prov,items){
+  const eN=String(prov).trim().toLowerCase();
+  const suyos=(items||extItems()).filter(x=>x.est!=='recibido'&&String(x.p.extDestino||(x.env&&x.env.prov)||'').trim().toLowerCase()===eN);
+  const inf=(S.externosInfo&&S.externosInfo[prov])||{};
+  let h=`<div class="card" style="padding:12px;margin-top:12px;border-left:4px solid #9fe1cb">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px"><strong style="font-size:14px"><i class="ti ti-building-factory"></i> ${cotEsc(prov)}</strong>
+    <span style="font-size:11px;color:#888">${[inf.rubro,inf.contacto,inf.tel].filter(Boolean).map(cotEsc).join(' · ')}</span></div>`;
+  if(!suyos.length)h+=`<div style="font-size:12px;color:#999;padding:6px 0">No hay trabajos activos en este proveedor.</div>`;
+  else{
+    const lbl={enviar:['Para enviar','#c05600'],enviado:['Afuera','#185fa5'],espera:['En espera','#888']};
+    h+=`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">`+suyos.map(x=>{
+      const [t,col]=lbl[x.est]||['',''];const e=x.env||{};
+      const extra=x.est==='enviado'?(x.p.retorno?` · vuelve ${_fDMY(x.p.retorno)}${x.atraso>0?` <b style="color:#a32d2d">(${x.atraso} d atraso)</b>`:''}`:''):(x.est==='espera'?` · falta: ${cotEsc(_extFalta(x.o,x.i))}`:'');
+      const btn=x.est==='enviar'?`<button class="bp" onclick="oeAbrir(${x.o.id},${x.i})" style="font-size:11px"><i class="ti ti-file-export"></i> Generar orden externa</button>`:(x.est==='enviado'?`${e.num?`<button onclick="oePDF(${x.o.id},${x.i})" style="font-size:11px"><i class="ti ti-printer"></i> ${cotEsc(e.num)}</button> `:''}<button class="bs" onclick="oeRecibido(${x.o.id},${x.i})" style="font-size:11px"><i class="ti ti-package-import"></i> Recibido</button>`:'');
+      return `<tr style="border-top:0.5px solid rgba(0,0,0,.07)"><td style="padding:6px"><span class="badge ${otCol(x.o.id)}" style="cursor:pointer" onclick="om('vot',${x.o.id})">${x.o.num}</span></td><td style="padding:6px"><b>${cotEsc(_procNom(x.p))}</b> · ${cotEsc(x.o.nombreCorto||x.o.descripcion||'')}<div style="font-size:10px;color:#888">${cotEsc(cNomCorto(x.o.clienteId)||'')}${x.o.entrega?' · entrega '+_fDMY(x.o.entrega):''}</div></td><td style="padding:6px;white-space:nowrap"><span style="color:${col};font-weight:700">${t}</span><span style="font-size:11px;color:#666">${extra}</span></td><td style="padding:6px;text-align:right;white-space:nowrap">${btn}</td></tr>`;
+    }).join('')+`</table>`;
+  }
+  return h+`</div>`;
+}
+// ---- Formulario de la orden externa ----
+function oeAbrir(otId,i){
+  const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=(o.pasos||[])[i];if(!p)return;
+  const env=p.envio||{};
+  const provs=[...new Set([...(S.proveedores||[]).map(x=>x&&x.nombre),...(S.externos||[])].filter(Boolean))];
+  const hoy=new Date().toISOString().slice(0,10);
+  const im=o.impresion||{},c=papelCalc(o);
+  const pl=env.pliegos||(+im.pliegosBuenos)||c.pliegosPress||'';
+  const mat=[c.material,c.marca,c.grs?c.grs+'g':'',(c.fx&&c.fy)?c.fx+'×'+c.fy+' cm':''].filter(Boolean).join(' ');
+  let ov=document.getElementById('oe-ov');
+  if(!ov){ov=document.createElement('div');ov.id='oe-ov';ov.style.cssText='position:fixed;inset:0;z-index:100005;background:rgba(15,25,35,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px';document.body.appendChild(ov);}
+  const lab=t=>`<div style="font-size:10px;color:#888;font-weight:600;text-transform:uppercase;margin-bottom:3px">${t}</div>`;
+  const inS='width:100%;padding:7px 8px;border:1px solid rgba(0,0,0,.18);border-radius:7px;font-size:13px';
+  ov.innerHTML=`<div style="background:#fff;border-radius:12px;max-width:560px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.4)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong style="font-size:15px;color:#0f6e56"><i class="ti ti-file-export"></i> ${env.num?'Orden externa '+cotEsc(env.num):'Nueva orden de trabajo externa'}</strong><button onclick="oeCerrar()">✕</button></div>
+    <div style="background:#f5f5f3;border-radius:8px;padding:9px 11px;margin-bottom:12px;font-size:12px">
+      <b>${o.num}</b> · ${cotEsc(o.nombreCorto||o.descripcion||'')}<div style="color:#888;margin-top:2px">${cotEsc(cNom(o.clienteId)||'')}${mat?' · '+cotEsc(mat):''}${o.entrega?' · entrega OT '+_fDMY(o.entrega):''}</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div style="grid-column:1/3">${lab('Proveedor')}<input id="oe-prov" list="oe-provs" value="${cotEsc(env.prov||p.extDestino||'')}" placeholder="Ej: Marcelo (Troquelado)" style="${inS};font-weight:700"><datalist id="oe-provs">${provs.map(n=>`<option value="${cotEsc(n)}">`).join('')}</datalist></div>
+      <div style="grid-column:1/3">${lab('Proceso a realizar')}<input id="oe-proc" value="${cotEsc(env.proceso||_procNom(p))}" style="${inS}"></div>
+      <div>${lab('Cantidad de pliegos que se envían')}<input id="oe-pl" value="${pl?cotEsc(cotFmt(pl)):''}" placeholder="0" style="${inS};text-align:right;font-weight:700"></div>
+      <div>${lab('Fecha de envío')}<input id="oe-fenv" type="date" value="${cotEsc(env.fechaEnvio||hoy)}" style="${inS}"></div>
+      <div style="grid-column:1/3">${lab('Fecha en que necesitamos que vuelva')}<input id="oe-fret" type="date" value="${cotEsc(env.fechaRetorno||p.retorno||_retornoSugerido(o))}" style="${inS};border-color:#c05600;font-weight:700"><div style="font-size:10px;color:#999;margin-top:2px">Sugerida: 2 días hábiles antes de la entrega de la OT. Ajustala según lo que negocies.</div></div>
+      <div style="grid-column:1/3">${lab('Observaciones para el proveedor')}<textarea id="oe-obs" rows="3" placeholder="Ej: troquel en stock N° 45 · entregar a pinza · cuidar el laminado" style="${inS};resize:vertical">${cotEsc(env.obs||p.nota||'')}</textarea></div>
+      <label style="grid-column:1/3;display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#555;cursor:pointer"><input id="oe-cli" type="checkbox" ${env.conCliente?'checked':''} style="width:15px;height:15px;accent-color:#0f6e56"> Incluir el nombre del cliente en la orden impresa</label>
+    </div>
+    <div class="mf" style="margin-top:14px"><button onclick="oeCerrar()">Cancelar</button><button class="bp" onclick="oeGuardar(${otId},${i})"><i class="ti ti-printer"></i> ${env.num?'Guardar y reimprimir':'Generar orden e imprimir'}</button></div>
+  </div>`;
+  setTimeout(()=>{const el=document.getElementById('oe-prov');if(el&&!el.value)el.focus();},60);
+}
+function oeCerrar(){const ov=document.getElementById('oe-ov');if(ov)ov.remove();}
+async function oeGuardar(otId,i){
+  const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=(o.pasos||[])[i];if(!p)return;
+  const v=id=>((document.getElementById(id)||{}).value||'').trim();
+  let prov=v('oe-prov').replace(/[<>]/g,'').slice(0,80);
+  if(!prov){alert('Poné el proveedor.');return;}
+  prov=asegurarExterno(prov)||prov; // si es nuevo, se suma a "Proveedores externos"
+  const fret=v('oe-fret');if(!fret){alert('Poné la fecha en que tiene que volver.');return;}
+  const env=p.envio||{};
+  if(!env.num){const n=await nid('oe');env.num='OE-'+String(n).padStart(4,'0');env.creado=new Date().toISOString();env.por=(typeof currentUser!=='undefined'&&currentUser&&currentUser.email)||'';}
+  env.prov=prov;env.proceso=v('oe-proc').replace(/[<>]/g,'').slice(0,80)||_procNom(p);
+  env.pliegos=cotNum(v('oe-pl'))||0;env.fechaEnvio=v('oe-fenv')||new Date().toISOString().slice(0,10);env.fechaRetorno=fret;
+  env.obs=v('oe-obs').replace(/[<>]/g,'').slice(0,600);env.conCliente=!!(document.getElementById('oe-cli')||{}).checked;
+  p.envio=env;p.extDestino=prov;p.retorno=fret;
+  if(p.estado!=='done'){p.estado='active';if(!p.fechaInicio)p.fechaInicio=new Date().toISOString();}
+  if(typeof recomputeEstadoOT==='function')recomputeEstadoOT(o);
+  sk('ordenes');oeCerrar();render();
+  oePDF(otId,i);
+}
+function oeRecibido(otId,i){
+  const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=(o.pasos||[])[i];if(!p)return;
+  const env=p.envio||null;
+  const r=prompt(`Recibido de ${env?env.prov:(p.extDestino||'externo')}: ${_procNom(p)} (${o.num}).\n\n¿Cuántos pliegos volvieron? (dejá vacío si volvieron todos${env&&env.pliegos?': '+cotFmt(env.pliegos):''})`,'');
+  if(r===null)return;
+  const now=new Date();
+  p.estado='done';p.fecha=now.toISOString().slice(0,10);p.fechaFin=now.toISOString();if(!p.fechaInicio)p.fechaInicio=now.toISOString();
+  if(env)env.recibido={fecha:p.fecha,pliegos:String(r).trim()?cotNum(r):(env.pliegos||0)};
+  if(typeof recomputeEstadoOT==='function')recomputeEstadoOT(o);
+  sk('ordenes');render();
+}
+// ---- PDF / hoja imprimible de la orden externa ----
+function oePDF(otId,i){
+  const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=(o.pasos||[])[i];if(!p||!p.envio)return;
+  const e=p.envio,c=papelCalc(o);
+  const logo=(document.querySelector('.sb-logo img')||{}).src||'';
+  const mat=[c.material,c.marca,c.grs?c.grs+' g':'',(c.fx&&c.fy)?c.fx+' × '+c.fy+' cm':''].filter(Boolean).join(' · ');
+  const fila=(l,v,big)=>`<tr><td class="l">${l}</td><td class="v${big?' big':''}">${v||'&nbsp;'}</td></tr>`;
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${cotEsc(e.num)} - ${cotEsc(e.prov)}</title><style>
+    *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{padding:10mm 12mm;color:#111}
+    .hdr{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0f6e56;padding-bottom:10px;margin-bottom:14px}
+    .hdr img{height:80px}
+    .t{text-align:right}.t .a{font-size:11pt;color:#555;font-weight:700;letter-spacing:.05em}.t .n{font-size:26pt;font-weight:800;color:#0f6e56}.t .f{font-size:10pt;color:#555}
+    .prov{font-size:10pt;color:#666;text-transform:uppercase;font-weight:700}.provn{font-size:20pt;font-weight:800;margin-bottom:12px}
+    table.d{width:100%;border-collapse:collapse;margin-bottom:14px}
+    table.d td{border:1px solid #999;padding:8px 10px;font-size:11pt;vertical-align:top}
+    td.l{width:34%;background:#f2f2f2;font-weight:700;font-size:10pt;text-transform:uppercase;color:#444}
+    td.v.big{font-size:16pt;font-weight:800}
+    .ret{border:3px solid #c05600;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+    .ret .x{font-size:11pt;font-weight:800;color:#c05600;text-transform:uppercase}.ret .d{font-size:22pt;font-weight:800;color:#c05600}
+    .obs{border:1px solid #999;min-height:60px;padding:8px 10px;font-size:11pt;white-space:pre-line;margin-bottom:18px}
+    .firmas{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:10px}
+    .firmas div{border-top:1px solid #333;padding-top:5px;font-size:9pt;color:#444;height:60px}
+    .dev{margin-top:14px;border:1px dashed #999;padding:8px 10px;font-size:10pt;color:#444}
+    .no-print{position:fixed;top:8px;right:8px;display:flex;gap:8px}
+    .no-print button{padding:7px 14px;font-size:11pt;border:none;border-radius:6px;cursor:pointer;background:#0f6e56;color:#fff}
+    @page{size:A4;margin:8mm} @media print{.no-print{display:none}}
+  <\/style></head><body>
+  <div class="no-print"><button onclick="window.print()">Imprimir</button><button onclick="window.close()" style="background:#666">Cerrar</button></div>
+  <div class="hdr"><div>${logo?`<img src="${logo}">`:'<div style="font-size:30pt;font-weight:800">COMA</div>'}</div>
+    <div class="t"><div class="a">ORDEN DE TRABAJO EXTERNA</div><div class="n">${cotEsc(e.num)}</div><div class="f">Fecha de envío: ${_fDMY(e.fechaEnvio)}</div></div></div>
+  <div class="prov">Proveedor</div><div class="provn">${cotEsc(e.prov)}</div>
+  <table class="d">
+    ${fila('Proceso a realizar',cotEsc(e.proceso),true)}
+    ${fila('Nuestra OT',o.num)}
+    ${e.conCliente?fila('Cliente',cotEsc(cNom(o.clienteId)||'')):''}
+    ${fila('Trabajo',cotEsc(o.nombreCorto||o.descripcion||''))}
+    ${fila('Pliegos enviados',e.pliegos?cotFmt(e.pliegos):'',true)}
+    ${mat?fila('Material',cotEsc(mat)):''}
+  </table>
+  <div class="ret"><div class="x">Fecha en que necesitamos<br>que vuelva</div><div class="d">${_fDMY(e.fechaRetorno)}</div></div>
+  <div style="font-size:10pt;font-weight:700;color:#444;text-transform:uppercase;margin-bottom:4px">Observaciones</div>
+  <div class="obs">${cotEsc(e.obs||'')}</div>
+  <div class="firmas"><div>Entregó (COMA) — firma y aclaración</div><div>Recibió (proveedor) — firma, aclaración y fecha</div></div>
+  <div class="dev"><b>DEVOLUCIÓN</b> &nbsp; Fecha: ____________ &nbsp; Pliegos devueltos: ____________ &nbsp; Recibió en COMA: ____________________</div>
+  </body></html>`;
+  const w=window.open('','_blank');if(!w){alert('El navegador bloqueó la ventana. Permití las ventanas emergentes.');return;}
+  w.document.write(html);w.document.close();
 }
 
 // Vista independiente: Entregas y fletes (antes era una pestaña de Planificación)
@@ -6276,7 +6890,7 @@ function mNC2(){
 <div class="fr">
   <div class="fg"><label>Plazo de entrega</label><div style="display:flex;gap:5px;align-items:center"><input id="cplazo" type="number" min="1" max="90" value="${plazo}" style="width:65px" oninput="updPlazoNotas()"><span style="font-size:11px;color:#666">días hábiles</span></div></div>
 </div>
-<div class="fg" style="margin-bottom:9px"><label>Tipo de trabajo</label><div style="display:flex;gap:6px;align-items:center"><select id="cd" style="flex:1;font-size:13px"><option value="">— Elegir tipo de trabajo —</option>${(S.tiposTrabajo||[]).map(t=>`<option value="${t}">${t}</option>`).join('')}</select><input id="cd-nuevo" placeholder="Nuevo tipo..." style="width:160px;font-size:12px"><button onclick="addTipoTrabajo()" style="font-size:11px;white-space:nowrap"><i class="ti ti-plus"></i>Crear</button></div></div>
+<div class="fg" style="margin-bottom:9px"><label>Tipo de trabajo</label><div style="display:flex;gap:6px;align-items:center"><select id="cd" style="flex:1;font-size:13px"><option value="">— Elegir tipo de trabajo —</option>${tiposOrdenados().map(t=>`<option value="${cotEsc(t)}">${cotEsc(t)}</option>`).join('')}</select><input id="cd-nuevo" placeholder="Nuevo tipo..." style="width:160px;font-size:12px"><button onclick="addTipoTrabajo()" style="font-size:11px;white-space:nowrap"><i class="ti ti-plus"></i>Crear</button></div></div>
 <div style="margin-bottom:9px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
     <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.05em">Ítems de venta</label>
@@ -6288,6 +6902,8 @@ function mNC2(){
 <div class="fg" style="margin-bottom:8px"><label>Notas / Condiciones</label><textarea id="cno2" style="min-height:140px;font-size:11px;line-height:1.65">${notasCotDefault(plazo)}</textarea></div>
 <div class="mf"><button onclick="cm()">Cancelar</button><button onclick="savCot('borrador')"><i class="ti ti-device-floppy"></i>Borrador</button><button class="bs" onclick="savCotYpdf()"><i class="ti ti-send"></i>Enviar y PDF</button></div>`;
 }
+// Tipos de trabajo siempre ordenados A→Z (para los desplegables)
+function tiposOrdenados(){return [...(S.tiposTrabajo||[])].sort((a,b)=>String(a).localeCompare(String(b),'es',{sensitivity:'base'}));}
 function addTipoTrabajo(){
   const inp=Q('cd-nuevo');if(!inp)return;
   const val=inp.value.trim();if(!val)return;
@@ -6969,6 +7585,7 @@ async function confirmarDistribucionOTs(cotId){
     asignaciones['Pre-prensa CTP']={tipo:'maq',nombre:'Pre-prensa'};
     if(g.maq)asignaciones['Impresión ('+g.maq+')']={tipo:'maq',nombre:g.maq};
     asignaciones['Guillotina']={tipo:'maq',nombre:'Guillotina'};
+    _otTercerizar(c,g.entradas.map(e=>e.item.desc),pasos,asignaciones); // trabajo tercerizado: va directo al proveedor externo
     let _nc='';try{const rv0=_rvDeItemDesc(c,(g.entradas[0]||{}).item.desc);_nc=(rv0&&rv0.nombre)||'';}catch(e){}
     if(_nc&&g.entradas.length===1&&g.entradas[0].piezaNombre)_nc=_nc+' — '+g.entradas[0].piezaNombre;
     S.ordenes.push({
@@ -7056,7 +7673,7 @@ function _terminacionDesdeRows(cot,entradas){
           const t=(S.cotOtros||[]).find(p=>p.codigo===o.cod);
           if(t)add(t.concepto,o.proveedor,'');
         });
-        (co.manuales||[]).forEach(m=>{if(m.concepto)add(m.concepto,m.proveedor,'');});
+        (co.manuales||[]).forEach(m=>{if(m.concepto)add(m.concepto,m.proveedor,'');});if(co.terc&&co.terc.on)add('Trabajo tercerizado',co.terc.prov||'','');
       }
     });
   }catch(e){}
@@ -7470,6 +8087,10 @@ function editRec(tipo,idx){
     if(S.planificacion && S.planificacion[actual]){ S.planificacion[val]=S.planificacion[actual]; delete S.planificacion[actual]; }
     if(planMaq===actual) planMaq=val;
     S.externos.splice(idx,1,val); sk('externos'); sk('planificacion');
+    // Llevar también sus datos y los trabajos que ya lo tienen asignado
+    if(S.externosInfo&&S.externosInfo[actual]){S.externosInfo[val]=S.externosInfo[actual];delete S.externosInfo[actual];sk('externosInfo');}
+    let _chOT=false;(S.ordenes||[]).forEach(o=>{(o.pasos||[]).forEach(p=>{if(p&&p.extDestino===actual){p.extDestino=val;_chOT=true;}if(p&&p.envio&&p.envio.prov===actual){p.envio.prov=val;_chOT=true;}});});
+    if(_chOT)sk('ordenes');
   } else {
     S.fletes.splice(idx,1,val); sk('fletes');
   }
@@ -8140,7 +8761,7 @@ function _terminacionDesdeCosteo(cot,descs){
           if(t)add(t.concepto,pr.proveedor,pzNom);
         });
       });
-      (co.manuales||[]).forEach(m=>{if(m.concepto)add(m.concepto,m.proveedor,'');});
+      (co.manuales||[]).forEach(m=>{if(m.concepto)add(m.concepto,m.proveedor,'');});if(co.terc&&co.terc.on)add('Trabajo tercerizado',co.terc.prov||'','');
     });
   }catch(e){}
   return out;
@@ -8175,7 +8796,8 @@ function _fichaCosteoView(f,cot){
       });
       if(r.lamMinAplicado&&!r.lamMinEnPieza){const rawLam=(r.piezasDet||[]).reduce((a,pd)=>a+(pd.lamCosto||0),0);h+=fila('AJUSTE MÍN. LAMINADOR','el laminador cobra mínimo $'+cotFmt(r.lamMin)+' por trabajo',(r.lamMin-rawLam));}
       (r.otrosDet||[]).forEach(o=>{h+=fila(escHtml(String(o.concepto||'').toUpperCase()),Number(o.cant).toLocaleString('es-AR',{maximumFractionDigits:3})+' millares',o.costo);});
-      (co.manuales||[]).forEach(m=>{h+=fila(escHtml(String(m.concepto||'MANUAL').toUpperCase()),'manual',m.monto||0);});
+      (co.manuales||[]).forEach(m=>{h+=fila(escHtml(String(m.concepto||'MANUAL').toUpperCase()),m.modo==='pu'?('$ '+cotFmt(m.pu||0)+' x unidad'+(m.proveedor?' · '+escHtml(m.proveedor):'')):'manual',_manMonto(m,r.cant,co.cantidad));});
+      if(r.tercOn&&r.tercCosto)h+=fila('TRABAJO TERCERIZADO',escHtml((r.tercProv||'')+((co.terc&&co.terc.obs)?' · '+co.terc.obs:'')),r.tercCosto);
       h+=`</table>`;
       const mg=(co.margenPct!=null?co.margenPct:20);
       h+=`<div style="display:flex;gap:16px;justify-content:flex-end;margin-top:7px;flex-wrap:wrap;font-size:12px;align-items:center">
@@ -8244,7 +8866,8 @@ function _ceDesdeCosteo(ot,cot){
           else if(o.cod===17)acc.cajas+=o.costo;
           else if(o.costo>0)procesos.push({nombre:o.concepto||'Proceso',proveedor:'',monto:Math.round(o.costo)});
         });
-        (par.costeo.manuales||[]).forEach(m=>{if(m.monto>0)procesos.push({nombre:m.concepto||'Manual',proveedor:'',monto:Math.round(m.monto)});});
+        (par.costeo.manuales||[]).forEach(m=>{const mm=_manMonto(m,r.cant,par.costeo.cantidad);if(mm>0)procesos.push({nombre:m.concepto||'Manual',proveedor:m.proveedor||'',monto:Math.round(mm)});});
+        if(r.tercOn&&r.tercCosto>0)procesos.push({nombre:'Trabajo tercerizado',proveedor:r.tercProv||'',monto:Math.round(r.tercCosto)});
       }
       if(!maqFicha)maqFicha=_maqDesdeCosteo(par.costeo);
     });
@@ -8481,6 +9104,7 @@ async function genOT(cotIdOrIdx,byIdx,descComp,noRender){
   // Pasos de producción (con los procesos del costeo: troquelado, laminado, doblado, etc.)
   const _termG=_terminacionDesdeCosteo(c,(c.items||[]).map(i=>i.desc));
   const pasos=buildPasos(maqOT,_termG);
+  _otTercerizar(c,(c.items||[]).map(i=>i.desc),pasos,asignaciones); // trabajo tercerizado: va directo al proveedor externo
   let _ncOT='';try{const rv0=_rvDeItemDesc(c,(c.items&&c.items[0]||{}).desc);_ncOT=(rv0&&rv0.nombre)||'';}catch(e){}
   const _hoyOT=new Date().toISOString().slice(0,10);
   // Entrega = ingreso de la OT (hoy) + los días hábiles del plazo de la cotización (no la fecha vieja de la cotización)
