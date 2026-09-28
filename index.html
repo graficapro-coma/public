@@ -4718,13 +4718,21 @@ function rPapel(){
     else if(est==='recibido')accion=`<span class="badge bg2"><i class="ti ti-check"></i> recibido</span> <button onclick="papelEstado(${o.id},'pendiente')" style="font-size:10px;padding:2px 6px">reabrir</button>`;
     accion+=` <button onclick="printCartel(${o.id})" title="Cartel de pallet" style="font-size:10px;padding:2px 6px"><i class="ti ti-tag"></i></button>`;
     const pgDisp=(pa.pliegosGrandesManual&&+pa.pliegosGrandes>0)?+pa.pliegosGrandes:c.pliegosGrandes;
+    // Línea de corte bajo el formato: de qué pliego se parte y a qué medida se corta
+    let corteTxt='';
+    try{
+      const ci=corteInfo(o),cmf=n=>String(+n).replace('.',',');
+      if(ci.tieneOrigen&&!ci.desdeTabla)corteTxt=`<div style="font-size:9.5px;color:#854d0e;margin-top:2px;white-space:nowrap"><i class="ti ti-cut"></i> corta a ${cmf(ci.cax)}×${cmf(ci.cay)} · ${ci.cortes} x pliego · ${Number(ci.grandes*ci.cortes).toLocaleString('es-AR')} a máq.</div>`;
+      else if(ci.tieneOrigen&&ci.desdeTabla)corteTxt=`<div style="font-size:9.5px;color:#a32d2d;margin-top:2px;white-space:nowrap">¿se compra en ${cmf(ci.ox)}×${cmf(ci.oy)}? <button onclick="papelSet(${o.id},'fx',${ci.ox});papelSet(${o.id},'fy',${ci.oy});render()" style="font-size:9.5px;padding:0 5px">usar</button></div>`;
+      else if(m.cax&&m.cay)corteTxt=`<div style="font-size:9.5px;color:#888;margin-top:2px;white-space:nowrap">sin corte (formato de máquina)</div>`;
+    }catch(e){}
     h+=`<tr>
       <td style="font-weight:600;cursor:pointer" onclick="om('vot',${o.id})">${o.num}</td>
       <td style="cursor:pointer" onclick="om('vot',${o.id})"><div style="font-weight:500">${cNomCorto(o.clienteId)}</div><div style="color:#888;font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.descripcion||''}</div></td>
       <td><input value="${(m.material||'').replace(/"/g,'&quot;')}" onchange="papelSet(${o.id},'material',this.value)" style="font-size:11px;padding:3px 5px" placeholder="Cart. TX..."></td>
       <td><input value="${(m.marca||'').replace(/"/g,'&quot;')}" onchange="papelSet(${o.id},'marca',this.value)" style="font-size:11px;padding:3px 5px" placeholder="Zenith..."></td>
       <td><input type="number" min="0" value="${m.grs||''}" onchange="papelSet(${o.id},'grs',this.value)" style="font-size:11px;padding:3px 4px;width:46px"></td>
-      <td><div style="display:flex;gap:2px;align-items:center"><input type="number" min="0" value="${m.fx||''}" onchange="papelSet(${o.id},'fx',this.value)" style="font-size:11px;padding:3px 4px;width:40px">×<input type="number" min="0" value="${m.fy||''}" onchange="papelSet(${o.id},'fy',this.value)" style="font-size:11px;padding:3px 4px;width:40px"></div></td>
+      <td><div style="display:flex;gap:2px;align-items:center"><input type="number" min="0" value="${m.fx||''}" onchange="papelSet(${o.id},'fx',this.value)" style="font-size:11px;padding:3px 4px;width:40px">×<input type="number" min="0" value="${m.fy||''}" onchange="papelSet(${o.id},'fy',this.value)" style="font-size:11px;padding:3px 4px;width:40px"></div>${corteTxt}</td>
       <td><input id="ppg-${o.id}" type="text" inputmode="numeric" value="${pgDisp?Number(pgDisp).toLocaleString('es-AR'):''}" oninput="milesFmt(this)" onchange="papelSet(${o.id},'pliegosGrandes',this.value.replace(/\\./g,''))" title="Auto desde OT. Editá para fijar a mano." style="font-size:11px;padding:3px 4px;width:70px"></td>
       <td id="pkg-${o.id}" style="text-align:right;font-weight:600">${c.kg?c.kg.toLocaleString('es-AR',{maximumFractionDigits:1}):'—'}</td>
       <td><input list="dl-pap" value="${(pa.papelera||'').replace(/"/g,'&quot;')}" onchange="papelSet(${o.id},'papelera',this.value)" style="font-size:11px;padding:3px 5px" placeholder="Asignar..."></td>
@@ -7936,6 +7944,17 @@ function _atInit(o){
   if(a.hojasUnidad===undefined)a.hojasUnidad='';
   if(a.papel===undefined)a.papel='';
   if(a.corte===undefined)a.corte='';
+  ['origW','origH','cortesManual'].forEach(k=>{if(a[k]===undefined)a[k]='';});
+  // Pliego de compra (origen) para la guillotina: de la tabla de papeles o del material de la OT si es distinto al de máquina
+  try{
+    if(a.origW===''&&+a.pliegoW>0&&+a.pliegoH>0){
+      const m=o.material||{};const sw=+a.pliegoW,sh=+a.pliegoH,fx=+m.fx||0,fy=+m.fy||0;
+      const igual=(x,y)=>(x===sw&&y===sh)||(x===sh&&y===sw);
+      if(fx>0&&fy>0&&!igual(fx,fy)){a.origW=fx;a.origH=fy;}
+      else{const ci=(typeof corteInfo==='function')?corteInfo({material:{material:m.material,grs:m.grs,cax:sw,cay:sh},papel:o.papel,impresion:{}}):null;
+        if(ci&&ci.tieneOrigen){a.origW=ci.ox;a.origH=ci.oy;}}
+    }
+  }catch(e){}
   // Precargar desde el costeo del cotizador (solo los campos que están vacíos: todo queda editable)
   try{
     if((!a._precargado||!a._hpre)&&o.cotId!=null){
@@ -7982,6 +8001,8 @@ function _atInit(o){
       }
     }
   }catch(e){console.warn('_atInit precarga',e);}
+  // Si ya hay pliego de compra pero el material de la OT no lo tiene, sincronizar (guillotina + pedido de papel)
+  try{const m=o.material||{};if(+a.origW>0&&+a.origH>0&&+a.pliegoW>0&&+a.pliegoH>0&&(+m.fx!==+a.origW||+m.fy!==+a.origH||!m.cax)){_atSyncMaterial(o);sk('ordenes');}}catch(e){}
   return a;
 }
 // Poses por pliego: mejor aprovechamiento probando las dos orientaciones de la pieza
@@ -7995,8 +8016,8 @@ function posesAuto(a){
 function atSet(otId,campo,val){
   const o=S.ordenes.find(x=>x.id===otId);if(!o)return;
   if(!o.analisisTec)o.analisisTec={};
-  const medidas=['piezaW','piezaH','pliegoW','pliegoH']; // acepta coma o punto decimal: 29,7 = 29.7
-  const enteros=['cantidad','posesManual','demasia','hojasUnidad'];    // acepta punto de miles: 1.250 = 1250
+  const medidas=['piezaW','piezaH','pliegoW','pliegoH','origW','origH']; // acepta coma o punto decimal: 29,7 = 29.7
+  const enteros=['cantidad','posesManual','demasia','hojasUnidad','cortesManual'];    // acepta punto de miles: 1.250 = 1250
   if(medidas.includes(campo)){
     const n=parseFloat(String(val).replace(',','.').replace(/[^\d.]/g,''));
     o.analisisTec[campo]=isNaN(n)?'':n;
@@ -8006,8 +8027,55 @@ function atSet(otId,campo,val){
   }else{
     o.analisisTec[campo]=(val==null?'':String(val)).replace(/[<>]/g,'');
   }
+  _atSyncMaterial(o);
   sk('ordenes');
   atSync(otId); // actualización en vivo sin re-render: el tabulador sigue funcionando
+}
+// Cálculo del análisis técnico + corte del pliego de compra (origen) al de máquina
+function _atCalc(a){
+  a=a||{};
+  const posAuto=posesAuto(a);
+  const poses=(+a.posesManual>0)?+a.posesManual:posAuto;
+  const cant=+a.cantidad||0,dem=+a.demasia||0,hu=(+a.hojasUnidad>0)?+a.hojasUnidad:1;
+  const pliegosImp=(poses>0&&cant>0)?Math.ceil(cant*hu/poses):0;
+  const pliegosTot=pliegosImp>0?pliegosImp+dem:0;
+  const sw=+a.pliegoW||0,sh=+a.pliegoH||0,ox=+a.origW||0,oy=+a.origH||0;
+  const tieneOrigen=ox>0&&oy>0&&sw>0&&sh>0&&!((ox===sw&&oy===sh)||(ox===sh&&oy===sw));
+  const cortesAuto=tieneOrigen?cortesCalc(ox,oy,sw,sh):1;
+  const cortes=tieneOrigen?((+a.cortesManual>0)?+a.cortesManual:cortesAuto):1;
+  const grandes=pliegosTot>0?Math.ceil(pliegosTot/cortes):0;
+  return {posAuto,poses,pliegosImp,pliegosTot,sw,sh,ox,oy,tieneOrigen,cortesAuto,cortes,grandes,sobran:tieneOrigen?grandes*cortes-pliegosTot:0};
+}
+function _atCorteHTML(a){
+  const k=_atCalc(a);
+  const cm=n=>String(+n).replace('.',','),nf=n=>Number(n||0).toLocaleString('es-AR');
+  if(!k.tieneOrigen)return `<div style="font-size:11px;color:#854d0e;background:#faeeda;border-radius:7px;padding:7px 10px"><i class="ti ti-info-circle"></i> Si el papel se compra en otro formato (ej. 66×100 para cortar a 66×50), cargá el <b>pliego de compra</b> y se calcula cuántos comprar y cómo cortarlo.</div>`;
+  if(!k.pliegosTot)return `<div style="font-size:11px;color:#888">Del pliego ${cm(k.ox)}×${cm(k.oy)} salen <b>${k.cortes}</b> de ${cm(k.sw)}×${cm(k.sh)}. Completá cantidad y poses para calcular cuántos comprar.</div>`;
+  const box=(tit,val,sub,col,bg)=>`<div style="flex:1;min-width:140px;background:${bg};border:1px solid ${col};border-radius:8px;padding:7px 10px"><div style="font-size:10px;font-weight:700;color:${col}">${tit}</div><div style="font-size:17px;font-weight:800;color:#1a1a1a">${val}</div><div style="font-size:11px;color:#444">${sub}</div></div>`;
+  const fl='<div style="align-self:center;font-size:18px;font-weight:700;color:#185fa5">→</div>';
+  return `<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:stretch">
+    ${box('1 · COMPRAR / TOMAR',nf(k.grandes)+' pliegos',`de ${cm(k.ox)}×${cm(k.oy)} cm`,'#7b3fa0','#f6effb')}${fl}
+    ${box('2 · GUILLOTINA',`${cm(k.sw)}×${cm(k.sh)} cm`,`salen <b>${k.cortes}</b> por pliego`,'#854d0e','#fff8ec')}${fl}
+    ${box('3 · A MÁQUINA',nf(k.grandes*k.cortes)+' pliegos',`de ${cm(k.sw)}×${cm(k.sh)} (necesarios ${nf(k.pliegosTot)}${k.sobran>0?' · sobran '+nf(k.sobran):''})`,'#27500a','#eaf3de')}
+  </div>
+  <div style="font-size:11.5px;color:#333;margin-top:5px">${nf(k.pliegosTot)} pliegos de ${cm(k.sw)}×${cm(k.sh)} ÷ ${k.cortes} por pliego = <b>${nf(k.grandes)} pliegos de ${cm(k.ox)}×${cm(k.oy)}</b> a comprar.</div>`;
+}
+// Lleva el corte del análisis técnico al material de la OT → sección "Material a cortar" y pedido de papel
+function _atSyncMaterial(o){
+  try{
+    const a=o.analisisTec||{};const k=_atCalc(a);
+    if(!(k.sw>0&&k.sh>0))return;
+    if(!o.material)o.material={};
+    const m=o.material;
+    if(k.tieneOrigen){m.fx=k.ox;m.fy=k.oy;}
+    else if(+a.origW>0&&+a.origH>0){m.fx=+a.origW;m.fy=+a.origH;} // origen = máquina: sin corte previo
+    m.cax=k.sw;m.cay=k.sh;
+    if(k.pliegosTot>0&&(!m.pliegos||m._plAuto)){m.pliegos=k.pliegosTot;m._plAuto=true;}
+    if(k.tieneOrigen){
+      if(typeof papelInit==='function')papelInit(o);
+      if(o.papel)o.papel.cortes=(+a.cortesManual>0)?+a.cortesManual:0; // 0 = automático
+    }
+  }catch(e){console.warn('_atSyncMaterial',e);}
 }
 function atSync(otId){
   const o=S.ordenes.find(x=>x.id===otId);if(!o)return;
@@ -8025,6 +8093,9 @@ function atSync(otId){
   set('at-pt-'+otId,fmt(pliegosTot));
   const warn=document.getElementById('at-warn-'+otId);
   if(warn)warn.style.display=(!posAuto&&!(+a.posesManual>0))?'':'none';
+  const kc=_atCalc(a);
+  set('at-cortauto-'+otId,kc.tieneOrigen?String(kc.cortesAuto):'—');
+  const bc=document.getElementById('at-corte-'+otId);if(bc)bc.innerHTML=_atCorteHTML(a);
 }
 function otAnalisisTec(o){
   const a=_atInit(o);
@@ -8061,6 +8132,15 @@ function otAnalisisTec(o){
   h+=`<div style="flex:1;min-width:150px;background:#eaf3de;border-radius:8px;padding:8px 11px"><div style="font-size:10px;color:#888;text-transform:uppercase;font-weight:600">Pliegos totales (c/demasía)</div><div id="at-pt-${o.id}" style="font-size:18px;font-weight:700;color:#27500a">${pliegosTot?fmt(pliegosTot):'—'}</div></div>`;
   h+=`</div>`;
   h+=`<div id="at-warn-${o.id}" style="font-size:11px;color:#a32d2d;margin-top:7px;display:${(!posAuto&&!(+a.posesManual>0))?'':'none'}"><i class="ti ti-alert-triangle"></i> Cargá las medidas de la pieza y del pliego (o las poses a mano) para calcular los pliegos.</div>`;
+  // Corte: pliego de compra → pliego de máquina (para la guillotina y la compra de papel)
+  const _kc=_atCalc(a);
+  h+=`<div style="margin-top:11px;border-top:1px dashed #cddff2;padding-top:9px">
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end;margin-bottom:7px">
+      <div><label style="color:#666"><i class="ti ti-cut"></i> Pliego de compra (cm)</label><br>${inp('origW','ej. 66')} × ${inp('origH','ej. 100')}</div>
+      <div><label style="color:#666">Salen por pliego</label><br><span style="font-size:11px;color:#888">Auto: <strong id="at-cortauto-${o.id}" style="color:#185fa5">${_kc.tieneOrigen?_kc.cortesAuto:'—'}</strong></span> · manual ${inp('cortesManual','auto',56)}</div>
+    </div>
+    <div id="at-corte-${o.id}">${_atCorteHTML(a)}</div>
+  </div>`;
   // Papel que se necesita: globitos estructurados desde el costeo
   h+=_atPapelChips(o,a);
   h+=`<div style="margin-top:7px"><label style="color:#666">Notas de papel (editable)</label>${inpTxt('papel','Detalle libre: material, gramaje, compra...')}</div>`;
