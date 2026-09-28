@@ -2200,6 +2200,7 @@ function cotPzEd(k,campo,val){
   if(campo==='chapasCod'||campo==='lamCod'){p[campo]=parseInt(val)||0;cotSync();return;}
   if(campo==='impCod'){
     p.impCod=parseInt(val)||0;
+    p._impManual=!!p.impCod;p._pagCh=null; // elegida a mano: el paginado la respeta (salvo que cambie la máquina o los colores)
     const existeImp=!p.impCod||(S.cotImpresion||[]).some(x=>x.codigo===p.impCod&&x.activo);
     const sI=document.getElementById('cz-p'+k+'-impsel');if(sI)sI.value=String(existeImp?p.impCod:0);
     const ciI=document.getElementById('cz-p'+k+'-impcodinp');
@@ -2290,6 +2291,7 @@ function cotPzMaq(k,m){
     return;
   }
   p.maquina=(p.maquina===m)?'':m; // toggle
+  p._maqManual=!!p.maquina; // elegida a mano: el paginado ya no la cambia según el papel
   // Si la impresión elegida no es de esta máquina, limpiarla
   if(p.maquina&&p.impCod){
     const imp=(S.cotImpresion||[]).find(x=>x.codigo===p.impCod);
@@ -2584,13 +2586,31 @@ function cotDesdeItem(ii){
       // REVISTA / CATÁLOGO / CUADERNO: si la IA dio el paginado, armo Tapa + Interior (N pliegos) automáticamente
       const _esRevista=s.revista&&(+s.revista.intPags||+s.revista.tapaPags);
       if(_esRevista){
-        cotW.paginado={modo:'revista',tapaPags:+s.revista.tapaPags||4,intPags:+s.revista.intPags||0,tapaColores:s.revista.tapaColores||s.colores||'4/4',intColores:s.revista.intColores||s.colores||'4/4',pagsPorHoja:4,hojasPorPliego:2};
+        cotW.paginado={modo:'revista',tapaPags:+s.revista.tapaPags||4,intPags:+s.revista.intPags||0,tapaColores:s.revista.tapaColores||s.colores||'4/4',intColores:s.revista.intColores||s.colores||'4/4',pagsPorHoja:4};
+        // Medida cerrada (ej. "14,85x21"): con ella las hojas por pliego se calculan según el papel de cada pieza
+        {const mc=String(s.medidaCerrada||item.desc||'').match(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)/i);
+         if(mc){cotW.paginado.cuadW=mc[1].replace('.',',');cotW.paginado.cuadH=mc[2].replace('.',',');}
+         else cotW.paginado.hojasPorPliego='2';}
         cotW._pagOpen=true;
         cotPagAplicar(true); // arma tapa + interior (por páginas) con pliegos, poses, chapas e impresión
-        const pcR=aiMatchPapel(s.material,s.gramaje);
-        (cotW.piezas||[]).forEach(p=>{if(pcR&&!p.papelCod)p.papelCod=pcR;});
-        if(!pcR)faltan.push('Papel'+(s.material?' ('+s.material+(s.gramaje?' '+s.gramaje+'g':'')+')':''));
-        try{cotAutoPoses(0);}catch(e){}try{cotAutoPoses(1);}catch(e){}
+        // Papel de CADA parte: tapa e interior pueden ir en distinto gramaje (ej. tapa Ilus 130 / interior Ilus 115).
+        // Tapa → pliego chico (SM52, tira y retira); interior → pliego grande (SM74).
+        const rv=s.revista||{};
+        const gDesc=(re)=>{const mm=String(item.desc||'').match(re);return mm?+mm[1]:0;};
+        const parte={
+          tapa:{mat:rv.tapaMaterial||s.material,grs:+rv.tapaGramaje||gDesc(/tapa[^,;]*?(\d{2,3})\s*g/i)||+s.gramaje||0,maq:'SM52'},
+          int:{mat:rv.intMaterial||s.material,grs:+rv.intGramaje||gDesc(/interior[^,;]*?(\d{2,3})\s*g/i)||+s.gramaje||0,maq:'SM74'}
+        };
+        parte.todo=parte.int;parte.tapa2=parte.tapa;parte.int2=parte.int;parte.todo2=parte.int;
+        (cotW.piezas||[]).forEach(p=>{
+          const d=parte[p._pag];if(!d||p.papelCod)return;
+          const pc=aiMatchPapelMaq(d.mat,d.grs,d.maq);
+          if(pc)p.papelCod=pc;else faltan.push('Papel '+(p.nombre||'')+(d.mat?' ('+d.mat+(d.grs?' '+d.grs+'g':'')+')':''));
+        });
+        cotPagAplicar(true); // con el papel elegido: máquina según el pliego → impresión y chapas de esa máquina
+        (cotW.piezas||[]).forEach((p,k)=>{try{cotAutoPoses(k);}catch(e){}});
+        // Terminaciones que pidió el cliente (el abrochado ya lo agrega el paginado)
+        (s.procesos||[]).forEach(nm=>{const code=aiMatchProc(nm);if(code){if(!cotW.otros.some(o=>o.cod===code))cotW.otros.push({cod:code,cant:1,auto:'pliegos'});}else if(nm&&nm.trim())faltan.push('Costo de: '+nm);});
       }
       const pz=(!_esRevista)&&cotW.piezas&&cotW.piezas[0];
       if(pz){
@@ -2759,12 +2779,12 @@ function cotPagCalc(pg){
         const fw=+(W+vuelta*2).toFixed(1), fh=+(H+vuelta*2).toFixed(1);
         const ps=(W>0&&H>0)?posesDe(fw,fh,'tapa'):0;
         const post=ps>=2?2*Math.floor(ps/2):Math.max(1,ps);
-        o.secciones.push({rol:'tapa',nombre:'Láminas tapa dura',info:`tapa + contratapa (2 diseños) · ${W||'?'}×${H||'?'} + vuelta ${vuelta} → ${fw}×${fh} cm${ps?' · entran '+ps+(ps%2?' (se usan '+post+')':''):''} · Ilus 170 + laminado`,pw:fw,ph:fh,poses:ps,col:colT,ch:chXpl(colT),secc:[{ent:1,post}],cantMult:2,dura:true});
+        o.secciones.push({rol:'tapa',nombre:'Láminas tapa dura',info:`tapa + contratapa (2 diseños) · ${W||'?'}×${H||'?'} + vuelta ${vuelta} → ${fw}×${fh} cm${ps?' · entran '+ps+(ps%2?' (se usan '+post+')':''):''} · Ilus 170 + laminado`,pw:fw,ph:fh,poses:ps,col:colT,ch:chXpl(colT),secc:[{ent:1,post}],cantMult:2,dura:true,dis:2});
       }else{
         // Tapa blanda: tapa + contratapa = 2 piezas y 2 diseños por cuaderno, en el mismo material y la misma plancha (mitad y mitad)
         const ps=(W>0&&H>0)?posesDe(W,H,'tapa'):0;
         const post=ps>=2?2*Math.floor(ps/2):Math.max(1,ps);
-        o.secciones.push({rol:'tapa',nombre:'Tapa + contratapa',info:`2 piezas por cuaderno (2 diseños) · ${W||'?'}×${H||'?'} cm${ps?' · entran '+ps+(ps%2?' (se usan '+post+', mitad de cada diseño)':''):''}`,pw:W,ph:H,poses:ps,col:colT,ch:chXpl(colT),secc:[{ent:1,post}],cantMult:2});
+        o.secciones.push({rol:'tapa',nombre:'Tapa + contratapa',info:`2 piezas por cuaderno (2 diseños) · ${W||'?'}×${H||'?'} cm${ps?' · entran '+ps+(ps%2?' (se usan '+post+', mitad de cada diseño)':''):''}`,pw:W,ph:H,poses:ps,col:colT,ch:chXpl(colT),secc:[{ent:1,post}],cantMult:2,dis:2});
       }
     }
     const hojas=Math.max(0,parseInt(pg.intHojas)||0);
@@ -2789,20 +2809,44 @@ function cotPagCalc(pg){
     o.enc={prov:(pg.encProv!=null&&pg.encProv!=='')?pg.encProv:(cfg.encProv||''),anillado:numOr(pg.encAnillado,cfg.encAnillado),tapado:tapaTipo==='dura'&&pg.tapaTipo!=='sin'?numOr(pg.encTapado,cfg.encTapado):0};
   }else{
     const iPag=Math.max(0,parseInt(pg.intPags)||0);
+    // Hojas por pliego AUTOMÁTICO por sección: con la medida cerrada, la hoja abierta (2 páginas de ancho) se acomoda en el
+    // pliego del papel elegido para esa pieza. Ej. revista 14,85×21 → hoja 29,7×21: en 65×47,5 entran 4 (16 pág por pliego);
+    // en 47,5×32,5 entran 2. Si escribís "Hojas por pliego" a mano, manda eso para todas.
+    const cW=parseFloat(String(pg.cuadW||'').replace(',','.'))||0, cH=parseFloat(String(pg.cuadH||'').replace(',','.'))||0;
+    const hppMan=parseInt(pg.hojasPorPliego)||0;
+    const hojaW=+(cW*(pph>=4?2:1)).toFixed(2), hojaH=cH;
+    const dimsR=rol=>{const pz=((cotW&&cotW.piezas)||[]).find(x=>x._pag===rol);const d=pz?cotPapelDims(pz):null;return d||(rol==='tapa'?[32.5,47.5]:[47.5,65]);};
+    const hppDe=rol=>{
+      if(hppMan)return hppMan;
+      if(!(cW>0&&cH>0))return hpp;
+      const d=dimsR(rol);return Math.max(1,cotPosesSug(hojaW,hojaH,d[0],d[1])||1);
+    };
+    o.cW=cW;o.cH=cH;o.hppAuto=!hppMan&&cW>0&&cH>0;
+    const infoR=(pag,h,hp)=>`${pag} pág → ${h} hoja${h!==1?'s':''}${o.hppAuto?` · ${hp} por pliego (${hp*pph} pág)`:''}`;
     if(juntos){ // self-cover: tapa e interior en el mismo papel → todo en los mismos pliegos
-      const tot=tPag+iPag,h=Math.ceil(tot/pph)||0;
-      if(h>0)o.secciones.push({rol:'todo',nombre:'Revista (tapa + interior)',pag:tot,hojas:h,col:colI,ch:chXpl(colI),secc:_pagSecc(h,hpp),cantMult:1});
+      const tot=tPag+iPag,h=Math.ceil(tot/pph)||0,hp=hppDe('todo');
+      if(h>0)o.secciones.push({rol:'todo',nombre:'Revista (tapa + interior)',pag:tot,hojas:h,hpp:hp,info:infoR(tot,h,hp),col:colI,ch:chXpl(colI),secc:_pagSecc(h,hp),cantMult:1});
     }else{
-      const tH=Math.ceil(tPag/pph)||0,iH=Math.ceil(iPag/pph)||0;
-      if(tH>0)o.secciones.push({rol:'tapa',nombre:'Tapa',pag:tPag,hojas:tH,col:colT,ch:chXpl(colT),secc:_pagSecc(tH,hpp),cantMult:1});
-      if(iH>0)o.secciones.push({rol:'int',nombre:'Interior',pag:iPag,hojas:iH,col:colI,ch:chXpl(colI),secc:_pagSecc(iH,hpp),cantMult:1});
+      const tH=Math.ceil(tPag/pph)||0,iH=Math.ceil(iPag/pph)||0,hpT=hppDe('tapa'),hpI=hppDe('int');
+      if(tH>0)o.secciones.push({rol:'tapa',nombre:'Tapa',pag:tPag,hojas:tH,hpp:hpT,info:infoR(tPag,tH,hpT),col:colT,ch:chXpl(colT),secc:_pagSecc(tH,hpT),cantMult:1});
+      if(iH>0)o.secciones.push({rol:'int',nombre:'Interior',pag:iPag,hojas:iH,hpp:hpI,info:infoR(iPag,iH,hpI),col:colI,ch:chXpl(colI),secc:_pagSecc(iH,hpI),cantMult:1});
     }
   }
+  // TIRA Y RETIRA automático: si en el pliego va la MISMA hoja repetida un número par de veces (ej. tapa de 4 pág con 2 poses),
+  // frente y dorso comparten la plancha y se da vuelta el pliego → chapas = colores de una cara (4/4 → 4, no 8).
+  const chSecc=(sc,s)=>{
+    if(reti)return sc.ch;
+    const mm=String(sc.col||'').replace(/\s/g,'').match(/(\d+)\/(\d+)/);
+    const f=mm?+mm[1]:0,d=mm?+mm[2]:0;
+    const dis=sc.dis||1; // diseños distintos dentro del pliego (tapa + contratapa = 2)
+    if(d>0&&s.post>=2&&(s.post/dis)%2===0){s.tr=true;return Math.max(f,d);}
+    return sc.ch;
+  };
   let totPli=0,totCh=0;
   o.secciones.forEach(sc=>{
-    let ent=0,imp=0;
-    sc.secc.forEach(s=>{ent+=s.ent;imp+=s.ent*Math.ceil((cant*(sc.cantMult||1))/s.post);});
-    sc.ent=ent;sc.chapas=ent*sc.ch;sc.impresos=imp;totPli+=ent;totCh+=sc.chapas;
+    let ent=0,imp=0,ch=0;
+    sc.secc.forEach(s=>{s.ch=chSecc(sc,s);ent+=s.ent;ch+=s.ent*s.ch;imp+=s.ent*Math.ceil((cant*(sc.cantMult||1))/s.post);});
+    sc.ent=ent;sc.chapas=ch;sc.impresos=imp;sc.tr=sc.secc.some(s=>s.tr);totPli+=ent;totCh+=sc.chapas;
   });
   o.totPli=totPli;o.totChapas=totCh;
   return o;
@@ -2840,13 +2884,25 @@ function cotPagAplicar(silent){
     if(!cands.length)return (typeof aiMatchImp==='function')?aiMatchImp(col,maq):0;
     return (cands.find(x=>+x.chapas===ch)||cands[0]).codigo;
   };
-  const setPz=(p,s,col,ch,cantMult)=>{
+  const setPz=(p,s,col,ch,cantMult,rol)=>{
     p.entradas=Math.max(1,s.ent);p.posturas=Math.max(1,s.post);p.cantMult=Math.max(1,cantMult||1);
-    if(!p.maquina)p.maquina='SM74';
-    if(!p.impCod||p._pagCol!==col||p._pagCh!==ch){const ic=matchImp(col,p.maquina,ch);if(ic)p.impCod=ic;}
+    // Máquina: la manda el PAPEL elegido (pliego 47,5×32,5 → SM52; 65×47,5 → SM74), salvo que la hayas elegido a mano.
+    const maqAntes=p.maquina;
+    if(p.maquina!=='Xerox'&&!p._maqManual){
+      const dims=(p.papelCod||p.papelCustom)?cotPapelDims(p):null;
+      if(dims){const f52=cotPliegoEnMaq(dims,'SM52'),f74=cotPliegoEnMaq(dims,'SM74');const pref=f52?'SM52':(f74?'SM74':'');if(pref)p.maquina=pref;}
+    }
+    // Sin papel todavía: revista → tapa en SM52 (tira y retira), interior en SM74
+    if(!p.maquina)p.maquina=(r.modo==='revista'&&rol==='tapa')?'SM52':'SM74';
+    const impAct=(S.cotImpresion||[]).find(x=>x.codigo===p.impCod);
+    const impOtraMaq=!!(impAct&&impAct.maquina&&impAct.maquina!==p.maquina);
+    const rematch=p._impManual
+      ?(!p.impCod||impOtraMaq||(p._pagCol&&p._pagCol!==col))
+      :(!p.impCod||impOtraMaq||maqAntes!==p.maquina||p._pagCol!==col||p._pagCh!==ch||(impAct&&+impAct.chapas>0&&+impAct.chapas!==ch));
+    if(rematch){const ic=matchImp(col,p.maquina,ch);if(ic){p.impCod=ic;p._impManual=false;}}
     p._pagCol=col;p._pagCh=ch;
-    let cc=(typeof aiMatchChapa==='function')?aiMatchChapa(p.maquina):0;
-    if(!cc)cc=(p.maquina==='SM52')?2:(p.maquina==='SM74')?3:0;
+    let cc=(p.maquina==='SM52')?2:(p.maquina==='SM74')?3:0; // mismo criterio que el selector de máquina
+    if(!cc&&typeof aiMatchChapa==='function')cc=aiMatchChapa(p.maquina);
     if(cc)p.chapasCod=cc;
     p.chapasCant=ch;
   };
@@ -2861,7 +2917,7 @@ function cotPagAplicar(silent){
         let src=null;for(const rk of deQuien){src=P.find(x=>x!==p&&x.papelCod&&x._pag===rk);if(src)break;} // prioridad: interior
         if(src)p.papelCod=src.papelCod;
       }
-      setPz(p,s,sc.col,sc.ch,sc.cantMult);
+      setPz(p,s,sc.col,(s.ch!=null?s.ch:sc.ch),sc.cantMult,sc.rol);
       if(sc.pw>0&&sc.ph>0){ // cuaderno: la pieza lleva su medida (así se ve cómo entra en el pliego)
         p.piezaW=sc.pw;p.piezaH=sc.ph;p.personalizado=false;
         if(r.W>0&&r.H>0)p.medidaCerrada=r.W+'x'+r.H;
@@ -2886,7 +2942,10 @@ function cotPagAplicar(silent){
   // Terminación sugerida de revista: abrochado (una sola vez; si la sacás, no vuelve a aparecer)
   if(!Array.isArray(cotW.otros))cotW.otros=[];
   if(r.modo==='revista'&&r.secciones.length&&!pg._term){
-    if(!cotW.otros.some(o=>o.cod===3))cotW.otros.push({cod:3,cant:1,auto:'pliegos'});
+    // Buscar el proceso por NOMBRE en Tablas de costos (no por código fijo): abrochado → si no hay, encuadernación
+    const _ots=(S.cotOtros||[]).filter(x=>x&&x.codigo&&x.activo!==false);
+    const _abr=_ots.find(x=>/abroch/i.test(x.concepto||''))||_ots.find(x=>/encuadern/i.test(x.concepto||''));
+    if(_abr&&!cotW.otros.some(o=>o.cod===_abr.codigo))cotW.otros.push({cod:_abr.codigo,cant:1,auto:'pliegos'});
     pg._term=1;
   }
   // Encuadernación de cuadernos (tercero, $ por unidad): líneas manejadas por el paginado
@@ -2930,7 +2989,7 @@ function cotPagResultHTML(r){
       <td style="padding:4px 8px;font-weight:600;white-space:nowrap">${sc.nombre}</td>
       <td style="font-size:11px;color:#555">${info}</td>
       <td style="text-align:center;color:#185fa5">${det}</td>
-      <td style="text-align:center">${sc.chapas}</td>
+      <td style="text-align:center">${sc.chapas}${sc.tr?`<div style="font-size:9.5px;color:#1a7f37;font-weight:600">tira y retira</div>`:''}</td>
       <td style="text-align:center;color:#888">${sc.col}</td>
       <td style="text-align:right">${r.cant?cotFmt(sc.impresos):'—'}</td></tr>`;
   });
@@ -2942,7 +3001,9 @@ function cotPagResultHTML(r){
   </div>
   <div style="font-size:10px;color:#999;margin-top:5px">${r.modo==='cuaderno'
     ?`Cuaderno: el interior se carga en hojas (cada hoja = 2 páginas). Hojas iguales → un diseño repetido (hojas × cuadernos ÷ lo que entra). Hojas diferentes → posturas = hojas ÷ lo que entra, cada una × cuadernos. Tapa blanda = tapa + contratapa (2 piezas por cuaderno). Lo que entra por pliego se calcula con la medida y el papel elegido.${r.tapaTipo==='dura'?' Tapa dura: el cartón y el armado cargalos como proceso.':''}`
-    :`Revista plegada: cada hoja = ${r.pph} páginas · ${r.hpp} hojas por pliego (ej. 24 pág → 6 hojas → 3 pliegos). Si sobran hojas, el último pliego va con más poses.`}
+    :(r.hppAuto
+      ?`Revista plegada ${cotFmtDec(r.cW,2)}×${cotFmtDec(r.cH,2)} cerrada: cada hoja = ${r.pph} páginas; las hojas por pliego salen del papel de cada pieza (ej. 65×47,5 → 16 pág por entrada). Si la misma hoja va repetida en el pliego (ej. tapa ×2 poses) se calcula tira y retira: 4/4 = 4 chapas.`
+      :`Revista plegada: cada hoja = ${r.pph} páginas · ${r.hpp} hojas por pliego (ej. 24 pág → 6 hojas → 3 pliegos). Cargá la medida cerrada y las hojas por pliego se calculan solas según el papel.`)}
     * sin demasía, × ${cotFmt(r.cant||0)} ej. <b style="color:#1a7f37">El costeo de abajo se arma solo con este paginado — vos elegís el papel de cada pieza.</b></div>`;
   return h;
 }
@@ -2990,7 +3051,8 @@ function cotPaginadoHTML(w){
       <div><div style="font-size:10px;color:#888;margin-bottom:2px">Páginas interior</div>${inp('intPags',pg.intPags,'24')}</div>
       <div><div style="font-size:10px;color:#888;margin-bottom:2px">Colores interior</div>${inp('intColores',pg.intColores||'4/4','4/4','54px')}</div>
       <div><div style="font-size:10px;color:#888;margin-bottom:2px">Págs. por hoja</div>${inp('pagsPorHoja',pg.pagsPorHoja||4,'4')}</div>
-      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Hojas por pliego</div>${inp('hojasPorPliego',pg.hojasPorPliego||2,'2')}</div>`;
+      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Medida cerrada (cm)</div>${inp('cuadW',pg.cuadW,'14,85','50px')} × ${inp('cuadH',pg.cuadH,'21','46px')}</div>
+      <div><div style="font-size:10px;color:#888;margin-bottom:2px">Hojas por pliego</div>${inp('hojasPorPliego',pg.hojasPorPliego||'',(+String(pg.cuadW||'').replace(',','.')>0&&+String(pg.cuadH||'').replace(',','.')>0)?'auto':'2')}</div>`;
     }
     h+=`<div style="display:flex;flex-direction:column;gap:4px">
       ${modo==='revista'?`<label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#666;cursor:pointer"><input id="pag-juntos" type="checkbox" ${pg.juntos?'checked':''} onchange="cotPagEd('juntos',this.checked?'1':'')" style="width:14px;height:14px;accent-color:#7b3fa0"> Tapa e interior en el <b>mismo papel</b> (todo junto, self-cover)</label>`:''}
@@ -4315,7 +4377,9 @@ function _papelPrefillDesdeCosteo(o){
     if(o.cotId==null)return;
     if(!o.material)o.material={};
     const m=o.material;
-    if(m.material&&m.grs&&m.fx)return; // ya cargado (a mano o precargado antes)
+    const _mismoF=(a,b,c,d)=>{a=+a;b=+b;c=+c;d=+d;return !!(a&&b&&c&&d)&&((a===c&&b===d)||(a===d&&b===c));};
+    // ya cargado (a mano o precargado antes) — salvo que el formato sea el de máquina: ahí se intenta completar el pliego de origen
+    if(m.material&&m.grs&&m.fx&&!_mismoF(m.fx,m.fy,m.cax,m.cay))return;
     const cot=(S.cotizaciones||[]).find(c=>c.id===o.cotId);if(!cot)return;
     const desc0=(Array.isArray(o.itemsOT)&&o.itemsOT[0]&&o.itemsOT[0].desc)||String(o.descripcion||'').split(' + ')[0];
     const rv=(typeof _costeoDeItemDesc==='function')?_costeoDeItemDesc(cot,desc0):null;
@@ -4336,6 +4400,7 @@ function _papelPrefillDesdeCosteo(o){
     if(!m.material)m.material=pap.descripcion||'';
     if(!m.grs)m.grs=pap.gramaje||'';
     if(!m.fx){m.fx=conOrigen?pap.origAncho:pap.ancho;m.fy=conOrigen?pap.origAlto:pap.alto;}
+    else if(conOrigen&&_mismoF(m.fx,m.fy,m.cax||pap.ancho,m.cay||pap.alto)&&_mismoF(m.fx,m.fy,pap.ancho,pap.alto)){m.fx=pap.origAncho;m.fy=pap.origAlto;}
     if(!m.cax){m.cax=pap.ancho;m.cay=pap.alto;}
     if(!m.pliegos&&pliegosTot)m.pliegos=pliegosTot;
   }catch(e){}
@@ -4352,6 +4417,58 @@ function papelCalc(o){
   const pg=Math.max(0,pgManual||Math.ceil(pliegosPress/cortes));
   const kg=(fx&&fy&&grs&&pg)?(fx*fy*grs*pg/1e7):0;
   return {fx,fy,grs,cortes,cortesAuto,pliegosPress,pliegosGrandes:pg,kg,material:m.material||'',marca:m.marca||'',papelera:(o.papel&&o.papel.papelera)||m.papelera||''};
+}
+// Datos para la guillotina: de qué pliego plano se parte, cuántos hacen falta y a qué medida se corta.
+// Si la OT tiene cargado como formato el mismo de máquina, busca el pliego de origen en Tablas de costos → Papeles.
+function corteInfo(o){
+  const m=o.material||{};
+  const cax=+m.cax||0,cay=+m.cay||0;
+  let ox=+m.fx||0,oy=+m.fy||0,cortesTabla=0,desdeTabla=false;
+  const mismo=(a,b,c,d)=>!!(a&&b&&c&&d)&&((a===c&&b===d)||(a===d&&b===c));
+  const norm=s=>String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
+  if(cax&&cay&&(!ox||!oy||mismo(ox,oy,cax,cay))){
+    const cand=(S.cotPapeles||[]).filter(p=>+p.origAncho>0&&+p.origAlto>0&&+p.cortes>0&&mismo(+p.ancho,+p.alto,cax,cay)&&(!m.grs||+p.gramaje===+m.grs));
+    const pap=cand.find(p=>m.material&&norm(p.descripcion)===norm(m.material))||cand.find(p=>m.material&&norm(p.descripcion).includes(norm(m.material).split(' ')[0]))||cand[0];
+    if(pap){ox=+pap.origAncho;oy=+pap.origAlto;cortesTabla=+pap.cortes;desdeTabla=true;}
+  }
+  const c=papelCalc(o);
+  const tieneOrigen=!!(ox&&oy&&cax&&cay&&!mismo(ox,oy,cax,cay));
+  let cortes=1;
+  if(tieneOrigen){
+    const st=(o.papel&&+o.papel.cortes>0)?+o.papel.cortes:0;
+    cortes=Math.max(1,st||cortesTabla||cortesCalc(ox,oy,cax,cay));
+  }
+  const pliegos=c.pliegosPress||0;
+  const pgManual=(o.papel&&o.papel.pliegosGrandesManual&&+o.papel.pliegosGrandes>0)?+o.papel.pliegosGrandes:0;
+  const grandes=tieneOrigen?(pgManual||Math.ceil(pliegos/cortes)):pliegos;
+  return {ox,oy,cax,cay,cortes,pliegos,grandes,tieneOrigen,desdeTabla,sobrante:tieneOrigen?grandes*cortes-pliegos:0};
+}
+function corteBoxHTML(o){
+  const k=corteInfo(o);
+  if(!k.cax||!k.cay)return '';
+  const cm=n=>String(+n).replace('.',',');
+  const nf=n=>Number(n||0).toLocaleString('es-AR');
+  const paso=(num,tit,val,sub,col)=>`<div style="flex:1;min-width:150px;background:#fff;border:1px solid ${col};border-radius:8px;padding:8px 10px">
+    <div style="font-size:10px;font-weight:700;color:${col};letter-spacing:.4px">${num} · ${tit}</div>
+    <div style="font-size:19px;font-weight:800;color:#1a1a1a;line-height:1.25">${val}</div>
+    <div style="font-size:12px;color:#444">${sub}</div></div>`;
+  const flecha='<div style="align-self:center;font-size:20px;color:#185fa5;font-weight:700">→</div>';
+  let h=`<div style="margin:8px 0;border:2px solid #185fa5;border-radius:10px;background:#eef4fb;padding:10px">
+    <div style="font-size:12px;font-weight:800;color:#185fa5;margin-bottom:7px"><i class="ti ti-cut"></i> GUILLOTINA — qué pliego tomar y cómo cortarlo</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch">`;
+  if(k.tieneOrigen){
+    h+=paso('1','PLIEGO PLANO DE ORIGEN',`${cm(k.ox)} × ${cm(k.oy)} cm`,`Tomar <b>${nf(k.grandes)}</b> pliegos de ${cm(k.ox)}×${cm(k.oy)}`,'#185fa5');
+    h+=flecha;
+    h+=paso('2','CORTAR A',`${cm(k.cax)} × ${cm(k.cay)} cm`,`Salen <b>${k.cortes}</b> por pliego`,'#854d0e');
+    h+=flecha;
+    h+=paso('3','RESULTADO PARA MÁQUINA',`${nf(k.grandes*k.cortes)} pliegos`,`de ${cm(k.cax)}×${cm(k.cay)} (necesarios: ${nf(k.pliegos)}${k.sobrante>0?` · sobran ${nf(k.sobrante)}`:''})`,'#27500a');
+    h+=`</div><div style="margin-top:6px;font-size:12px;color:#333">${nf(k.pliegos)} pliegos de ${cm(k.cax)}×${cm(k.cay)} ÷ ${k.cortes} por pliego = <b>${nf(k.grandes)} pliegos de ${cm(k.ox)}×${cm(k.oy)}</b></div>`;
+    if(k.desdeTabla)h+=`<div style="margin-top:4px;font-size:11px;color:#854d0e"><i class="ti ti-info-circle"></i> Pliego de origen tomado de Tablas de costos → Papeles.</div>`;
+  }else{
+    h+=paso('1','PLIEGO A USAR',`${cm(k.cax)} × ${cm(k.cay)} cm`,`<b>${nf(k.pliegos)}</b> pliegos (ya en formato de máquina, sin corte previo)`,'#185fa5');
+    h+=`</div><div style="margin-top:6px;font-size:11px;color:#a32d2d"><i class="ti ti-alert-triangle"></i> No hay pliego de origen cargado. Si este papel se compra en otro formato (ej. 65×95), cargá "Origen (cm)" y "Cortes" en Tablas de costos → Papeles, o editá el Formato del material de la OT.</div>`;
+  }
+  return h+'</div>';
 }
 // Cambia el estado de compra y sincroniza el paso "Papel" del tablero de seguimiento
 function setPapelEstado(o,est){
@@ -7042,6 +7159,23 @@ function aiMatchPapel(material,gramaje){
   if(g>0){let best=null,bd=1e9;mats.forEach(p=>{const d=Math.abs((+p.gramaje||0)-g);if(d<bd){bd=d;best=p;}});return best?best.codigo:0;}
   return 0;
 }
+// Igual que aiMatchPapel pero eligiendo el FORMATO de pliego de la máquina: SM52 → pliego chico (ej. 47,5×32,5);
+// SM74 → pliego grande (ej. 65×47,5). Mismo material y gramaje; si no hay de ese formato, devuelve el que haya.
+function aiMatchPapelMaq(material,gramaje,maq){
+  const base=aiMatchPapel(material,gramaje);if(!base||!maq)return base;
+  const pp=(S.cotPapeles||[]).filter(p=>p&&p.codigo&&p.activo!==false);
+  const b=pp.find(p=>p.codigo===base);if(!b)return base;
+  const fam=d=>{const m=String(d||'').toLowerCase().match(/ilus|obra|tx|triplex|cart|auto|adhes|kraft|opal|couch|bond/);return m?m[0]:'';};
+  const acab=d=>{const s=String(d||'').toLowerCase();return /mate/.test(s)?'mate':(/bril|bte/.test(s)?'bril':'');};
+  const fb=fam(b.descripcion),ab=acab(b.descripcion);
+  const mismos=pp.filter(p=>+p.gramaje===+b.gramaje&&fam(p.descripcion)===fb&&(!ab||!acab(p.descripcion)||acab(p.descripcion)===ab)&&+p.ancho>0&&+p.alto>0);
+  const fit=(p,m)=>cotPliegoEnMaq([+p.ancho,+p.alto],m);
+  const cands=maq==='SM74'?mismos.filter(p=>fit(p,'SM74')&&!fit(p,'SM52')):mismos.filter(p=>fit(p,maq));
+  if(!cands.length)return base;
+  if(cands.some(p=>p.codigo===base))return base;
+  cands.sort((a,c)=>(+c.ancho*+c.alto)-(+a.ancho*+a.alto)); // el más grande que entra en esa máquina
+  return cands[0].codigo;
+}
 // Matchear los colores sugeridos (ej. "4/4") a un código de impresión
 function aiMatchImp(colores,maquina){
   const imps=(S.cotImpresion||[]).filter(x=>x&&x.codigo);if(!imps.length)return 0;
@@ -7054,6 +7188,7 @@ function aiMatchImp(colores,maquina){
 // Matchear una terminación/proceso a un código (cotOtros), con sinónimos del rubro
 function aiMatchProc(nombre){
   const arr=(S.cotOtros||[]).filter(x=>x&&x.codigo);const n=String(nombre||'').toLowerCase().trim();if(!n)return 0;
+  if(/abroch|acaball|grapa/.test(n)){const a=arr.find(x=>x.activo!==false&&/abroch/i.test(x.concepto||''));if(a)return a.codigo;}
   const syn={'plegado':'doblado','trazado':'doblado','hendido':'doblado','doblez':'doblado','troquel':'troquelado','espiralado':'anillado','pegado':'encolado','abrochado':'encuaderna'};
   const terms=[n,...Object.keys(syn).filter(k=>n.includes(k)).map(k=>syn[k])];
   let best=0,bs=0;
@@ -7960,7 +8095,9 @@ function mVOT(id){
   if(o.material&&(o.material.material||o.material.grs||o.material.pliegos)){
     const m=o.material;
     h+=sec2('Material a cortar','cut');
-    h+=`<div class="kv-grid">${kv2('Proveedor',pNom(parseInt(m.prov))||m.prov)}${kv2('Papelera',m.papelera)}${kv2('Material',m.material)}${kv2('Marca',m.marca)}${kv2('Formato',m.fx&&m.fy?`${m.fx} x ${m.fy} cm`:'')}${kv2('Gramaje',m.grs?m.grs+' grs':'')}${kv2('Hojas',m.hojas)}${kv2('Kg',m.kg)}${kv2('Cortar a',m.cax&&m.cay?`${m.cax} x ${m.cay} cm`:'')}${kv2('Poses',m.poses)}${kv2('Total pliegos',m.pliegos)}</div>`;
+    h+=corteBoxHTML(o);
+    const _ci=corteInfo(o);
+    h+=`<div class="kv-grid">${kv2('Proveedor',pNom(parseInt(m.prov))||m.prov)}${kv2('Papelera',m.papelera)}${kv2('Material',m.material)}${kv2('Marca',m.marca)}${kv2('Gramaje',m.grs?m.grs+' grs':'')}${kv2('Formato de compra',_ci.tieneOrigen?`${_ci.ox} x ${_ci.oy} cm`:(m.fx&&m.fy?`${m.fx} x ${m.fy} cm`:''))}${kv2('Hojas',m.hojas)}${kv2('Kg',m.kg)}${kv2('Poses',m.poses)}${kv2('Total pliegos máquina',m.pliegos)}</div>`;
     if(m.aclaracion)h+=`<div style="margin-top:5px;font-size:11px;color:#a32d2d"><i class="ti ti-alert-triangle"></i> ${m.aclaracion}</div>`;
   }
   // Impresion
