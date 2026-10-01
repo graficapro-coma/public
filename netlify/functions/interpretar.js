@@ -26,7 +26,7 @@ exports.handler = async (event) => {
 
 Reglas:
 - tipoTrabajo: elegí uno de ${JSON.stringify(ctx.tiposTrabajo || [])} (el que mejor encaje). Si ninguno encaja, poné el más parecido.
-- maquina: una de ${JSON.stringify(ctx.maquinas || [])}. Criterio: tiradas chicas o urgentes = Xerox (digital); pliego grande o tiradas grandes = SM74; intermedio = SM52.
+- maquina: una de ${JSON.stringify(ctx.maquinas || [])}. Criterio: tiradas chicas o urgentes = Xerox (digital); pliego grande o tiradas grandes = SM74; intermedio = SM52.${(Array.isArray(ctx.maquinasExtra) && ctx.maquinasExtra.length) ? ' Además hay imprentas/máquinas externas: ' + ctx.maquinasExtra.map(m => String(m.nombre || '') + (m.b && m.a ? ' (pliego hasta ' + m.b + 'x' + m.a + ' cm)' : '')).join(', ') + '; sugerilas cuando el pliego no entra en las propias (ej. pliego 70x100) o la tirada es muy grande. El sistema igual compara el costo en todas y elige la más económica.' : ''}
 - material y gramaje: sugerí lo habitual del rubro (ej.: estuches/tarjetones = Cartulina TX 250/300g; folletos/dípticos = Ilustración 150g; etiquetas = autoadhesivo). Materiales frecuentes: ${JSON.stringify(ctx.materiales || [])}.
 - colores: formato "4/4", "4/1", "4/0", etc.
 - medidaAbierta en cm (la que va a máquina, desplegada). medidaCerrada como texto (folleto "21x30"; bolsa/estuche "alto x ancho x fuelle/prof", ej. "20x20x10").
