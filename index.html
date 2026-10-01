@@ -181,7 +181,7 @@ async function retrySave(k){
 
 async function initFirebase(){
   const {initializeApp} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-  const {getFirestore,doc,getDoc,setDoc,collection,getDocs,deleteDoc,onSnapshot,runTransaction} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  const {getFirestore,doc,getDoc,setDoc,updateDoc,collection,getDocs,deleteDoc,onSnapshot,runTransaction} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   const {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,createUserWithEmailAndPassword} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
@@ -190,6 +190,7 @@ async function initFirebase(){
   window._fsDoc = doc;
   window._fsGet = getDoc;
   window._fsSet = setDoc;
+  window._fsUpdate = updateDoc; // guarda un solo campo (configuración) sin pisar los demás
   window._fsCol = collection;
   window._fsGetDocs = getDocs;
   window._fsDelDoc = deleteDoc;
@@ -252,11 +253,24 @@ async function sv(k,v){
       for(const oldId of Object.keys(cache)){if(!newIds.has(oldId))delete cache[oldId];}
       window._knownIds[k]=newIds;
     }else{
-      const cur=await window._fsGet(window._fsDoc(db,'gp','_config'));
-      const data=cur.exists()?cur.data():{};
       let cleanV=v;try{cleanV=JSON.parse(JSON.stringify(v));}catch(e){}
-      data[k]=cleanV;
-      await window._fsSet(window._fsDoc(db,'gp','_config'),data);
+      if(cleanV===undefined)cleanV=null;
+      const ref=window._fsDoc(db,'gp','_config');
+      if(window._fsUpdate){
+        // Se actualiza SOLO este campo del documento de configuración. Antes se leía el documento entero,
+        // se cambiaba un campo y se reescribía todo: dos guardados casi juntos (ej. stock + movimientos,
+        // o dos usuarios a la vez) se pisaban y uno de los dos cambios se perdía.
+        try{await window._fsUpdate(ref,{[k]:cleanV});}
+        catch(e){
+          if(e&&(e.code==='not-found'||/no document/i.test(e.message||'')))await window._fsSet(ref,{[k]:cleanV},{merge:true}); // primera vez: el documento todavía no existe
+          else throw e;
+        }
+      }else{
+        const cur=await window._fsGet(ref);
+        const data=cur.exists()?cur.data():{};
+        data[k]=cleanV;
+        await window._fsSet(ref,data);
+      }
     }
   }catch(e){
     console.warn('sv error',k,e);
@@ -909,9 +923,9 @@ function cotCostoXMilPapel(p){
 // modo 'hoja'  : u$s por hoja según variante y formato (autoadhesivos).
 // modo 'millar': $ por millar, medida fija, se compra por caja (sobres).
 const COT_PAPEL_CAT_SEED=[
-  {id:'obra',nombre:'Obra',modo:'kg',acabados:[],grupos:[{grs:[70,80,90],usdKg:1.30},{grs:[120,150,180,210],usdKg:1.70}],formatos:[[63,88],[65,95],[72,102],[74,110],[82,118]]},
-  {id:'ilus',nombre:'Ilustración',modo:'kg',acabados:['Brillante','Mate'],grupos:[{grs:[90,115],usdKg:1.35},{grs:[130,150,170,200,250,300,350],usdKg:1.30}],formatos:[[63,88],[65,95],[72,102],[74,110],[82,118]]},
-  {id:'triplex',nombre:'Cartulina Triplex',modo:'kg',acabados:[],grupos:[{grs:[215,250,270,300,325,350],usdKg:1.35}],formatos:[[66,100],[72,102],[76,112],[82,112]]},
+  {id:'obra',nombre:'Obra',modo:'kg',acabados:[],grupos:[{grs:[70,80,90],usdKg:1.30},{grs:[120,150,180,210],usdKg:1.70}],formatos:[{w:63,h:88},{w:65,h:95},{w:72,h:102},{w:74,h:110},{w:82,h:118}]},
+  {id:'ilus',nombre:'Ilustración',modo:'kg',acabados:['Brillante','Mate'],grupos:[{grs:[90,115],usdKg:1.35},{grs:[130,150,170,200,250,300,350],usdKg:1.30}],formatos:[{w:63,h:88},{w:65,h:95},{w:72,h:102},{w:74,h:110},{w:82,h:118}]},
+  {id:'triplex',nombre:'Cartulina Triplex',modo:'kg',acabados:[],grupos:[{grs:[215,250,270,300,325,350],usdKg:1.35}],formatos:[{w:66,h:100},{w:72,h:102},{w:76,h:112},{w:82,h:112}]},
   {id:'auto',nombre:'Autoadhesivo',modo:'hoja',variantes:[
     {nombre:'Papel autoadhesivo',marca:'',formatos:[{w:50,h:65,usd:0.19},{w:50,h:70,usd:0.205},{w:70,h:100,usd:0.41}]},
     {nombre:'OPP mate autoadhesivo',marca:'Codibla',formatos:[{w:50,h:65,usd:0.50},{w:70,h:100,usd:0.92}]},
@@ -930,14 +944,15 @@ function cotPapelCat(){return (Array.isArray(S.cotPapelCat)&&S.cotPapelCat.lengt
 function _catFam(id){return cotPapelCat().find(f=>f&&f.id===id)||null;}
 function _catGrupo(fam,grs){return ((fam&&fam.grupos)||[]).find(g=>(g.grs||[]).map(Number).includes(+grs))||null;}
 function _catGramajes(fam){const s=new Set();((fam&&fam.grupos)||[]).forEach(g=>(g.grs||[]).forEach(x=>{if(+x>0)s.add(+x);}));return [...s].sort((a,b)=>a-b);}
+// Formato de compra → [ancho, alto]. Se guarda como {w,h}: Firestore no acepta listas dentro de listas.
+function _fmtWH(f){return Array.isArray(f)?[+f[0]||0,+f[1]||0]:[+(f&&f.w)||0,+(f&&f.h)||0];}
 function _catKey(w,h){return cotFmtDec(+w,1)+'x'+cotFmtDec(+h,1);}
-// Cortes posibles de un pliego de compra W×H en partes iguales (hasta 4 por lado, máx. 8 pliegos).
+// Cortes posibles de un pliego de compra W×H en partes iguales (de 1 a 4 partes por lado: 2×2, 3×3, 4×2, 4×4…).
 // Guillotina: el largo de cada corte no puede pasar su ancho (115 cm). Dividir W en i partes = cortes de largo H;
 // dividir H en j partes = cortes de largo W. Si un orden no se puede, se prueba el otro (ej. 82×118: primero el lado de 118).
 function _catCortes(W,H){
   const G=+cotCfg().guillotinaCm||0,t=0.01,out=[];
   for(let i=1;i<=4;i++)for(let j=1;j<=4;j++){
-    if(i*j>8)continue;
     let nota='';
     if(G>0){
       const okA=(i===1||H<=G+t)&&(j===1||W/i<=G+t); // primero se divide el lado W
@@ -957,7 +972,7 @@ function _catOrigenes(s){
     const grs=+s.grs||0;if(!grs)return [];
     const g=_catGrupo(fam,grs);
     const usdKg=(+s.usdKg>0)?+s.usdKg:(g?+g.usdKg||0:0);
-    return (fam.formatos||[]).filter(f=>+f[0]>0&&+f[1]>0).map(f=>({key:_catKey(f[0],f[1]),w:+f[0],h:+f[1],ars:(f[0]*f[1]*grs/1e7)*usdKg*dol,usdKg,usdBase:g?+g.usdKg||0:0}));
+    return (fam.formatos||[]).map(_fmtWH).filter(f=>f[0]>0&&f[1]>0).map(f=>({key:_catKey(f[0],f[1]),w:f[0],h:f[1],ars:(f[0]*f[1]*grs/1e7)*usdKg*dol,usdKg,usdBase:g?+g.usdKg||0:0}));
   }
   const v=(fam.variantes||[])[+s.var||0];if(!v)return [];
   if(fam.modo==='hoja'){
@@ -987,9 +1002,22 @@ function cotPapelOpciones(p,maqForzada){
       out.push({...o,i:ct.i,j:ct.j,cortes:ct.c,sw:ct.w,sh:ct.h,maq:m,poses,uo,cu:uo?o.ars/uo:null,cutKey:ct.i+'x'+ct.j,notaCorte:ct.nota||''});
     }));
   });
-  // Mejor primero: menor costo de papel por unidad; empate → menos cortes, pliego más grande
+  // Costo por unidad = papel + impresión estimada (un pliego chico rinde menos poses → más impresos y chapas).
+  // Impresión por pliego: el código de la pieza si es de esa máquina; si no, la mediana de los códigos de esa máquina.
+  const _impPP={};
+  const impPP=m=>{
+    if(_impPP[m]!=null)return _impPP[m];
+    const dig=/xerox|digital/i.test(m);
+    const val=x=>dig?(+x.primerMillar||0)*cotDolarEfectivo():(+x.millarSiguiente||0)/1000;
+    const propio=(S.cotImpresion||[]).find(x=>x&&x.codigo===p.impCod&&x.maquina===m);
+    let v=propio?val(propio):0;
+    if(!v){const L=(S.cotImpresion||[]).filter(x=>x&&x.activo!==false&&x.maquina===m).map(val).filter(x=>x>0).sort((a,b)=>a-b);v=L.length?L[Math.floor(L.length/2)]:0;}
+    return (_impPP[m]=v);
+  };
+  out.forEach(x=>{x.impU=(x.poses>0)?impPP(x.maq)/x.poses:0;x.cuTot=x.cu!=null?x.cu+x.impU:null;});
+  // Mejor primero: menor costo total por unidad (papel + impresión); empate → menos cortes, pliego más grande
   out.sort((a,b)=>{
-    if(a.cu!=null&&b.cu!=null&&Math.abs(a.cu-b.cu)>Math.max(a.cu,b.cu)*0.005)return a.cu-b.cu;
+    if(a.cuTot!=null&&b.cuTot!=null&&Math.abs(a.cuTot-b.cuTot)>Math.max(a.cuTot,b.cuTot)*0.005)return a.cuTot-b.cuTot;
     if(a.cu==null&&b.cu==null&&Math.abs(a.sw*a.sh-b.sw*b.sh)>1)return b.sw*b.sh-a.sw*a.sh;
     if(a.cortes!==b.cortes)return a.cortes-b.cortes;
     return b.sw*b.sh-a.sw*a.sh;
@@ -1194,9 +1222,14 @@ function costosAumentoMasivo(){
   setTimeout(()=>alert(n+' papeles actualizados ('+(inc>0?'+':'')+inc+' USD/kg). Los de precio fijo no se tocaron.'),100);
 }
 // ---- Edición del catálogo de papeles (Tablas de costos → Catálogo de papeles) ----
-function _catMut(){if(!(Array.isArray(S.cotPapelCat)&&S.cotPapelCat.length))S.cotPapelCat=JSON.parse(JSON.stringify(COT_PAPEL_CAT_SEED));return S.cotPapelCat;}
+function _catMut(){
+  if(!(Array.isArray(S.cotPapelCat)&&S.cotPapelCat.length))S.cotPapelCat=JSON.parse(JSON.stringify(COT_PAPEL_CAT_SEED));
+  // Formatos viejos [ancho,alto] → {w,h} (Firestore no guarda listas dentro de listas)
+  S.cotPapelCat.forEach(f=>{if(f&&Array.isArray(f.formatos))f.formatos=f.formatos.map(x=>Array.isArray(x)?{w:+x[0]||0,h:+x[1]||0}:x);});
+  return S.cotPapelCat;
+}
 function _catSave(re){clearTimeout(window._catSaveT);window._catSaveT=setTimeout(()=>costosSave('cotPapelCat'),500);if(re)render();}
-function _catParseFmts(t){const out=[];String(t||'').replace(/(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)/gi,(m0,a,b)=>{const A=cotNumDec(a),B=cotNumDec(b);if(A>0&&B>0)out.push([A,B]);return m0;});return out;}
+function _catParseFmts(t){const out=[];String(t||'').replace(/(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)/gi,(m0,a,b)=>{const A=cotNumDec(a),B=cotNumDec(b);if(A>0&&B>0)out.push({w:A,h:B});return m0;});return out;}
 function catEd(fi,campo,val,a,b){
   const f=_catMut()[fi];if(!f)return;
   const txt=v=>String(v==null?'':v).replace(/[<>"'`\\]/g,'').trim().slice(0,60);
@@ -1205,11 +1238,11 @@ function catEd(fi,campo,val,a,b){
   else if(campo==='acabados'){f.acabados=String(val||'').split(/[,;\/]+/).map(x=>txt(x)).filter(Boolean);}
   else if(campo==='formatos'){f.formatos=_catParseFmts(val);re=true;}
   else if(campo==='gGrs'){if(f.grupos[a])f.grupos[a].grs=String(val||'').split(/[^\d]+/).map(Number).filter(x=>x>0);re=true;}
-  else if(campo==='gUsd'){if(f.grupos[a])f.grupos[a].usdKg=cotNumDec(val)||0;}
+  else if(campo==='gUsd'){if(f.grupos[a])f.grupos[a].usdKg=cotNumDec(val)||0;re=true;}
   else if(campo==='vNombre'){if(f.variantes[a])f.variantes[a].nombre=txt(val);}
   else if(campo==='vMarca'){if(f.variantes[a])f.variantes[a].marca=txt(val);}
   else if(['vW','vH','vCaja','vArs'].includes(campo)){const v=f.variantes[a];if(v)v[{vW:'w',vH:'h',vCaja:'caja',vArs:'ars'}[campo]]=((campo==='vArs'||campo==='vCaja')?cotNum(val):cotNumDec(val))||0;}
-  else if(['vfW','vfH','vfUsd'].includes(campo)){const v=f.variantes[a];const ff=v&&v.formatos&&v.formatos[b];if(ff)ff[{vfW:'w',vfH:'h',vfUsd:'usd'}[campo]]=cotNumDec(val)||0;}
+  else if(['vfW','vfH','vfUsd'].includes(campo)){const v=f.variantes[a];const ff=v&&v.formatos&&v.formatos[b];if(ff)ff[{vfW:'w',vfH:'h',vfUsd:'usd'}[campo]]=cotNumDec(val)||0;re=true;}
   _catSave(re);
 }
 function catAdd(fi,tipo,a){
@@ -1274,11 +1307,11 @@ function rCostos(){
         <button onclick="catFamDel(${fi})" title="Eliminar familia" style="margin-left:auto;border:none;background:none;color:#a32d2d;cursor:pointer;font-size:14px"><i class="ti ti-trash"></i></button></div>`;
       if(f.modo==='kg'){
         h+=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
-          <div><div style="font-size:10px;color:#888;font-weight:700">FORMATOS DE COMPRA (cm)</div>${inpTxt((f.formatos||[]).map(x=>cotFmtDec(x[0],1)+'x'+cotFmtDec(x[1],1)).join(', '),`catEd(${fi},'formatos',this.value)`,'380px')}<div style="font-size:9px;color:#999">separados por coma · ej: 63x88, 65x95, 72x102</div></div>
+          <div><div style="font-size:10px;color:#888;font-weight:700">FORMATOS DE COMPRA (cm)</div>${inpTxt((f.formatos||[]).map(_fmtWH).map(x=>cotFmtDec(x[0],1)+'x'+cotFmtDec(x[1],1)).join(', '),`catEd(${fi},'formatos',this.value)`,'380px')}<div style="font-size:9px;color:#999">separados por coma · ej: 63x88, 65x95, 72x102</div></div>
           <div><div style="font-size:10px;color:#888;font-weight:700">ACABADOS</div>${inpTxt((f.acabados||[]).join(', '),`catEd(${fi},'acabados',this.value)`,'180px')}<div style="font-size:9px;color:#999">ej: Brillante, Mate (vacío = sin acabado)</div></div></div>
-        <table style="border-collapse:collapse;font-size:12px"><tr>${th('Gramajes (g)')}${th('u$s / kg')}${th('$ pliego '+((f.formatos||[])[0]?cotFmtDec(f.formatos[0][0],1)+'×'+cotFmtDec(f.formatos[0][1],1):''))}<th></th></tr>`;
+        <table style="border-collapse:collapse;font-size:12px"><tr>${th('Gramajes (g)')}${th('u$s / kg')}${th('$ pliego '+((f.formatos||[])[0]?cotFmtDec(_fmtWH(f.formatos[0])[0],1)+'×'+cotFmtDec(_fmtWH(f.formatos[0])[1],1):''))}<th></th></tr>`;
         (f.grupos||[]).forEach((g,gi)=>{
-          const f0=(f.formatos||[])[0];const g0=(g.grs||[])[0]||0;
+          const f0=(f.formatos||[])[0]?_fmtWH(f.formatos[0]):null;const g0=(g.grs||[])[0]||0;
           const ej=(f0&&g0)?`$ ${cotFmt(f0[0]*f0[1]*g0/1e7*(+g.usdKg||0)*dol)} <span style="color:#aaa">(${g0} g)</span>`:'';
           h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.06)"><td style="padding:4px 6px">${inpTxt((g.grs||[]).join(', '),`catEd(${fi},'gGrs',this.value,${gi})`,'260px')}</td><td style="padding:4px 6px">${inp(g.usdKg,`catEd(${fi},'gUsd',this.value,${gi})`,'60px')}</td><td style="padding:4px 6px;font-size:11px;color:#555">${ej}</td><td><button onclick="catDel(${fi},'grupo',${gi})" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>`;
         });
@@ -1347,7 +1380,7 @@ function rCostos(){
       <button onclick="cotMaqNueva()" style="font-size:11px;padding:3px 8px"><i class="ti ti-plus"></i> Nueva máquina</button>
     </div>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
-    <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th>Cód</th><th>Máquina</th><th>Descripción</th><th style="text-align:right">1er millar</th><th style="text-align:right">Millar sig.</th><th style="text-align:right">Chapas</th><th>Act</th><th></th></tr>`;
+    <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th>Cód</th><th>Máquina</th><th>Descripción</th><th title="Precio de la postura: incluye el primer millar de pliegos">1er millar $</th><th title="Precio de cada millar adicional después del primero">Millar sig. $</th><th title="Cantidad de chapas que lleva esta impresión">Chapas</th><th>Act</th><th></th></tr>`;
     arr.forEach((p,i)=>{
       h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.06);${p.activo?'':'opacity:.45'}">
       <td style="font-weight:600;color:#185fa5">${inp(p.codigo,`costosEdit('cotImpresion',${i},'codigo',this.value)`,'42px')}</td>
@@ -2015,7 +2048,9 @@ function cotCalc(w,cantOverride){
   const cfg=cotCfg();
   const cant=(cantOverride!=null?cantOverride:w.cantidad)||0;
   const tercOn=!!(w.terc&&w.terc.on);
-  const piezas=tercOn?[]:cotPiezasDe(w); // tercerizado: no se cuenta la producción propia
+  // Configuración propia de ESTA cantidad (ej. 10.000 en SM74 con otro margen); si no tiene, usa la de la base
+  const pcq=_cotPorCant(w,cantOverride);
+  const piezas=tercOn?[]:((pcq&&Array.isArray(pcq.piezas)&&pcq.piezas.length)?pcq.piezas:(w._piezasBase||cotPiezasDe(w))); // tercerizado: no se cuenta la producción propia
   let papelCosto=0,impCosto=0,chapasCosto=0,lamCosto=0,pesoKg=0,procPzTotal=0;
   let pliegosNetosT=0,pliegosTotT=0,millaresT=0;
   const piezasDet=piezas.map((p,k)=>{
@@ -2128,7 +2163,7 @@ function cotCalc(w,cantOverride){
   }
   const tercCosto=tercOn?_tercCosto(w,cant):0;
   const total=papelCosto+impCosto+chapasCosto+lamCosto+otrosCosto+manCosto+procPzTotal+tercCosto;
-  const mg=(w.margenPct==null?cfg.margenPct:w.margenPct)/100;
+  const mg=((pcq&&pcq.margenPct!=null&&pcq.margenPct!=='')?+pcq.margenPct:(w.margenPct==null?cfg.margenPct:w.margenPct))/100;
   const venta=mg<1?total/(1-mg):total;
   return {cant,piezasDet,tercOn,tercCosto,tercProv:tercOn?((w.terc&&w.terc.prov)||''):'',
     pliegosNetos:pliegosNetosT,pliegosTot:pliegosTotT,millares:millaresT,
@@ -2206,7 +2241,59 @@ function _cotCantVista(){
   if(!cv||cv===(+cotW.cantidad||0))return null;
   return (cotW.variantes||[]).some(v=>+v.cantidad===cv)?cv:null;
 }
-function cotVerCant(c){window._cotVistaCant=(+c||null);cotRerender();}
+// ---- Configuración POR CANTIDAD: cada cantidad (que no sea la base) puede tener su margen y sus propias piezas
+// (máquina, papel, impresión, poses). Se guarda en w.porCant["10000"] = {margenPct, piezas}.
+function _cotPorCant(w,cant){
+  if(!w||cant==null||!w.porCant)return null;
+  if(+cant===(+w.cantidad||0))return null; // la base usa la configuración general
+  return w.porCant[String(Math.round(+cant))]||null;
+}
+// Piezas de un costeo para una cantidad: las propias de esa cantidad o las de la base
+function cotPiezasPara(co,cant){if(!co)return [];const pc=_cotPorCant(co,cant);return (pc&&Array.isArray(pc.piezas)&&pc.piezas.length)?pc.piezas:cotPiezasDe(co);}
+// Mientras se ve una cantidad con piezas propias, cotW.piezas apunta a ESAS piezas (todo el editor las modifica)
+// y las de la base quedan en cotW._piezasBase. Antes de guardar o cambiar de pestaña se vuelve a la base.
+function _cotUnswap(){if(cotW&&cotW._piezasBase){cotW.piezas=cotW._piezasBase;delete cotW._piezasBase;}}
+function _cotSwapA(c){
+  _cotUnswap();
+  const pc=_cotPorCant(cotW,c);
+  if(pc&&Array.isArray(pc.piezas)&&pc.piezas.length){cotW._piezasBase=cotPiezasDe(cotW);cotW.piezas=pc.piezas;}
+}
+function cotVerCant(c){
+  window._cotVistaCant=(+c||null);
+  if(cotW)_cotSwapA(_cotCantVista());
+  cotRerender();
+}
+// Margen propio de la cantidad que se está viendo ('' = igual que la base)
+function cotCantMargen(val){
+  const c=_cotCantVista();if(!cotW||!c)return;
+  if(!cotW.porCant)cotW.porCant={};
+  const k=String(c),pc=cotW.porCant[k]||(cotW.porCant[k]={});
+  pc.margenPct=(String(val).trim()==='')?null:cotNumDec(val);
+  if(pc.margenPct==null&&!(pc.piezas&&pc.piezas.length))delete cotW.porCant[k];
+  cotRerender();
+}
+// Piezas propias para la cantidad que se está viendo (copia de la base, después se cambian a gusto) o volver a la base
+function cotCantPropia(on){
+  const c=_cotCantVista();if(!cotW||!c)return;
+  if(!cotW.porCant)cotW.porCant={};
+  const k=String(c);
+  _cotUnswap();
+  if(on){
+    const pc=cotW.porCant[k]||(cotW.porCant[k]={});
+    pc.piezas=JSON.parse(JSON.stringify(cotPiezasDe(cotW)));
+  }else if(cotW.porCant[k]){
+    if(!confirm('¿Volver a usar la configuración de la base para '+cotFmt(c)+' u.? Se pierden los cambios de esta cantidad.'))return _cotSwapA(c);
+    delete cotW.porCant[k].piezas;
+    if(cotW.porCant[k].margenPct==null)delete cotW.porCant[k];
+  }
+  _cotSwapA(c);cotRerender();
+}
+// Si se cambia el número de una cantidad, su configuración propia la sigue
+function _cotPorCantRenombrar(antes,despues){
+  if(!cotW||!cotW.porCant||!antes||antes===despues)return;
+  const a=String(Math.round(antes)),d=String(Math.round(despues));
+  if(cotW.porCant[a]){if(despues>0)cotW.porCant[d]=cotW.porCant[a];delete cotW.porCant[a];}
+}
 function cotCantPaso(d){
   const lista=_cotCantidades();if(lista.length<2)return;
   const cur=_cotCantVista()||(+cotW.cantidad||0);
@@ -2521,6 +2608,7 @@ function cotPzEd(k,campo,val){
       p.chapasCant=imp.chapas||0;
       if(imp.maquina==='SM52')p.chapasCod=2;
       if(imp.maquina==='SM74')p.chapasCod=3;
+      if(cotEsMaqExtra(imp.maquina))p.chapasCod=p.chapasCant?aiMatchChapa(imp.maquina):0; // máquina agregada (ej. DELIGRAF): su chapa de la tabla
       if(imp.maquina==='Xerox'){
         // Elegir un código digital: fija la máquina en Xerox, saca chapas y demasía 5
         const eraXerox=p.maquina==='Xerox';
@@ -2595,6 +2683,7 @@ function cotPapSelOpcion(k,fmt,cut,maq){
     if(imp&&imp.maquina!==maq){p.impCod=0;p.chapasCant=0;}
     if(maq==='SM52')p.chapasCod=2;
     if(maq==='SM74')p.chapasCod=3;
+    if(cotEsMaqExtra(maq))p.chapasCod=aiMatchChapa(maq);
   }
   _cotPapPost(k);
 }
@@ -2632,6 +2721,13 @@ function cotPapelCatHTML(k,p){
   if(fam){
     const ors=_catOrigenes(s);
     if(fam.modo!=='millar'&&ors.length)h+=`<div>${lbl('Formato de compra')}<br><select onchange="cotPapSelEd(${k},'fmt',this.value)" style="${st};${s.fmt?'border-color:#7b3fa0;color:#7b3fa0;font-weight:700':''}"><option value="">Auto (el más conveniente)</option>${ors.map(o=>`<option value="${cotEsc(o.key)}" ${s.fmt===o.key?'selected':''}>${cotEsc(o.key.replace('x','×'))}</option>`).join('')}</select></div>`;
+    // Corte: todas las formas de dividir ESTE formato que entran en la máquina (verticales × horizontales)
+    if(fam.modo!=='millar'&&r){
+      const o=r.opcion,vistos=new Set();
+      const cs=r.opciones.filter(x=>x.key===o.key&&!vistos.has(x.cutKey+'|'+x.maq)&&vistos.add(x.cutKey+'|'+x.maq));
+      const lab=x=>x.cortes===1?`Entero → ${f1(x.sw)}×${f1(x.sh)}`:`÷${x.cortes} (${x.i}×${x.j}) → ${f1(x.sw)}×${f1(x.sh)}`;
+      h+=`<div>${lbl('Corte')}<br><select onchange="const v=this.value.split('|');cotPapSelOpcion(${k},'${cotEsc(o.key)}',v[0],v[1])" title="Cómo se divide el pliego de compra: partes a lo ancho × partes a lo alto" style="${st};${s.cut?'border-color:#7b3fa0;color:#7b3fa0;font-weight:700':''}">${cs.map(x=>`<option value="${x.cutKey}|${cotEsc(x.maq)}" ${(x.cutKey===o.cutKey&&x.maq===o.maq)?'selected':''}>${lab(x)} · ${cotEsc(x.maq)}${x.poses?' · '+x.poses+'p':''}</option>`).join('')}</select></div>`;
+    }
     // Precio genérico del catálogo, editable para ESTA cotización (otra papelera / marca)
     const pin=(v,base,campo,pre,w)=>{const ov=+v>0&&Math.abs(+v-(+base||0))>1e-9;return `<div>${lbl(pre)}<br><input value="${(+v>0?cotFmtDec(+v,3):cotFmtDec(+base||0,3))}" onchange="cotPapSelEd(${k},'${campo}',this.value)" title="Precio del catálogo: ${cotFmtDec(+base||0,3)}. Cambialo si esta papelera/marca cobra distinto (solo para esta cotización)." style="width:${w};padding:5px 6px;border:1.5px solid ${ov?'#c05600':'rgba(0,0,0,.15)'};border-radius:6px;font-size:12px;text-align:right;${ov?'color:#c05600;font-weight:700':''}"></div>`;};
     if(fam.modo==='kg'){const g=_catGrupo(fam,s.grs);h+=pin(s.usdKg,g?g.usdKg:0,'usdKg','u$s / kg','62px');}
@@ -2641,6 +2737,8 @@ function cotPapelCatHTML(k,p){
     h+=`<div>${lbl('Marca')}<br><input value="${cotEsc(s.marca||'')}" onchange="cotPapSelEd(${k},'marca',this.value)" placeholder="${cotEsc((r&&r.marca)||'cualquiera')}" style="width:90px;${st}"></div>`;
     h+=`<div>${lbl('Papelera')}<br><input value="${cotEsc(s.papelera||'')}" onchange="cotPapSelEd(${k},'papelera',this.value)" list="dl-papeleras-cot" placeholder="—" style="width:110px;${st}"><datalist id="dl-papeleras-cot">${pls.map(x=>`<option value="${cotEsc(x)}">`).join('')}</datalist></div>`;
   }
+  // Personalizado (P) y la tabla vieja de códigos, al final de la fila
+  h+=`<div style="display:flex;gap:4px;align-items:flex-end"><button onclick="cotTogglePers(${k})" title="Papel personalizado: gramaje, medidas y USD/kg a mano" style="font-size:11px;font-weight:800;padding:5px 10px;border-radius:6px;border:1.5px solid #b89b3e;background:#fdf9ee;color:#8a7a40">P</button><button onclick="cotPapModo(${k},'cod')" title="Elegir un código de la tabla de Papeles (lista anterior)" style="font-size:10px;padding:5px 8px;color:#888">Códigos (tabla)</button></div>`;
   h+=`</div>`;
   if(!fam)return h;
   if(!r){
@@ -2649,7 +2747,8 @@ function cotPapelCatHTML(k,p){
     return h+`<div style="margin-top:5px;font-size:11px;color:#a35b00;font-weight:600"><i class="ti ti-alert-triangle"></i> ${falta}</div>`;
   }
   const o=r.opcion,best=r.opciones[0];
-  const pct=x=>(x.cu!=null&&best.cu)?Math.round((x.cu/best.cu-1)*100):null;
+  // % = cuánto más (o menos) cuesta por unidad esa opción, papel + impresión estimada, contra la mejor
+  const pct=x=>(x.cuTot!=null&&best.cuTot)?Math.round((x.cuTot/best.cuTot-1)*100):null;
   h+=`<div style="margin-top:6px;font-size:11px;background:#f3f8f1;border:1px solid #cfe3c8;border-radius:8px;padding:6px 9px;color:#1e293b;line-height:1.6">
     <i class="ti ti-shopping-cart" style="color:#7b3fa0"></i> Compra <b>${f1(o.w)}×${f1(o.h)}</b>${o.cortes>1?` → guillotina ÷${o.cortes} = <b>${f1(o.sw)}×${f1(o.sh)}</b>${o.notaCorte?` <span style="color:#a35b00">(${cotEsc(o.notaCorte)})</span>`:''}`:(o.sinCorte?'':' (entero, sin corte)')} · <b>${cotEsc(o.maq)}</b>${o.poses?` · ${o.poses} poses x pliego · ${cotFmt(o.uo)} u. por pliego de compra`:''}
     · $ ${cotFmt(o.ars)} c/u${o.cu!=null?` · <b>$ ${cotFmtDec(o.cu,2)}</b> de papel x unidad`:''}${o.caja?` · caja x ${cotFmt(o.caja)}`:''}
@@ -2657,7 +2756,7 @@ function cotPapelCatHTML(k,p){
     ${(fam.acabados||[]).length&&!s.acabado?`<div style="color:#a35b00;font-weight:700"><i class="ti ti-alert-triangle"></i> Indicá ${fam.acabados.join(' o ')}: queda en la OT para pedir el papel correcto.</div>`:''}
   </div>`;
   const alts=r.opciones.filter(x=>!(x.key===o.key&&x.cutKey===o.cutKey&&x.maq===o.maq)).slice(0,6);
-  if(alts.length&&fam.modo!=='millar')h+=`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;align-items:center"><span style="font-size:9px;color:#888;font-weight:700">OTRAS OPCIONES:</span>${alts.map(x=>{const pc=pct(x);return `<button onclick="cotPapSelOpcion(${k},'${cotEsc(x.key)}','${x.cutKey}','${cotEsc(x.maq)}')" title="Usar esta opción" style="font-size:10px;padding:2px 7px;border-radius:6px;border:1px solid rgba(0,0,0,.15);background:#fff;cursor:pointer">${cotEsc(x.key.replace('x','×'))}${x.cortes>1?' ÷'+x.cortes+' → '+f1(x.sw)+'×'+f1(x.sh):''} · ${cotEsc(x.maq)}${x.poses?' · '+x.poses+'p':''}${pc!=null?` <b style="color:${pc>0?'#a32d2d':'#1a7f37'}">${pc>0?'+':''}${pc}%</b>`:''}</button>`;}).join('')}</div>`;
+  if(alts.length&&fam.modo!=='millar')h+=`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;align-items:center"><span style="font-size:9px;color:#888;font-weight:700" title="El % es cuánto más cuesta cada opción por unidad (papel + impresión estimada) comparada con la más conveniente">OTRAS OPCIONES (% vs la mejor):</span>${alts.map(x=>{const pc=pct(x);return `<button onclick="cotPapSelOpcion(${k},'${cotEsc(x.key)}','${x.cutKey}','${cotEsc(x.maq)}')" title="Usar esta opción" style="font-size:10px;padding:2px 7px;border-radius:6px;border:1px solid rgba(0,0,0,.15);background:#fff;cursor:pointer">${cotEsc(x.key.replace('x','×'))}${x.cortes>1?' ÷'+x.cortes+' → '+f1(x.sw)+'×'+f1(x.sh):''} · ${cotEsc(x.maq)}${x.poses?' · '+x.poses+'p':''}${pc!=null?` <b style="color:${pc>0?'#a32d2d':'#1a7f37'}">${pc>0?'+':''}${pc}%</b>`:''}</button>`;}).join('')}</div>`;
   return h;
 }
 function cotPapelCustomEd(k,campo,val){
@@ -2717,6 +2816,7 @@ function cotPzMaq(k,m){
   // Chapas por defecto de la máquina
   if(p.maquina==='SM52')p.chapasCod=2;
   if(p.maquina==='SM74')p.chapasCod=3;
+  if(cotEsMaqExtra(p.maquina))p.chapasCod=aiMatchChapa(p.maquina); // máquina agregada (ej. DELIGRAF): la chapa que la nombra en Chapas CTP
   if(p.maquina==='Xerox'){p.chapasCod=0;p.chapasCant=0;p.demasia=5;} // digital: 5 pliegos, sale bien de la 1ª hoja
   else if(p.demasia===5)p.demasia=cotCfg().demasia; // dejó Xerox: vuelve la demasía offset
   if(p._pag&&p.maquina&&p.maquina!=='Xerox'&&cotW.paginado)cotPagAplicar(true); // pieza del paginado: recompone impresión y chapas para la máquina nueva
@@ -2837,14 +2937,23 @@ function cotVarAdd(){
 }
 function cotVarEd(i,val){
   if(!cotW.variantes[i])return;
+  const antes=+cotW.variantes[i].cantidad||0;
   cotW.variantes[i].cantidad=cotNum(val);
+  _cotPorCantRenombrar(antes,cotW.variantes[i].cantidad); // su margen / piezas propias siguen a la cantidad
+  if(+window._cotVistaCant===antes)window._cotVistaCant=cotW.variantes[i].cantidad||null;
   cotRerender(); // redibuja para que las pestañas de cantidad de arriba incluyan la nueva
 }
-function cotVarDel(i){cotW.variantes.splice(i,1);cotRerender();}
+function cotVarDel(i){
+  const c=+((cotW.variantes[i]||{}).cantidad)||0;
+  if(+window._cotVistaCant===c){_cotUnswap();window._cotVistaCant=null;}
+  if(c&&cotW.porCant)delete cotW.porCant[String(Math.round(c))];
+  cotW.variantes.splice(i,1);cotRerender();
+}
 // ---- Guardar / cargar ----
 async function cotGuardar(){
   if(!cotW)return;
   if(!cotW.nombre&&!cotW.descripcion){alert('Poné al menos el nombre del trabajo antes de guardar.');return;}
+  _cotUnswap();window._cotVistaCant=null; // se guarda con las piezas de la base en su lugar
   cotW.piezas=cotPiezasDe(cotW);
   const r=cotCalc(cotW);
   cotW.calc={total:Math.round(r.total),venta:Math.round(r.venta),unitario:Math.round(r.unitario*100)/100,pesoKg:Math.round(r.pesoKg*10)/10,dolarEfectivo:Math.round(cotDolarEfectivo()*100)/100,guardado:new Date().toISOString()};
@@ -2864,7 +2973,9 @@ async function cotGuardar(){
 function cotCargar(id){
   const t=(S.cotTrabajos||[]).find(x=>x.id===id);
   if(!t)return;
+  window._cotVistaCant=null; // se abre viendo la base
   cotW=JSON.parse(JSON.stringify(t));
+  delete cotW._piezasBase;
   cotW.piezas=cotPiezasDe(cotW);
   if(!cotW.otros)cotW.otros=[];
   if(!cotW.manuales)cotW.manuales=[];
@@ -3079,6 +3190,21 @@ function cotDesdeItem(ii){
         try{cotAutoPoses(0);}catch(e){}
         // El laminado debe coincidir con el pliego de impresión: ajustar a la variante del mismo material con esa medida
         try{cotLamAutoMatch(0);}catch(e){}
+        // Cada cantidad extra: ¿conviene otra máquina? (ej. 1.000 en SM52 pero 10.000 en SM74) → configuración propia de esa cantidad
+        try{
+          const qBase=+cotW.cantidad||0;
+          (cotW.variantes||[]).map(v=>+v.cantidad||0).filter(q=>q>0&&q!==qBase).forEach(q=>{
+            const copia=JSON.parse(JSON.stringify(cotW));copia.cantidad=q;copia.variantes=[];copia.porCant=null;
+            const oq=aiCostearOptimo(copia,s.colores,s.material,s.gramaje);
+            if(!oq||oq.maquina===pz.maquina)return;
+            const pzs=JSON.parse(JSON.stringify(cotPiezasDe(cotW)));
+            _aiAplicarMaq(pzs[0],oq,s.colores);
+            const _orig=cotW.piezas;cotW.piezas=pzs;try{cotLamAutoMatch(0);}catch(e){}cotW.piezas=_orig; // laminado a la medida del pliego nuevo
+            if(!cotW.porCant)cotW.porCant={};
+            cotW.porCant[String(Math.round(q))]={piezas:pzs};
+            cotW._aiPorCant=(cotW._aiPorCant||[]).concat([cotFmt(q)+' u. → '+oq.maquina]);
+          });
+        }catch(e){}
       }
       cotW._aiFaltantes=faltan;
     }
@@ -3101,7 +3227,7 @@ function cotEmbedRender(){
         <button class="bp" onclick="cotEmbedAplicar()"><i class="ti ti-check"></i> Aplicar a la cotización</button>
       </div></div>
     ${(cotW&&cotW._aiFaltantes&&cotW._aiFaltantes.length)?`<div style="background:#fcebeb;border:1px solid #f7c1c1;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#791f1f"><i class="ti ti-alert-triangle"></i> <b>Revisá antes de aplicar</b> — la IA no pudo completar automáticamente: ${cotW._aiFaltantes.map(f=>'<span style="background:#fff;border:1px solid #f7c1c1;border-radius:5px;padding:1px 6px;margin:1px;display:inline-block">'+f+'</span>').join(' ')}</div>`:''}
-    ${(cotW&&cotW._aiFaltantes)?`<div style="font-size:11px;color:#1a7f37;margin-bottom:8px"><i class="ti ti-sparkles"></i> Costeo precargado por IA (máquina más económica elegida automáticamente). Revisá y ajustá.</div>`:''}
+    ${(cotW&&cotW._aiFaltantes)?`<div style="font-size:11px;color:#1a7f37;margin-bottom:8px"><i class="ti ti-sparkles"></i> Costeo precargado por IA (máquina más económica elegida automáticamente). Revisá y ajustá.${(cotW._aiPorCant&&cotW._aiPorCant.length)?` <b style="color:#c05600">Para otras cantidades conviene otra máquina: ${cotW._aiPorCant.map(cotEsc).join(' · ')}</b> (pestaña de esa cantidad, arriba).`:''}</div>`:''}
     <div id="cot-embed-body">${rCotizador()}</div></div>`;
 }
 function cotEmbedAplicar(){
@@ -3109,6 +3235,7 @@ function cotEmbedAplicar(){
   const item=_itemsState()[ctx.ii];
   if(!item){cotEmbedCerrar();return;}
   if(!cotW.cantidad){alert('Poné la cantidad real antes de aplicar.');return;}
+  _cotUnswap(); // piezas de la base en su lugar (las de cada cantidad quedan en porCant)
   cotW.piezas=cotPiezasDe(cotW);
   const r=cotCalc(cotW);
   cotW.calc={total:Math.round(r.total),venta:Math.round(r.venta),unitario:Math.round(r.unitario*100)/100,pesoKg:Math.round(r.pesoKg*10)/10,dolarEfectivo:Math.round(cotDolarEfectivo()*100)/100,guardado:new Date().toISOString()};
@@ -3134,6 +3261,7 @@ function cotEmbedAplicar(){
   _renderItems();
 }
 function cotEmbedCerrar(){
+  _cotUnswap();
   window._cotEmbed=null;window._cotVistaCant=null;
   const ov=document.getElementById('cot-embed');
   if(ov)ov.remove();
@@ -3688,14 +3816,25 @@ function rCotizador(){
   const _cants=_cotCantidades();
   if(_cants.length>1){
     const act=_cv||(+w.cantidad||0);
-    const tab=(c,i)=>{const on=c===act;return `<button onclick="cotVerCant(${i===0?0:c})" style="padding:6px 14px;border-radius:8px;border:1.5px solid ${on?'#185fa5':'rgba(0,0,0,.15)'};background:${on?'#185fa5':'#fff'};color:${on?'#fff':'#333'};font-size:13px;font-weight:700;cursor:pointer">${cotFmt(c)}${i===0?' <span style="font-size:10px;font-weight:600;opacity:.8">· base</span>':''}</button>`;};
+    const tab=(c,i)=>{const on=c===act;const pq=i?_cotPorCant(w,c):null;const prop=!!(pq&&((pq.piezas&&pq.piezas.length)||pq.margenPct!=null));return `<button onclick="cotVerCant(${i===0?0:c})" title="${prop?'Tiene configuración propia (margen y/o máquina/papel)':''}" style="padding:6px 14px;border-radius:8px;border:1.5px solid ${on?'#185fa5':(prop?'#c05600':'rgba(0,0,0,.15)')};background:${on?'#185fa5':'#fff'};color:${on?'#fff':'#333'};font-size:13px;font-weight:700;cursor:pointer">${cotFmt(c)}${i===0?' <span style="font-size:10px;font-weight:600;opacity:.8">· base</span>':''}${prop?' <span style="color:'+(on?'#ffd6a8':'#c05600')+'">●</span>':''}</button>`;};
     h+=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;padding:8px 12px;background:#fff;border:1px solid #cfe0f2;border-radius:10px;position:sticky;top:0;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.06)">
       <span style="font-size:11px;font-weight:700;color:#185fa5;margin-right:4px"><i class="ti ti-eye"></i> Ver desarrollo para:</span>
       <button onclick="cotCantPaso(-1)" title="Cantidad anterior" style="padding:5px 10px;font-weight:800">‹</button>
       ${_cants.map(tab).join('')}
       <button onclick="cotCantPaso(1)" title="Cantidad siguiente" style="padding:5px 10px;font-weight:800">›</button>
-      ${_cv?`<span style="font-size:11px;color:#a35b00;margin-left:6px"><i class="ti ti-info-circle"></i> Viendo <b>${cotFmt(_cv)}</b> u. La configuración (papel, máquina, poses, procesos) es la misma para todas las cantidades.</span>`:''}
     </div>`;
+    if(_cv){
+      // Configuración de ESTA cantidad: margen propio y/o piezas propias (máquina, papel, impresión, poses)
+      const pcv=_cotPorCant(w,_cv)||{};const propia=!!(pcv.piezas&&pcv.piezas.length);
+      const mBase=(w.margenPct==null?cotCfg().margenPct:w.margenPct);
+      h+=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 10px;padding:8px 12px;background:${propia?'#fff4e8':'#fffbf2'};border:1.5px solid ${propia?'#c05600':'#f0dfb8'};border-radius:10px;font-size:12px">
+        <b style="color:#a35b00"><i class="ti ti-adjustments"></i> ${cotFmt(_cv)} u.</b>
+        <span>Margen <input value="${pcv.margenPct!=null?cotEsc(cotFmtDec(pcv.margenPct,2)):''}" placeholder="${cotEsc(cotFmtDec(mBase,2))}" onchange="cotCantMargen(this.value)" title="Margen solo para esta cantidad. Vacío = el de la base (${cotFmtDec(mBase,2)}%)" style="width:52px;padding:4px;border:1.5px solid ${pcv.margenPct!=null?'#c05600':'rgba(0,0,0,.2)'};border-radius:6px;font-weight:700;text-align:center;color:#c05600"> %</span>
+        ${propia
+          ?`<span style="background:#c05600;color:#fff;border-radius:6px;padding:2px 8px;font-weight:700">Máquina / papel / impresión PROPIOS de esta cantidad</span><span style="color:#888">Lo que cambies abajo afecta solo a ${cotFmt(_cv)} u.</span><button onclick="cotCantPropia(false)" style="font-size:11px">Volver a igual que la base</button>`
+          :`<span style="color:#888">Máquina, papel e impresión: iguales que la base.</span><button class="bp" onclick="cotCantPropia(true)" style="font-size:11px"><i class="ti ti-copy"></i> Configurar distinto para ${cotFmt(_cv)} u.</button>`}
+      </div>`;
+    }
   }
   h+=`<div class="card" style="padding:14px;margin-bottom:12px">
   <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
@@ -3752,14 +3891,16 @@ function rCotizador(){
         <button onclick="cotTogglePers(${k})" style="font-size:10px;padding:3px 8px;margin-left:auto">Ocultar</button>
       </div>`:'');
     const papelCtl=(_modoCod||_modoPers)?(papelCtlOld+_btnCat)
-      :(`<div id="cz-p${k}-papcat">${cotPapelCatHTML(k,p)}</div>`+`<div style="margin-top:4px;display:flex;gap:4px;justify-content:flex-end"><button onclick="cotPapModo(${k},'cod')" title="Elegir un código de la tabla de Papeles (lista anterior)" style="font-size:10px;padding:2px 8px;color:#888">Códigos (tabla)</button><button onclick="cotTogglePers(${k})" title="Papel personalizado: gramaje, medidas y USD/kg a mano" style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:6px;border:1.5px solid #b89b3e;background:#fdf9ee;color:#8a7a40">P</button></div>`);
+      :`<div id="cz-p${k}-papcat">${cotPapelCatHTML(k,p)}</div>`;
     // Máquina efectiva de la pieza: la elegida, o la que implica el código de impresión
     let maqPz=p.maquina||'';
     if(!maqPz&&p.impCod){const _i=(S.cotImpresion||[]).find(x=>x.codigo===p.impCod);if(_i)maqPz=_i.maquina||'';}
-    const _pdims=cotPapelDims(p);
-    const _fit52=!_pdims||cotPliegoEnMaq(_pdims,'SM52');
-    const _fit74=!_pdims||cotPliegoEnMaq(_pdims,'SM74');
-    const _fitX=!_pdims||cotPliegoEnMaq(_pdims,'Xerox');
+    const _ppPz=cotPapelDePieza(p);const _esCatPz=!!(_ppPz&&_ppPz.cat);
+    const _pdims=_esCatPz?null:cotPapelDims(p); // papel por catálogo: el formato se elige según la máquina, no hay "no entra"
+    const _fitCat=m=>!_esCatPz||cotPapelOpciones(p,m).length>0;
+    const _fit52=(!_pdims||cotPliegoEnMaq(_pdims,'SM52'))&&_fitCat('SM52');
+    const _fit74=(!_pdims||cotPliegoEnMaq(_pdims,'SM74'))&&_fitCat('SM74');
+    const _fitX=(!_pdims||cotPliegoEnMaq(_pdims,'Xerox'))&&_fitCat('Xerox');
     const _esXerox=maqPz==='Xerox';
     const g52=(!p.maquina||p.maquina==='SM52')?`<optgroup label="SM52">${impOptsSM52.map(x=>`<option value="${x.codigo}" ${x.codigo===p.impCod?'selected':''}>${x.codigo} · ${cotEsc(x.descripcion)}</option>`).join('')}</optgroup>`:'';
     const g74=(!p.maquina||p.maquina==='SM74')?`<optgroup label="SM74">${impOptsSM74.map(x=>`<option value="${x.codigo}" ${x.codigo===p.impCod?'selected':''}>${x.codigo} · ${cotEsc(x.descripcion)}</option>`).join('')}</optgroup>`:'';
@@ -3792,7 +3933,7 @@ function rCotizador(){
         <span style="display:inline-flex;border:1.5px solid #185fa5;border-radius:8px;overflow:hidden">
         <button onclick="cotPzMaq(${k},'SM52')" title="${_fit52?'Filtrar códigos de impresión de SM52':('El pliego no entra en la SM52 (válido: '+cotMaqRango('SM52')+')')}" style="padding:5px 10px;border:none;cursor:pointer;font-size:11px;font-weight:700;background:${maqPz==='SM52'?'#185fa5':'#fff'};color:${maqPz==='SM52'?'#fff':(_fit52?'#185fa5':'#c0c0c0')};${_fit52?'':'text-decoration:line-through'}">SM52</button>
         <button onclick="cotPzMaq(${k},'SM74')" title="Filtrar códigos de impresión de SM74" style="padding:5px 10px;border:none;border-left:1.5px solid #185fa5;cursor:pointer;font-size:11px;font-weight:700;background:${maqPz==='SM74'?'#185fa5':'#fff'};color:${maqPz==='SM74'?'#fff':'#185fa5'}">SM74</button>
-        <button onclick="cotPzMaq(${k},'Xerox')" title="${_fitX?'Impresión digital Xerox V180 (máx. 32,5×65)':('El pliego no entra en la Xerox (máx. '+cotMaqRango('Xerox')+')')}" style="padding:5px 10px;border:none;border-left:1.5px solid #185fa5;cursor:pointer;font-size:11px;font-weight:700;background:${maqPz==='Xerox'?'#1a7f37':'#fff'};color:${maqPz==='Xerox'?'#fff':(_fitX?'#1a7f37':'#c0c0c0')};${_fitX?'':'text-decoration:line-through'}">Xerox</button>${_maqEx.map(m=>{const ok=!_pdims||cotPliegoEnMaq(_pdims,m),sel=maqPz===m;return `<button onclick="cotPzMaq(${k},'${cotEsc(m)}')" title="${ok?cotEsc(m)+(cotMaqRango(m)?' · pliego '+cotMaqRango(m):''):('El pliego no entra en '+cotEsc(m)+' ('+cotMaqRango(m)+')')}" style="padding:5px 10px;border:none;border-left:1.5px solid #185fa5;cursor:pointer;font-size:11px;font-weight:700;background:${sel?'#a35b00':'#fff'};color:${sel?'#fff':(ok?'#a35b00':'#c0c0c0')};${ok?'':'text-decoration:line-through'}">${cotEsc(m)}</button>`;}).join('')}</span>${(_esExtra&&!_fitE)?`<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:600"><i class="ti ti-alert-triangle"></i> El pliego no entra en ${cotEsc(maqPz)}</div>`:''}${(_pdims&&!_fit52&&_fit74&&!_esXerox&&!_esExtra)?'<div style="font-size:9px;color:#a35b00;margin-top:2px;font-weight:600">Solo SM74 (pliego grande)</div>':''}${(_pdims&&!_fit52&&!_fit74&&!_esXerox&&!_esExtra)?'<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:600">Pliego no entra en offset</div>':''}${_esXerox?(_fitX?'<div style="font-size:9px;color:#1a7f37;margin-top:2px;font-weight:600">Digital · sin chapas</div>':'<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:600"><i class="ti ti-alert-triangle"></i> El pliego no entra en la Xerox (máx. 32,5×65)</div>'):''}</div>
+        <button onclick="cotPzMaq(${k},'Xerox')" title="${_fitX?'Impresión digital Xerox V180 (máx. 32,5×65)':('El pliego no entra en la Xerox (máx. '+cotMaqRango('Xerox')+')')}" style="padding:5px 10px;border:none;border-left:1.5px solid #185fa5;cursor:pointer;font-size:11px;font-weight:700;background:${maqPz==='Xerox'?'#1a7f37':'#fff'};color:${maqPz==='Xerox'?'#fff':(_fitX?'#1a7f37':'#c0c0c0')};${_fitX?'':'text-decoration:line-through'}">Xerox</button>${_maqEx.map(m=>{const ok=(!_pdims||cotPliegoEnMaq(_pdims,m))&&_fitCat(m),sel=maqPz===m;return `<button onclick="cotPzMaq(${k},'${cotEsc(m)}')" title="${ok?cotEsc(m)+(cotMaqRango(m)?' · pliego '+cotMaqRango(m):''):('El pliego no entra en '+cotEsc(m)+' ('+cotMaqRango(m)+')')}" style="padding:5px 10px;border:none;border-left:1.5px solid #185fa5;cursor:pointer;font-size:11px;font-weight:700;background:${sel?'#a35b00':'#fff'};color:${sel?'#fff':(ok?'#a35b00':'#c0c0c0')};${ok?'':'text-decoration:line-through'}">${cotEsc(m)}</button>`;}).join('')}</span>${(_esExtra&&!_fitE)?`<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:600"><i class="ti ti-alert-triangle"></i> El pliego no entra en ${cotEsc(maqPz)}</div>`:''}${(_pdims&&!_fit52&&_fit74&&!_esXerox&&!_esExtra)?'<div style="font-size:9px;color:#a35b00;margin-top:2px;font-weight:600">Solo SM74 (pliego grande)</div>':''}${(_pdims&&!_fit52&&!_fit74&&!_esXerox&&!_esExtra)?'<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:600">Pliego no entra en offset</div>':''}${_esXerox?(_fitX?'<div style="font-size:9px;color:#1a7f37;margin-top:2px;font-weight:600">Digital · sin chapas</div>':'<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:600"><i class="ti ti-alert-triangle"></i> El pliego no entra en la Xerox (máx. 32,5×65)</div>'):''}</div>
       <div><div style="font-size:10px;color:#888;font-weight:600">POSTURAS x PLIEGO <span id="cz-p${k}-poses-hint"></span></div><input id="cz-p${k}-posturas" value="${p.posturas==null?'':cotEsc(cotFmtDec(p.posturas,3))}" onchange="cotPzEd(${k},'posturas',this.value)" style="width:70px;padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px;text-align:right"></div>
       <div><div style="font-size:10px;color:#888;font-weight:600">DEMASÍA (pliegos)</div>${ninp(p.demasia,`cotPzEd(${k},'demasia',this.value)`,'70px')}</div>
       <div><div style="font-size:10px;color:#888;font-weight:600" title="Hojas por unidad: para blocks/cuadernos. Ej: block de 50 hojas → 50. Multiplica la cantidad ANTES de las posturas (misma chapa, corre de largo).">HOJAS x UNIDAD <i class="ti ti-help-circle" style="color:#bbb"></i></div>${ninp(p.cantMult||1,`cotPzEd(${k},'cantMult',this.value)`,'55px','cz-p'+k+'-cantmult')}</div>
@@ -3926,14 +4067,17 @@ function rCotizador(){
     <td style="text-align:center;white-space:nowrap">${v.cantidad>0?`<button onclick="cotVerDesglose(${v.cantidad})" title="Ver desglose de esta cantidad" style="border:none;background:none;color:#185fa5;cursor:pointer;font-size:15px"><i class="ti ti-list-details"></i></button>`:''}<button onclick="cotVarDel(${i})" title="Eliminar variante" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>`;
   });
   h+=`</table>
-  <div style="font-size:10px;color:#aaa;margin-top:6px"><i class="ti ti-info-circle"></i> Cada variante recalcula todas las piezas y procesos automáticos con la misma configuración.</div></div>`;
+  <div style="font-size:10px;color:#aaa;margin-top:6px"><i class="ti ti-info-circle"></i> Cada variante recalcula piezas y procesos con la configuración de la base, salvo que le pongas margen o máquina/papel propios (pestaña de esa cantidad, arriba; marcadas con <span style="color:#c05600">●</span>).</div></div>`;
   // ---- TOTALES ----
   h+=`<div class="card" style="padding:16px;background:#f8fafd">
   <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:stretch;justify-content:flex-end">
     <div style="text-align:right;padding:10px 18px;background:#3b4a5a;border-radius:10px"><div style="font-size:10px;color:#c9d4de;font-weight:600">TOTAL COSTO (${_cv?cotFmt(_cv)+' u.':'base'})</div><div id="cz-total" style="font-size:20px;font-weight:800;color:#fff">$ ${cotFmt(r.total)}</div><div id="cz-costounit" style="font-size:10px;color:#aeb9c4;margin-top:2px">costo unit. $ ${cotFmtDec(r.costoUnit,2)}</div></div>
     <div style="text-align:center;padding:10px 14px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:10px">
       <div style="font-size:10px;color:#888;font-weight:600">MARGEN %</div>
-      <input value="${cotEsc(cotFmtDec(w.margenPct,2))}" onchange="cotEd('margenPct',this.value)" style="width:70px;padding:6px;border:1.5px solid #185fa5;border-radius:8px;font-size:18px;font-weight:800;text-align:center;color:#185fa5">
+      ${(()=>{const pq=_cv?_cotPorCant(w,_cv):null;const own=!!(pq&&pq.margenPct!=null);
+        return _cv
+          ?`<input value="${own?cotEsc(cotFmtDec(pq.margenPct,2)):''}" placeholder="${cotEsc(cotFmtDec(w.margenPct,2))}" onchange="cotCantMargen(this.value)" title="Margen solo para ${cotFmt(_cv)} u. (vacío = el de la base)" style="width:70px;padding:6px;border:1.5px solid ${own?'#c05600':'#185fa5'};border-radius:8px;font-size:18px;font-weight:800;text-align:center;color:${own?'#c05600':'#185fa5'}"><div style="font-size:9px;color:${own?'#c05600':'#aaa'}">${own?'propio de '+cotFmt(_cv)+' u.':'igual que la base'}</div>`
+          :`<input value="${cotEsc(cotFmtDec(w.margenPct,2))}" onchange="cotEd('margenPct',this.value)" style="width:70px;padding:6px;border:1.5px solid #185fa5;border-radius:8px;font-size:18px;font-weight:800;text-align:center;color:#185fa5">`;})()}
       <div id="cz-margenmonto" style="font-size:11px;color:#1a7f37;font-weight:700;margin-top:4px">+ $ ${cotFmt(r.margenMonto)}</div>
       <div style="font-size:9px;color:#aaa">contribución (${_cv?cotFmt(_cv)+' u.':'base'})</div></div>
     <div style="text-align:right;padding:10px 18px;background:#185fa5;border-radius:10px"><div style="font-size:10px;color:#cfe0f2;font-weight:600">PRECIO DE VENTA (${_cv?cotFmt(_cv)+' u.':'base'})</div><div id="cz-venta" style="font-size:24px;font-weight:800;color:#fff">$ ${cotFmt(r.venta)}</div><div style="font-size:10px;color:#cfe0f2;margin-top:2px">sin IVA</div></div>
@@ -4649,8 +4793,7 @@ function avPIdx(otId,idx){
   const p=o.pasos[idx];const now=new Date();const h=now.toISOString().slice(0,10);
   if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}
   else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}
-  const cont=pasosContables(o);const dn=cont.filter(x=>x.estado==='done').length;
-  if(dn===cont.length)o.estado='lista';else if(o.pasos.some(x=>x.estado==='active'))o.estado='en_produccion';
+  recomputeEstadoOT(o); // Entrega hecha → la OT queda "entregada"
   sk('ordenes');render();
 }
 function mExtSend(idStr){
@@ -4721,19 +4864,37 @@ function otRecursosAsignados(o){
 }
 function aprobarOT(otId){
   const o=S.ordenes.find(x=>x.id===otId);if(!o)return;
-  if(o.aprobadaOT){if(!confirm(`¿Quitar la aprobación de ${o.num}? Se vuelve a frenar la compra de papel y la planificación.`))return;o.aprobadaOT=null;}
+  let avisoStock='';
+  if(o.aprobadaOT){
+    if(!confirm(`¿Quitar la aprobación de ${o.num}? Se vuelve a frenar la compra de papel y la planificación.`))return;o.aprobadaOT=null;
+    // Si el papel se había tomado del stock automáticamente, se libera la reserva
+    if(o.papel&&(o.papel.stockAuto||o.papel.stockParcial)&&o.papel.estado==='pendiente'){o.papel.enStock=false;papelLiberarReserva(o);}
+  }
   else{
     if(!otRecursosAsignados(o)){alert(`Antes de aprobar ${o.num} tenés que asignar los recursos (al menos Pre-prensa e Impresión).\n\nSi no, la OT no aparece en el plan de cada máquina. Usá el botón "Asignar recursos".`);return;}
     o.aprobadaOT={fecha:new Date().toISOString().slice(0,10),por:(typeof getVendedor==='function'?getVendedor():'')};
+    // Antes de pedir el papel: ¿hay en stock? Si alcanza, queda "en stock" (no se compra) y reservado para esta OT
+    try{
+      const st=papelChequearStock(o),f=n=>Number(n||0).toLocaleString('es-AR'),m=o.material||{};
+      const mat=`${m.material||''} ${m.grs||''}g ${m.fx||''}×${m.fy||''}`;
+      if(st.estado==='stock')avisoStock=`✓ HAY STOCK: ${f(st.disp)} pliegos de ${mat}${st.item&&st.item.papelera?' ('+st.item.papelera+')':''}.\nLa OT necesita ${f(st.nec)}: quedó marcada EN STOCK y reservada. No se pide a la papelera.`;
+      else if(st.estado==='parcial')setTimeout(()=>papelElegirParcial(o,st),60); // elige: parte de stock + compra, o comprar todo
+    }catch(e){console.warn('chequeo de stock',e);}
   }
   sk('ordenes');
+  if(avisoStock)setTimeout(()=>alert(avisoStock),50);
   if(document.querySelector('.mod'))updModal(mVOT(otId));else render();
 }
+// Estado de la OT según sus pasos: Entrega hecha → entregada; todo lo demás hecho → lista (para entregar);
+// algún paso hecho o en curso → en producción; nada empezado → pendiente.
 function recomputeEstadoOT(o){
-  if(o.estado==='entregada'||o.estado==='cancelada')return;
-  const cont=pasosContables(o);const dn=cont.filter(x=>x.estado==='done').length;
-  if(cont.length&&dn===cont.length)o.estado='lista';
-  else if(o.pasos.some(x=>x.estado==='active'))o.estado='en_produccion';
+  if(o.estado==='cancelada')return;
+  const cont=pasosContables(o);
+  const ent=cont.find(x=>pasoCol(x)==='ent');
+  if(ent&&ent.estado==='done'){o.estado='entregada';return;}
+  const resto=cont.filter(x=>x!==ent);
+  if(resto.length&&resto.every(x=>x.estado==='done'))o.estado='lista';
+  else if(cont.some(x=>x.estado==='active'||x.estado==='done'))o.estado='en_produccion'; // ya arrancó (algún paso hecho o en curso)
   else o.estado='pendiente';
 }
 function mProcAdv(idStr){
@@ -4866,7 +5027,7 @@ function _papelPrefillDesdeCosteo(o){
     const rv=(typeof _costeoDeItemDesc==='function')?_costeoDeItemDesc(cot,desc0):null;
     const co=rv&&rv.costeo;if(!co)return;
     const pzIdx=(Array.isArray(o.itemsOT)&&o.itemsOT[0]&&o.itemsOT[0].piezaIdx!=null)?o.itemsOT[0].piezaIdx:0;
-    const pzs=(typeof cotPiezasDe==='function')?cotPiezasDe(co):[co];
+    const pzs=cotPiezasPara(co,((Array.isArray(o.itemsOT)&&o.itemsOT[0]&&+o.itemsOT[0].qty)||co.cantidad)); // piezas de ESA cantidad (si tiene configuración propia)
     const pz=pzs[pzIdx]||pzs[0]||{};
     let pap=cotPapelDePieza(pz);
     if(!pap)return;
@@ -4899,7 +5060,12 @@ function papelCalc(o){
   const pgManual=(o.papel&&o.papel.pliegosGrandesManual&&+o.papel.pliegosGrandes>0)?+o.papel.pliegosGrandes:0;
   const pg=Math.max(0,pgManual||Math.ceil(pliegosPress/cortes));
   const kg=(fx&&fy&&grs&&pg)?(fx*fy*grs*pg/1e7):0;
-  return {fx,fy,grs,cortes,cortesAuto,pliegosPress,pliegosGrandes:pg,kg,material:m.material||'',marca:m.marca||'',papelera:(o.papel&&o.papel.papelera)||m.papelera||''};
+  // Parte que sale del STOCK (elegida al aprobar la OT): se pide a la papelera solo el resto
+  const sp=(o.papel&&!o.papel.enStock&&o.papel.stockParcial)?o.papel.stockParcial:null;
+  const desdeStock=sp?Math.min(pg,Math.max(0,+sp.cant||0)):0;
+  const pedir=Math.max(0,pg-desdeStock);
+  const kgPedir=(fx&&fy&&grs&&pedir)?(fx*fy*grs*pedir/1e7):0;
+  return {fx,fy,grs,cortes,cortesAuto,pliegosPress,pliegosGrandes:pg,kg,desdeStock,pedir,kgPedir,material:m.material||'',marca:m.marca||'',papelera:(o.papel&&o.papel.papelera)||m.papelera||''};
 }
 // Datos para la guillotina: de qué pliego plano se parte, cuántos hacen falta y a qué medida se corta.
 // Si la OT tiene cargado como formato el mismo de máquina, busca el pliego de origen en Tablas de costos → Papeles.
@@ -4963,10 +5129,11 @@ function setPapelEstado(o,est){
     else if(est==='comprado'){pp.estado='comprado';if(!pp.fechaInicio)pp.fechaInicio=now.toISOString();pp.fecha='';pp.fechaFin='';}
     else{pp.estado='pending';pp.fecha='';pp.fechaFin='';}
   }
-  // Stock: al Recibir suma los pliegos al stock; al reabrir lo revierte (una sola vez)
+  // Stock: al Recibir suma los pliegos al stock; al reabrir lo revierte (una sola vez).
+  // Si el papel SALE del stock (no se compró), no se suma nada: ya estaba en el stock.
   const k=otPapelKey(o),c=papelCalc(o);
-  if(est==='recibido'&&!o.papel.stockCargado){
-    const cant=c.pliegosGrandes||0;
+  if(est==='recibido'&&!o.papel.stockCargado&&!o.papel.enStock){
+    const cant=c.pedir||0; // lo que llegó de la papelera (si una parte sale del stock, esa ya estaba)
     if(cant>0){stockEntrada(k.mat,k.marca,k.grs,k.fx,k.fy,k.pap,cant,o.num,'Recepción de pedido');o.papel.stockCargado=true;o.papel.stockCant=cant;}
   }else if(est!=='recibido'&&o.papel.stockCargado){
     const cant=o.papel.stockCant||0;
@@ -4974,6 +5141,126 @@ function setPapelEstado(o,est){
     o.papel.stockCargado=false;o.papel.stockCant=0;
   }
   recomputeEstadoOT(o);
+}
+// ---- Al aprobar la OT: ¿el papel está en stock? → se marca "en stock" y se reserva (no se compra) ----
+// Busca el mismo material (incluye acabado, ej. "Ilustración Mate"), gramaje y formato de compra (en cualquier orientación);
+// si la OT pide una marca, tiene que coincidir. La papelera no importa. Lo reservado para OTRA OT no cuenta.
+const _nrmTxt=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+// Reservas de un ítem de stock: lista de OTs separadas por coma (ej. "OT-0004, OT-0007")
+const _resLista=s=>String((s&&s.reservaOT)||'').split(/\s*,\s*/).filter(Boolean);
+// OTs que tomaron ESTE ítem de stock automáticamente y todavía no lo cortaron
+function _stockOTsVinculadas(s,excluir){
+  return (S.ordenes||[]).filter(x=>x!==excluir&&x.papel&&x.papel.enStock&&x.papel.stockItemId===s.id&&x.estado!=='cancelada'
+    &&!((x.pasos||[]).some(p=>pasoCol(p)==='corte'&&p.estado==='done')));
+}
+// Pliegos libres de un ítem de stock para la OT o: lo que hay menos lo reservado por otras OTs.
+// Una reserva hecha A MANO (botón Reservar) para otra OT bloquea el ítem entero.
+// OTs que usan PARTE de este ítem (stock parcial + compra del resto) y todavía no lo cortaron
+function _stockOTsParciales(s,excluir){
+  return (S.ordenes||[]).filter(x=>x!==excluir&&x.papel&&!x.papel.enStock&&x.papel.stockParcial&&x.papel.stockParcial.itemId===s.id&&x.estado!=='cancelada'
+    &&((+x.papel.stockParcial.cant||0)-(+x.papel.stockParcial.usado||0))>0);
+}
+function stockLibrePara(s,o){
+  const vinc=_stockOTsVinculadas(s,o),parc=_stockOTsParciales(s,o);
+  // Reserva hecha a mano para otra OT: cuenta solo si esa OT sigue activa y todavía no cortó (las viejas no bloquean)
+  const sigueVigente=n=>{const x=(S.ordenes||[]).find(q=>q.num===n);if(!x)return false;if(x.estado==='entregada'||x.estado==='cancelada')return false;return !(x.pasos||[]).some(p=>pasoCol(p)==='corte'&&p.estado==='done');};
+  const manual=_resLista(s).filter(n=>n!==o.num&&!vinc.some(x=>x.num===n)&&!parc.some(x=>x.num===n)&&sigueVigente(n));
+  if(manual.length)return 0;
+  const resTot=vinc.reduce((t,x)=>t+(papelCalc(x).pliegosGrandes||0),0)
+    +parc.reduce((t,x)=>t+((+x.papel.stockParcial.cant||0)-(+x.papel.stockParcial.usado||0)),0);
+  return Math.max(0,(+s.cantidad||0)-resTot);
+}
+function papelStockCandidatos(o){
+  const m=o.material||{};
+  const fx=+m.fx||0,fy=+m.fy||0,grs=+m.grs||0,mat=_nrmTxt(m.material),marca=_nrmTxt(m.marca);
+  if(!mat||!grs||!fx||!fy)return [];
+  const mismoF=(a,b)=>(Math.abs(a-fx)<0.1&&Math.abs(b-fy)<0.1)||(Math.abs(a-fy)<0.1&&Math.abs(b-fx)<0.1);
+  return (S.stockPapel||[]).filter(s=>(+s.cantidad||0)>0&&_nrmTxt(s.material)===mat&&+s.grs===grs&&mismoF(+s.fx||0,+s.fy||0)
+    &&(!marca||_nrmTxt(s.marca)===marca))
+    .map(s=>({s,libre:stockLibrePara(s,o)})).filter(x=>x.libre>0)
+    .sort((a,b)=>b.libre-a.libre);
+}
+// Devuelve {estado:'stock'|'parcial'|'no'|'sinDatos', disp, nec, item}. Si alcanza, marca la OT "en stock" y reserva el material.
+function papelChequearStock(o){
+  papelInit(o);
+  if(o.papel.enStock||o.papel.estado!=='pendiente')return {estado:'yaResuelto'};
+  const nec=papelCalc(o).pliegosGrandes||0;
+  const cands=papelStockCandidatos(o);
+  if(!nec||!(o.material&&o.material.material))return {estado:'sinDatos'};
+  const s=cands[0]?cands[0].s:null;const disp=cands[0]?cands[0].libre:0;
+  if(s&&disp>=nec){
+    // El material de la OT toma los datos EXACTOS del stock (marca, papelera, orientación) → el corte descuenta de ese mismo ítem
+    const m=o.material;m.material=s.material;m.marca=s.marca||m.marca||'';m.fx=s.fx;m.fy=s.fy;
+    if(s.papelera){o.papel.papelera=s.papelera;m.papelera=s.papelera;}
+    o.papel.enStock=true;o.papel.stockAuto=true;o.papel.stockItemId=s.id;
+    const lst=_resLista(s);if(!lst.includes(o.num))lst.push(o.num);s.reservaOT=lst.join(', ');sk('stockPapel');
+    return {estado:'stock',disp,nec,item:s};
+  }
+  if(s&&disp>0)return {estado:'parcial',disp,nec,item:s}; // no alcanza: decide el que aprueba (ventana)
+  return {estado:'no',nec};
+}
+function papelLiberarReserva(o){
+  (S.stockPapel||[]).forEach(s=>{const l=_resLista(s);if(l.includes(o.num)){s.reservaOT=l.filter(n=>n!==o.num).join(', ');sk('stockPapel');}});
+  if(o.papel){o.papel.stockAuto=false;o.papel.stockItemId=null;o.papel.stockParcial=null;}
+}
+// ---- Stock que NO alcanza: el que aprueba elige "parte de stock + comprar el resto" o "comprar todo" ----
+// (el stock puede ser de otra marca y cambiar la calidad; para pocos pliegos sirve, ej. demasía de registro)
+function papelElegirParcial(o,st){
+  const f=n=>Number(n||0).toLocaleString('es-AR'),s=st.item,m=o.material||{};
+  const marcaOT=m.marca||'',marcaSt=s.marca||'';
+  const difMarca=_nrmTxt(marcaOT)!==_nrmTxt(marcaSt);
+  const def=Math.min(st.disp,st.nec);
+  let ov=document.getElementById('ov-stockparcial');if(ov)ov.remove();
+  ov=document.createElement('div');ov.id='ov-stockparcial';
+  ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(15,25,35,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML=`<div style="background:#fff;border-radius:12px;max-width:520px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.35);font-size:13px">
+    <div style="font-size:15px;font-weight:800;color:#185fa5;margin-bottom:8px"><i class="ti ti-stack-2"></i> ${cotEsc(o.num)} — hay stock, pero no alcanza</div>
+    <div style="background:#f5f5f3;border-radius:8px;padding:9px 11px;margin-bottom:10px;line-height:1.6">
+      <b>${cotEsc(m.material||'')} ${cotEsc(String(m.grs||''))} g · ${cotEsc(String(m.fx||''))}×${cotEsc(String(m.fy||''))}</b><br>
+      La OT necesita <b>${f(st.nec)}</b> pliegos · en stock hay <b>${f(st.disp)}</b> libres${s.papelera?' ('+cotEsc(s.papelera)+')':''}.<br>
+      Marca del stock: <b>${cotEsc(marcaSt||'sin dato')}</b>${marcaOT?` · la OT pide: <b>${cotEsc(marcaOT)}</b>`:''}
+      ${difMarca?`<div style="color:#a35b00;font-weight:700;margin-top:3px"><i class="ti ti-alert-triangle"></i> Puede ser de otra marca que lo que se compre: ojo con la calidad si el cliente es exigente.</div>`:''}
+    </div>
+    <div style="border:1.5px solid #1a7f37;border-radius:9px;padding:10px;margin-bottom:8px">
+      <div style="font-weight:700;color:#1a7f37;margin-bottom:6px">Usar parte del stock y comprar el resto</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">Usar de stock
+        <input id="sp-cant" value="${f(def)}" oninput="milesFmt(this);const v=+this.value.replace(/\\./g,'')||0;document.getElementById('sp-comprar').textContent=Math.max(0,${st.nec}-Math.min(v,${st.disp})).toLocaleString('es-AR')" style="width:80px;padding:5px;border:1.5px solid #1a7f37;border-radius:6px;font-weight:700;text-align:right"> pliegos
+        → comprar <b id="sp-comprar" style="color:#185fa5;font-size:15px">${f(st.nec-def)}</b></div>
+      <div style="font-size:11px;color:#888;margin-top:4px">Ej.: necesitás 550 y el paquete viene de 500 → usá 50 de stock (van a la demasía de registro) y comprás 500.</div>
+      <button class="bp" onclick="papelAplicarParcial(${o.id},${s.id})" style="margin-top:8px"><i class="ti ti-check"></i> Usar stock + comprar el resto</button>
+    </div>
+    <div style="border:1px solid rgba(0,0,0,.12);border-radius:9px;padding:10px">
+      <div style="font-weight:700;margin-bottom:4px">No usar stock</div>
+      <div style="font-size:11px;color:#888;margin-bottom:6px">Se compran los ${f(st.nec)} pliegos (todo de la misma marca).</div>
+      <button onclick="papelSinStockParcial(${o.id})"><i class="ti ti-shopping-cart"></i> Comprar todo (${f(st.nec)})</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+function papelAplicarParcial(otId,itemId){
+  const o=S.ordenes.find(x=>x.id===otId),s=(S.stockPapel||[]).find(x=>x.id===itemId);if(!o||!s)return;
+  papelInit(o);
+  const nec=papelCalc(o).pliegosGrandes||0,libre=stockLibrePara(s,o);
+  const v=Math.max(0,parseInt(String((document.getElementById('sp-cant')||{}).value||'0').replace(/\./g,''))||0);
+  const cant=Math.min(v,libre,nec);
+  if(cant>=nec&&nec>0){ // alcanza con lo que eligió → todo de stock
+    o.papel.stockParcial=null;
+    const m=o.material;m.material=s.material;m.marca=s.marca||m.marca||'';m.fx=s.fx;m.fy=s.fy;
+    if(s.papelera){o.papel.papelera=s.papelera;m.papelera=s.papelera;}
+    o.papel.enStock=true;o.papel.stockAuto=true;o.papel.stockItemId=s.id;
+  }else if(cant>0){
+    o.papel.stockParcial={itemId:s.id,cant,usado:0,material:s.material,marca:s.marca||'',grs:s.grs,fx:s.fx,fy:s.fy,papelera:s.papelera||''};
+    o.papel.nota=((o.papel.nota||'').replace(/\s*·?\s*De stock: [^·]*/,'')+(o.papel.nota?' · ':'')+`De stock: ${cant.toLocaleString('es-AR')} pliegos${s.marca?' ('+s.marca+')':''} + comprar ${(nec-cant).toLocaleString('es-AR')}`).slice(0,300);
+  }
+  const lst=_resLista(s);if(cant>0&&!lst.includes(o.num)){lst.push(o.num);s.reservaOT=lst.join(', ');sk('stockPapel');}
+  sk('ordenes');
+  const ov=document.getElementById('ov-stockparcial');if(ov)ov.remove();
+  render();
+}
+function papelSinStockParcial(otId){
+  const o=S.ordenes.find(x=>x.id===otId);if(o&&o.papel&&o.papel.stockParcial){papelLiberarReserva(o);sk('ordenes');}
+  const ov=document.getElementById('ov-stockparcial');if(ov)ov.remove();
+  render();
 }
 // Papelera nueva: queda guardada en la lista (aunque todavía no tenga OTs)
 function _papeleraGuardar(nom){
@@ -4996,7 +5283,7 @@ function papelSet(otId,field,val){
   if(['material','marca','grs','fx','fy'].includes(field)){o.material=o.material||{};o.material[field]=val;}
   else if(field==='cortes'){const n=parseFloat(val);o.papel.cortes=(n>0)?n:0;}
   else if(field==='pliegosGrandes'){const n=parseFloat(val);o.papel.pliegosGrandes=(n>0)?n:0;o.papel.pliegosGrandesManual=(n>0);}
-  else if(field==='enStock'){o.papel.enStock=!!val;}
+  else if(field==='enStock'){o.papel.enStock=!!val;if(!val)papelLiberarReserva(o);}
   else{if(field==='papelera'){val=String(val||'').trim();if(val)_papeleraGuardar(val);}
     o.papel[field]=val;if(field==='papelera'){o.material=o.material||{};o.material.papelera=val;}}
   sk('ordenes');
@@ -5009,7 +5296,7 @@ function milesFmt(el){const d=el.value.replace(/\D/g,'');el.value=d?Number(d).to
 // Actualiza Kg y pliegos auto de una fila sin redibujar toda la tabla (para no perder el foco al tabular)
 function papelRowRefresh(o){
   const c=papelCalc(o);
-  const kg=document.getElementById('pkg-'+o.id);if(kg)kg.textContent=c.kg?c.kg.toLocaleString('es-AR',{maximumFractionDigits:1}):'—';
+  const kg=document.getElementById('pkg-'+o.id);if(kg)kg.textContent=c.kgPedir?c.kgPedir.toLocaleString('es-AR',{maximumFractionDigits:1}):'—';
   const pg=document.getElementById('ppg-'+o.id);
   if(pg&&document.activeElement!==pg&&!(o.papel.pliegosGrandesManual&&+o.papel.pliegosGrandes>0))pg.value=c.pliegosGrandes?Number(c.pliegosGrandes).toLocaleString('es-AR'):'';
 }
@@ -5066,7 +5353,20 @@ function corteRegistrar(otId){
   const p=(o.pasos||[]).find(x=>pasoCol(x)==='corte');if(!p)return;
   const cut=Math.max(0,parseFloat((Q('corte-cant')?.value||'').replace(/\./g,''))||0);
   const k=otPapelKey(o),prev=p.cortadoCant||0,delta=cut-prev;
-  if(delta!==0){
+  let deltaOT=delta;
+  const spc=o.papel&&o.papel.stockParcial;
+  if(spc&&delta>0){
+    const resta=Math.max(0,(+spc.cant||0)-(+spc.usado||0)),take=Math.min(delta,resta);
+    const sP=(S.stockPapel||[]).find(x=>x.id===spc.itemId);
+    if(take>0&&sP){
+      const cuP=sP.costoUnit||0,impP=Math.round(take*cuP*100)/100;
+      stockMov('salida',sP.material,sP.marca,sP.grs,sP.fx,sP.fy,sP.papelera,-take,o.num,'Corte de guillotina (parte de stock)',impP?-impP:0);
+      spc.usado=(+spc.usado||0)+take;deltaOT=delta-take;
+      if(spc.usado>=(+spc.cant||0)){const l=_resLista(sP).filter(n=>n!==o.num);sP.reservaOT=l.join(', ');sk('stockPapel');}
+      if(impP){if(!S.analCostos)S.analCostos={};if(!S.analCostos[o.id])S.analCostos[o.id]={fijos:{},procesos:[]};const ac=S.analCostos[o.id];if(!ac.fijos)ac.fijos={};if(!ac.fijos.papel)ac.fijos.papel={proveedor:'',monto:0};ac.fijos.papel.monto=Math.round(((ac.fijos.papel.monto||0)+impP)*100)/100;sk('analCostos');}
+    }
+  }
+  if(deltaOT!==0){const delta=deltaOT;
     const sIt=stockFind(k.mat,k.marca,k.grs,k.fx,k.fy,k.pap);
     const cu=sIt?(sIt.costoUnit||0):0;
     const imp=Math.round(delta*cu*100)/100;
@@ -5083,7 +5383,7 @@ function corteRegistrar(otId){
       sk('analCostos');
     }
     // Liberar la reserva si era para esta OT
-    if(sIt&&sIt.reservaOT===o.num&&cut>=(c.pliegosGrandes||0)){sIt.reservaOT='';sk('stockPapel');}
+    if(sIt&&_resLista(sIt).includes(o.num)&&cut>=(papelCalc(o).pliegosGrandes||0)){sIt.reservaOT=_resLista(sIt).filter(n=>n!==o.num).join(', ');sk('stockPapel');}
   }
   p.cortadoCant=cut;
   const now=new Date();if(!p.fechaInicio)p.fechaInicio=now.toISOString();
@@ -5187,7 +5487,7 @@ function rPapel(){
   window._papelFechaSel=tabUsaFecha?fechaSel:'';
   rows.sort((a,b)=>((a.papel.papelera||'zzz').localeCompare(b.papel.papelera||'zzz'))||a.num.localeCompare(b.num));
   const nPedir=act.filter(o=>o.papel.estado==='pendiente'&&!o.papel.enStock).length;
-  const kgTot=rows.reduce((s,o)=>s+papelCalc(o).kg,0);
+  const kgTot=rows.reduce((s,o)=>s+papelCalc(o).kgPedir,0); // kg a comprar (sin lo que sale del stock)
   const f2fecha=iso=>iso?iso.slice(8,10)+'/'+iso.slice(5,7)+'/'+iso.slice(0,4):'';
   const fechaSelHtml=tabUsaFecha?`<select onchange="window._papelFecha=this.value==='__ALL__'?'':this.value;render()" style="max-width:150px" title="Fecha de compra"><option value="__ALL__"${!fechaSel?' selected':''}>Todas las fechas</option>${fechas.map(fx=>`<option value="${fx}"${fechaSel===fx?' selected':''}>${f2fecha(fx)}</option>`).join('')}</select>`:'';
   const dlP=`<datalist id="dl-pap">${papelerasList().map(p=>`<option value="${p}">`).join('')}</datalist>`;
@@ -5212,7 +5512,7 @@ function rPapel(){
     const est=pa.estado;
     let accion='';
     if(pa.enStock)accion=`<span class="badge bi">stock</span> <button onclick="papelSet(${o.id},'enStock',false)" style="font-size:10px;padding:2px 6px">pedir</button>`;
-    else if(est==='pendiente')accion=otAprobada(o)?`<button class="bs" onclick="papelEstado(${o.id},'comprado')" style="font-size:10px;padding:3px 7px"><i class="ti ti-shopping-cart"></i>Comprado</button> <label style="font-size:10px;color:#888;display:inline-flex;align-items:center;gap:2px"><input type="checkbox" onchange="papelSet(${o.id},'enStock',this.checked)" style="width:auto"> stock</label>`:`<span class="badge br" style="cursor:pointer" onclick="om('vot',${o.id})" title="Aprobá la OT primero"><i class="ti ti-lock" style="font-size:9px"></i> aprobar OT</span>`;
+    else if(est==='pendiente')accion=(pa.stockParcial?`<span class="badge bi" title="Una parte sale del stock">parcial stock</span> <button onclick="papelSinStockParcial(${o.id})" title="No usar stock: comprar todo" style="font-size:10px;padding:2px 6px">comprar todo</button> `:'')+(otAprobada(o)?`<button class="bs" onclick="papelEstado(${o.id},'comprado')" style="font-size:10px;padding:3px 7px"><i class="ti ti-shopping-cart"></i>Comprado</button> <label style="font-size:10px;color:#888;display:inline-flex;align-items:center;gap:2px"><input type="checkbox" onchange="papelSet(${o.id},'enStock',this.checked)" style="width:auto"> stock</label>`:`<span class="badge br" style="cursor:pointer" onclick="om('vot',${o.id})" title="Aprobá la OT primero"><i class="ti ti-lock" style="font-size:9px"></i> aprobar OT</span>`);
     else if(est==='comprado')accion=`<span class="badge bg2">comprado</span> <button class="bp" onclick="papelEstado(${o.id},'recibido')" style="font-size:10px;padding:3px 7px"><i class="ti ti-download"></i>Recibido</button>`;
     else if(est==='recibido')accion=`<span class="badge bg2"><i class="ti ti-check"></i> recibido</span> <button onclick="papelEstado(${o.id},'pendiente')" style="font-size:10px;padding:2px 6px">reabrir</button>`;
     accion+=` <button onclick="printCartel(${o.id})" title="Cartel de pallet" style="font-size:10px;padding:2px 6px"><i class="ti ti-tag"></i></button>`;
@@ -5232,8 +5532,10 @@ function rPapel(){
       <td><input value="${(m.marca||'').replace(/"/g,'&quot;')}" onchange="papelSet(${o.id},'marca',this.value)" style="font-size:11px;padding:3px 5px" placeholder="Zenith..."></td>
       <td><input type="number" min="0" value="${m.grs||''}" onchange="papelSet(${o.id},'grs',this.value)" style="font-size:11px;padding:3px 4px;width:46px"></td>
       <td><div style="display:flex;gap:2px;align-items:center"><input type="number" min="0" value="${m.fx||''}" onchange="papelSet(${o.id},'fx',this.value)" style="font-size:11px;padding:3px 4px;width:40px">×<input type="number" min="0" value="${m.fy||''}" onchange="papelSet(${o.id},'fy',this.value)" style="font-size:11px;padding:3px 4px;width:40px"></div>${corteTxt}</td>
-      <td><input id="ppg-${o.id}" type="text" inputmode="numeric" value="${pgDisp?Number(pgDisp).toLocaleString('es-AR'):''}" oninput="milesFmt(this)" onchange="papelSet(${o.id},'pliegosGrandes',this.value.replace(/\\./g,''))" title="Auto desde OT. Editá para fijar a mano." style="font-size:11px;padding:3px 4px;width:70px"></td>
-      <td id="pkg-${o.id}" style="text-align:right;font-weight:600">${c.kg?c.kg.toLocaleString('es-AR',{maximumFractionDigits:1}):'—'}</td>
+      <td>${c.desdeStock>0
+        ?`<div style="font-weight:800;color:#185fa5" title="Pliegos a comprar (el resto sale del stock)">${Number(c.pedir).toLocaleString('es-AR')}</div><div style="font-size:9.5px;color:#1a7f37;white-space:nowrap">+ ${Number(c.desdeStock).toLocaleString('es-AR')} de stock${pa.stockParcial&&pa.stockParcial.marca?' ('+pa.stockParcial.marca+')':''}<br><span style="color:#888">total ${Number(c.pliegosGrandes).toLocaleString('es-AR')}</span></div>`
+        :`<input id="ppg-${o.id}" type="text" inputmode="numeric" value="${pgDisp?Number(pgDisp).toLocaleString('es-AR'):''}" oninput="milesFmt(this)" onchange="papelSet(${o.id},'pliegosGrandes',this.value.replace(/\\./g,''))" title="Auto desde OT. Editá para fijar a mano." style="font-size:11px;padding:3px 4px;width:70px">`}</td>
+      <td id="pkg-${o.id}" style="text-align:right;font-weight:600">${(c.desdeStock>0?c.kgPedir:c.kg)?(c.desdeStock>0?c.kgPedir:c.kg).toLocaleString('es-AR',{maximumFractionDigits:1}):'—'}</td>
       <td><div style="display:flex;gap:2px;align-items:center"><input list="dl-pap" value="${(pa.papelera||'').replace(/"/g,'&quot;')}" onchange="papelSet(${o.id},'papelera',this.value)" style="font-size:11px;padding:3px 5px" placeholder="Elegir o escribir nueva..." title="Elegí de la lista o escribí una papelera nueva (queda guardada)"><button onclick="papeleraNueva(${o.id})" title="Nueva papelera para esta OT" style="font-size:10px;padding:2px 5px"><i class="ti ti-plus"></i></button></div></td>
       <td><input list="dl-ped" value="${(pa.pedidoPor||'').replace(/"/g,'&quot;')}" onchange="papelSet(${o.id},'pedidoPor',this.value)" style="font-size:11px;padding:3px 4px;width:52px"></td>
       <td style="white-space:nowrap">${accion}</td>
@@ -5258,7 +5560,7 @@ function printPapelPedido(papelera,fecha){
   let secciones='';
   nombres.forEach((pap,gi)=>{
     let filas='',totKg=0;
-    groups[pap].forEach(o=>{const c=papelCalc(o);totKg+=c.kg;filas+=`<tr><td>${f2(o.fecha)}</td><td>${o.num}</td><td>${cNomCorto(o.clienteId)}</td><td>${o.descripcion||''}</td><td>${c.material}</td><td>${c.marca||''}</td><td style="text-align:center">${c.grs||''}</td><td style="text-align:center">${c.fx||''} x ${c.fy||''}</td><td style="text-align:center">${c.pliegosGrandes?Number(c.pliegosGrandes).toLocaleString('es-AR'):''}</td><td style="text-align:right">${c.kg?c.kg.toLocaleString('es-AR',{maximumFractionDigits:1}):''}</td></tr>`;});
+    groups[pap].forEach(o=>{const c0=papelCalc(o),c=Object.assign({},c0,{pliegosGrandes:c0.pedir,kg:c0.kgPedir});totKg+=c.kg;filas+=`<tr><td>${f2(o.fecha)}</td><td>${o.num}</td><td>${cNomCorto(o.clienteId)}</td><td>${o.descripcion||''}</td><td>${c.material}</td><td>${c.marca||''}</td><td style="text-align:center">${c.grs||''}</td><td style="text-align:center">${c.fx||''} x ${c.fy||''}</td><td style="text-align:center">${c.pliegosGrandes?Number(c.pliegosGrandes).toLocaleString('es-AR'):''}</td><td style="text-align:right">${c.kg?c.kg.toLocaleString('es-AR',{maximumFractionDigits:1}):''}</td></tr>`;});
     secciones+=`<section${gi>0?' style="page-break-before:always"':''}>
     <div class="top"><span class="fecha">${cab}</span><span class="pap">${pap}</span><span class="nota" contenteditable="true"></span></div>
     <table><thead><tr><th>FECHA</th><th>OT N°</th><th>CLIENTE</th><th>TRABAJO</th><th>MATERIAL</th><th>MARCA</th><th>GR</th><th>FORMATO</th><th>HOJAS</th><th style="text-align:right">KG</th></tr></thead>
@@ -5322,7 +5624,7 @@ function printCartel(otId){
       <tr><td class="lbl">OT N°</td><td class="val num">${o.num}</td></tr>
       <tr><td class="lbl">CLIENTE:</td><td class="val">${cNomCorto(o.clienteId)}</td></tr>
       <tr><td class="lbl">TRABAJO:</td><td style="font-size:22pt;font-weight:700">${o.descripcion||''}</td></tr>
-      <tr><td class="lbl">MATERIAL:</td><td><div class="matline">${c.material||''}${c.marca?' '+c.marca:''} &nbsp; ${c.grs||''} &nbsp; ${c.fx||''} X ${c.fy||''}</div><div class="matline">${c.pliegosGrandes?Number(c.pliegosGrandes).toLocaleString('es-AR'):''} HOJAS &nbsp;·&nbsp; ${c.kg?c.kg.toLocaleString('es-AR',{maximumFractionDigits:1}):''} KG</div></td></tr>
+      <tr><td class="lbl">MATERIAL:</td><td><div class="matline">${c.material||''}${c.marca?' '+c.marca:''} &nbsp; ${c.grs||''} &nbsp; ${c.fx||''} X ${c.fy||''}</div><div class="matline">${c.pedir?Number(c.pedir).toLocaleString('es-AR'):''} HOJAS &nbsp;·&nbsp; ${c.kgPedir?c.kgPedir.toLocaleString('es-AR',{maximumFractionDigits:1}):''} KG${c.desdeStock?' &nbsp;(+'+Number(c.desdeStock).toLocaleString('es-AR')+' de stock)':''}</div></td></tr>
       <tr><td class="lbl">PAPELERA:</td><td class="val">${c.papelera||''}</td></tr>
     </tbody></table>
   </div></body></html>`;
@@ -7375,7 +7677,7 @@ function om(t,id){
     nc2:()=>{window._editandoCotId=null;const h=mNC2();setTimeout(()=>initItemsNuevo(),50);return h;},vc2:()=>mVC2(id),
     not:mNOT,vot:()=>mVOT(id),editOT:()=>mEditOT(id),editEntrega:()=>mEditEntrega(id),extSend:()=>mExtSend(id),extProcs:()=>mExtProcs(id),procAdv:()=>mProcAdv(id),corteMov:()=>mCorte(id),
     asgn:()=>mASGN(id),recursos:mRecursos,
-    nrem:mNREM,vrem:()=>mVREM(id),
+    nrem:()=>mNREM(id),vrem:()=>mVREM(id),
     ngas:mNGAS,
     editFicha:()=>mEditFicha(id),
     newB:()=>mNewBloque(id),editB:()=>mEditBloque(id)
@@ -7750,14 +8052,35 @@ function aiChapasDeColores(colores){
   if(m)return (parseInt(m[1])||0)+(parseInt(m[2])||0);
   const one=c.match(/(\d+)/);return one?parseInt(one[1])||0:0;
 }
-// Elegir un código de chapa CTP (preferí el que menciona la máquina)
+// Chapa CTP de una máquina: la que la nombra en "Tipo" (Tablas de costos → Chapas CTP).
+// Ej. máquina "DELIGRAF 72x102" → chapa "CTP SM102 - Deligraf". SM52 / SM74 → sus chapas (2 / 3) si no hay otra que las nombre.
 function aiMatchChapa(maquina){
-  const arr=(S.cotChapas||[]).filter(x=>x&&x.codigo);if(!arr.length)return 0;
-  const m=String(maquina||'').toLowerCase();
-  const byMaq=arr.find(x=>m&&String(x.descripcion||'').toLowerCase().includes(m));
-  return (byMaq||arr[0]).codigo;
+  const arr=(S.cotChapas||[]).filter(x=>x&&x.codigo&&x.activo!==false);if(!arr.length)return 0;
+  const m=String(maquina||'').toLowerCase().trim();if(!m)return 0;
+  const txt=x=>String(x.tipo||x.descripcion||'').toLowerCase();
+  let c=arr.find(x=>txt(x).includes(m)); // nombre completo
+  if(!c){const toks=m.split(/[\s\-_\/]+/).filter(t=>t.length>=3&&!/^\d+x\d+$/.test(t));c=arr.find(x=>toks.some(t=>new RegExp('\\b'+t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b').test(txt(x))));} // por palabra (ej. "deligraf")
+  if(c)return c.codigo;
+  if(maquina==='SM52'&&arr.some(x=>x.codigo===2))return 2;
+  if(maquina==='SM74'&&arr.some(x=>x.codigo===3))return 3;
+  return 0; // sin chapa conocida para esa máquina: mejor 0 que una de otra máquina
 }
 // Probar el costo en todas las máquinas donde entra el pliego y devolver la más económica
+// Aplica a una pieza la máquina que eligió aiCostearOptimo (impresión, papel/poses y chapas de esa máquina)
+function _aiAplicarMaq(p,opt,colores){
+  p.maquina=opt.maquina;p.impCod=opt.impCod;
+  if(opt.papelCod)p.papelCod=opt.papelCod;
+  if(opt.posturas)p.posturas=opt.posturas;
+  const imp=(S.cotImpresion||[]).find(x=>x.codigo===p.impCod);
+  if(p.maquina==='Xerox'){p.chapasCod=0;p.chapasCant=0;p.demasia=5;} // digital: sin chapas, demasía 5
+  else if(p.demasia===5)p.demasia=cotCfg().demasia; // vuelve a offset: demasía de offset
+  if(p.maquina==='Xerox'){}
+  else if(cotEsMaqExtra(p.maquina)){p.chapasCant=(imp&&imp.chapas)||0;p.chapasCod=p.chapasCant?aiMatchChapa(p.maquina):0;}
+  else{
+    p.chapasCant=(imp&&imp.chapas)?imp.chapas:aiChapasDeColores(colores);
+    p.chapasCod=p.maquina==='SM52'?2:(p.maquina==='SM74'?3:aiMatchChapa(p.maquina));
+  }
+}
 // Las máquinas agregadas (ej. DELIGRAF 72×102) se prueban con el papel de SU formato (mismo material y gramaje) y sus poses.
 function aiCostearOptimo(cotW,colores,material,gramaje){
   const pz=cotW.piezas&&cotW.piezas[0];if(!pz)return null;
@@ -7770,14 +8093,13 @@ function aiCostearOptimo(cotW,colores,material,gramaje){
     if(usaCat){ // papel por catálogo: en cada máquina se elige solo el formato de compra y el corte que más conviene
       const ic=aiMatchImp(colores,m);if(!ic)return;
       const imp=(S.cotImpresion||[]).find(x=>x.codigo===ic);
-      if(extra&&(!imp||imp.maquina!==m))return;
-      if(!extra&&imp&&cotEsMaqExtra(imp.maquina))return;
+      if(!imp||imp.maquina!==m)return; // solo se compara cada máquina con SUS códigos de impresión
       let clone;try{clone=JSON.parse(JSON.stringify(cotW));}catch(e){return;}
-      const p=clone.piezas[0];p.maquina=m;p.impCod=ic;
+      const p=clone.piezas[0];
+      _aiAplicarMaq(p,{maquina:m,impCod:ic},colores); // chapas y demasía de esa máquina (para comparar bien)
       const pr=cotPapelSelResolver(p);if(!pr)return; // ningún formato entra en esta máquina
       const sug=(+p.piezaW>0&&+p.piezaH>0)?cotPosesSug(p.piezaW,p.piezaH,pr.ancho,pr.alto,cotPinza(m)):0;
       if(sug>0)p.posturas=sug;
-      if(extra){p.chapasCant=(imp&&imp.chapas)||0;p.chapasCod=p.chapasCant?aiMatchChapa(m):0;}
       let r;try{r=cotCalc(clone);}catch(e){return;}
       const tot=(r&&r.total)||0;
       if(tot>0&&(!best||tot<best.total))best={maquina:m,impCod:ic,total:tot,papelCod:0,posturas:p.posturas,extra};
@@ -7794,11 +8116,11 @@ function aiCostearOptimo(cotW,colores,material,gramaje){
     if(pdims&&!cotPliegoEnMaq(pdims,m))return;
     const ic=aiMatchImp(colores,m);if(!ic)return; // sin código de impresión válido para esa máquina, no comparo
     const imp=(S.cotImpresion||[]).find(x=>x.codigo===ic);
-    if(extra&&(!imp||imp.maquina!==m))return; // para una máquina agregada solo sirven SUS códigos
-    if(!extra&&imp&&cotEsMaqExtra(imp.maquina))return; // y una propia no toma códigos de una externa
+    if(!imp||imp.maquina!==m)return; // solo se compara cada máquina con SUS códigos de impresión
     let clone;try{clone=JSON.parse(JSON.stringify(cotW));}catch(e){return;}
-    const p=clone.piezas[0];p.maquina=m;p.impCod=ic;p.papelCod=papelCod;p.posturas=posturas;
-    if(extra){p.chapasCant=(imp&&imp.chapas)||0;p.chapasCod=p.chapasCant?aiMatchChapa(m):0;}
+    const p=clone.piezas[0];
+    _aiAplicarMaq(p,{maquina:m,impCod:ic},colores); // chapas y demasía de esa máquina (para comparar bien)
+    p.papelCod=papelCod;p.posturas=posturas;
     let r;try{r=cotCalc(clone);}catch(e){return;}
     const tot=(r&&r.total)||0;
     if(tot>0&&(!best||tot<best.total))best={maquina:m,impCod:ic,total:tot,papelCod,posturas,extra};
@@ -8228,7 +8550,7 @@ function abrirModalDistribuirOTs(cotId){
   let _rowN=0;
   (c.items||[]).forEach((it,ii)=>{
     const rv=(typeof _costeoDeItemDesc==='function')?_costeoDeItemDesc(c,it.desc):null;
-    const piezas=(rv&&rv.costeo&&typeof cotPiezasDe==='function')?cotPiezasDe(rv.costeo):null;
+    const piezas=(rv&&rv.costeo)?cotPiezasPara(rv.costeo,+it.qty||rv.costeo.cantidad):null; // piezas de la cantidad del ítem
     const multiPz=piezas&&piezas.length>1;
     const filasPz=multiPz?piezas.map((p,k)=>({p,k})):[{p:null,k:null}];
     filasPz.forEach(fp=>{
@@ -8238,7 +8560,7 @@ function abrirModalDistribuirOTs(cotId){
         const imp=(S.cotImpresion||[]).find(x=>x.codigo===fp.p.impCod);
         maqSug=imp?(imp.maquina||''):'';
       }else{
-        try{if(rv)maqSug=_maqDesdeCosteo(rv.costeo);}catch(e){}
+        try{if(rv)maqSug=_maqDesdeCosteo(rv.costeo,+it.qty||null);}catch(e){}
       }
       window._dotRows.push({rid,ii,piezaIdx:fp.k,piezaNombre:fp.p?(fp.p.nombre||('Pieza '+(fp.k+1))):null,primeraDelItem:fp.k==null||fp.k===0});
       const maqOptsIt=[...cotMaqLista(),''].map(m=>`<option value="${m}" ${m===maqSug?'selected':''}>${m||'— Sin asignar —'}</option>`).join('');
@@ -8475,7 +8797,7 @@ function _atPapelChips(o,a){
     const rv=(typeof _costeoDeItemDesc==='function')?_costeoDeItemDesc(cot,desc0):null;
     const co=rv&&rv.costeo;if(!co)return'';
     const _pzIdx=(Array.isArray(o.itemsOT)&&o.itemsOT[0]&&o.itemsOT[0].piezaIdx!=null)?o.itemsOT[0].piezaIdx:0;
-    const _pzArr=(typeof cotPiezasDe==='function')?cotPiezasDe(co):[co];
+    const _pzArr=cotPiezasPara(co,(+a.cantidad||co.cantidad)); // piezas de ESA cantidad (si tiene configuración propia)
     const pz=_pzArr[_pzIdx]||_pzArr[0]||{};
     let pap=cotPapelDePieza(pz);
     if(!pap)return'';
@@ -8529,7 +8851,7 @@ function _atInit(o){
         const co=rv&&rv.costeo;
         if(co){
           const _pzIdx=(Array.isArray(o.itemsOT)&&o.itemsOT[0]&&o.itemsOT[0].piezaIdx!=null)?o.itemsOT[0].piezaIdx:0;
-          const _pzArr=(typeof cotPiezasDe==='function')?cotPiezasDe(co):[co];
+          const _pzArr=cotPiezasPara(co,(+a.cantidad||co.cantidad)); // piezas de ESA cantidad (si tiene configuración propia)
           const pz=_pzArr[_pzIdx]||_pzArr[0]||{};
           if(a.piezaW===''&&pz.piezaW>0)a.piezaW=pz.piezaW;
           if(a.piezaH===''&&pz.piezaH>0)a.piezaH=pz.piezaH;
@@ -8779,7 +9101,7 @@ function mVOT(id){
     h+=`<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:0.5px solid rgba(0,0,0,.05)"><div class="sdot ${p.estado}" style="margin-top:1px">${p.estado==='done'?'<i class="ti ti-check" style="font-size:9px"></i>':p.estado==='active'?'▶':(i+1)}</div><div style="flex:1"><div style="font-size:12px;font-weight:500">${p.nombre}${p.fecha?` <span style="font-weight:400;color:#888">${p.fecha}</span>`:''} ${a&&a.nombre?`<span class="rtag ${a.tipo==='maq'?'maq':a.tipo==='fle'?'ext':'ext'}" style="font-size:10px"><i class="ti ti-${a.tipo==='maq'?'tool':a.tipo==='fle'?'truck-delivery':'user'}" style="font-size:9px"></i>${a.nombre}</span>`:''}</div>${tInfo}${p.nota?`<div style="font-size:11px;color:#888">${p.nota}</div>`:''}${p.estado!=='done'?`<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap"><input id="np${i}" placeholder="Nota..." style="font-size:11px;padding:3px 7px">${pasoCol(p)==='corte'?`<button onclick="cm();om('corteMov',${o.id})" title="Trabajo en guillotina: ver stock de papel, registrar el corte e imputar el costo real a esta OT" style="font-size:11px;color:#7b3fa0;border-color:#7b3fa0"><i class="ti ti-cut"></i> Guillotina / stock</button>`:''}<button class="bs" onclick="avPN(${o.id},${i})"><i class="ti ti-check"></i>${p.estado==='pending'?'Iniciar':'Completar'}</button></div>`:`${pasoCol(p)==='corte'?`<div style="margin-top:3px"><button onclick="cm();om('corteMov',${o.id})" style="font-size:10px;color:#7b3fa0;border-color:#7b3fa0"><i class="ti ti-cut"></i> Ver corte</button></div>`:''}`}</div></div>`;
   });
   h+=`</div>`;
-  h+=`<div class="mf"><button onclick="cm()">Cerrar</button><button onclick="om('editOT',${id})"><i class="ti ti-edit"></i>Editar detalle</button><button onclick="om('procAdv','${id}|ext')"><i class="ti ti-stack-2"></i>Procesos term./ext.</button><button onclick="om('asgn',${id})"><i class="ti ti-cpu"></i>Asignar recursos</button>${o.estado!=='entregada'?`<button class="bp" onclick="om('nrem');cm()"><i class="ti ti-truck-delivery"></i>Remito</button>`:''}</div>`;
+  h+=`<div class="mf"><button onclick="cm()">Cerrar</button><button onclick="om('editOT',${id})"><i class="ti ti-edit"></i>Editar detalle</button><button onclick="om('procAdv','${id}|ext')"><i class="ti ti-stack-2"></i>Procesos term./ext.</button><button onclick="om('asgn',${id})"><i class="ti ti-cpu"></i>Asignar recursos</button>${o.estado!=='entregada'?`<button class="bp" onclick="cm();om('nrem',${id})"><i class="ti ti-truck-delivery"></i>Remito</button>`:''}</div>`;
   return h;
 }
 
@@ -8876,7 +9198,8 @@ function editRec(tipo,idx){
 }
 
 
-const mNREM=()=>`<div class="mt2">Nuevo remito interno</div><div class="fr"><div class="fg"><label>Cliente</label>${acCli('rem-txt','rem-id')}</div><div class="fg"><label>OT</label><select id="remo"><option value="">Sin OT</option>${S.ordenes.map(o=>`<option value="${o.id}">${o.num} — ${o.descripcion}</option>`).join('')}</select></div></div><div class="fr"><div class="fg"><label>Fecha</label><input id="rf" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="fg"><label>Dirección</label><input id="rd"></div></div><div class="fg"><label>Detalle bultos</label><textarea id="rdet"></textarea></div><div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="savRem()"><i class="ti ti-check"></i>Emitir</button></div>`;
+// Nuevo remito. Desde una OT llega con la OT, el cliente, la dirección de entrega y el detalle ya cargados.
+const mNREM=(otPre)=>{const _o=otPre?S.ordenes.find(x=>x.id==otPre):null;if(_o)setTimeout(()=>{const c=(S.clientes||[]).find(x=>x.id==_o.clienteId);if(c){if(Q('rem-txt'))Q('rem-txt').value=c.nombre||'';if(Q('rem-id'))Q('rem-id').value=c.id;if(Q('rd')&&!Q('rd').value)Q('rd').value=c.domEnt||c.dom||'';}if(Q('remo'))Q('remo').value=String(_o.id);const q=(_o.itemsOT||[]).reduce((s,it)=>s+(+it.qty||0),0);if(Q('rdet')&&!Q('rdet').value)Q('rdet').value=(q?q.toLocaleString('es-AR')+' u. — ':'')+(_o.descripcion||'');},0);return `<div class="mt2">Nuevo remito interno</div><div class="fr"><div class="fg"><label>Cliente</label>${acCli('rem-txt','rem-id')}</div><div class="fg"><label>OT</label><select id="remo"><option value="">Sin OT</option>${S.ordenes.map(o=>`<option value="${o.id}">${o.num} — ${o.descripcion}</option>`).join('')}</select></div></div><div class="fr"><div class="fg"><label>Fecha</label><input id="rf" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="fg"><label>Dirección</label><input id="rd"></div></div><div class="fg"><label>Detalle bultos</label><textarea id="rdet"></textarea></div><div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="savRem()"><i class="ti ti-check"></i>Emitir</button></div>`;};
 const mVREM=id=>{const r=S.remitos.find(x=>x.id==id);if(!r)return'';return`<div class="mt2">Remito ${r.num}</div><div class="kv"><span class="kk">Cliente</span><span class="kval">${cNom(r.clienteId)}</span></div><div class="kv"><span class="kk">OT</span><span class="kval">${r.otNum||'—'}</span></div><div class="kv"><span class="kk">Fecha</span><span class="kval">${r.fecha}</span></div><div class="kv"><span class="kk">Dirección</span><span class="kval">${r.dir||'—'}</span></div><div class="kv"><span class="kk">Detalle</span><span class="kval">${r.det||'—'}</span></div><div class="kv"><span class="kk">Estado</span><span class="kval">${stBadge(r.estado)}</span></div><div class="mf"><button onclick="cm()">Cerrar</button>${r.estado!=='entregado'?`<button class="bs" onclick="mkRem(${r.id},'entregado')"><i class="ti ti-check"></i>Marcar entregado</button>`:''}</div>`;};
 const mNGAS=()=>`<div class="mt2">Agregar gasto de estructura</div><div class="fr"><div class="fg"><label>Concepto</label><input id="gc"></div><div class="fg"><label>Tipo</label><select id="gti"><option value="fijo">Fijo</option><option value="variable">Variable</option></select></div></div><div class="fr"><div class="fg"><label>Monto mensual</label><input id="gm" type="number" placeholder="$0"></div><div class="fg"><label>Mes</label><input id="gme" type="month" value="${new Date().toISOString().slice(0,7)}"></div></div><div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" onclick="savGas()"><i class="ti ti-check"></i>Guardar</button></div>`;
 
@@ -9589,9 +9912,9 @@ function _fichaCosteoView(f,cot){
     return h;
   }catch(e){console.warn('_fichaCosteoView',e);return '';}
 }
-function _maqDesdeCosteo(costeo){
+function _maqDesdeCosteo(costeo,cant){
   if(!costeo)return'';
-  const piezas=(typeof cotPiezasDe==='function')?cotPiezasDe(costeo):[costeo];
+  const piezas=(cant!=null&&typeof cotPiezasPara==='function')?cotPiezasPara(costeo,cant):((typeof cotPiezasDe==='function')?cotPiezasDe(costeo):[costeo]); // de esa cantidad si tiene configuración propia
   for(const p of piezas){
     if(!p||!p.impCod)continue;
     const imp=(S.cotImpresion||[]).find(x=>x.codigo===p.impCod);
@@ -9835,7 +10158,15 @@ async function chCot(id,st,varIdx){
   sk('cotizaciones');
   if(st==='aprobada'){
     const yaOT=S.ordenes.find(o=>o.cotId==id);
-    if(!yaOT) await genOT(id,false,null,true);
+    if(!yaOT){
+      // Varios ítems o un costeo con varias piezas (ej. revista: tapa en una máquina, interior en otra):
+      // se abre la distribución en OTs (A, B…) para que cada pieza vaya con SU máquina. Una OT única
+      // tomaba solo la máquina de la primera pieza y la impresión de las demás se perdía.
+      let multi=(c.items||[]).length>1;
+      if(!multi){try{const rv0=_costeoDeItemDesc(c,(c.items&&c.items[0]||{}).desc);if(rv0&&rv0.costeo&&cotPiezasPara(rv0.costeo,(c.items[0]&&+c.items[0].qty)||rv0.costeo.cantidad).length>1)multi=true;}catch(e){}}
+      if(multi){cm();render();abrirModalDistribuirOTs(id);return;}
+      await genOT(id,false,null,true);
+    }
   }
   cm();render();
 }
@@ -9869,7 +10200,7 @@ async function genOT(cotIdOrIdx,byIdx,descComp,noRender){
     try{
       const it0=(c.items||[])[0];
       const rv=it0?_costeoDeItemDesc(c,it0.desc):null;
-      if(rv)maqOT=_maqDesdeCosteo(rv.costeo);
+      if(rv)maqOT=_maqDesdeCosteo(rv.costeo,+it0.qty||null);
       if(maqOT)c.maquina=maqOT;
     }catch(e){}
   }
@@ -10011,8 +10342,8 @@ function updateOT(id){
   syncPasos(o); // recalcula CTP N/A y Terminación/Externos según el detalle actual
   sk('ordenes');cm();om('vot',id);
 }
-function avP(otId,nom){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos.find(x=>x.nombre===nom);if(!p)return;const now=new Date();const h=now.toISOString().slice(0,10);if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}const _c=pasosContables(o);const dn=_c.filter(x=>x.estado==='done').length;if(dn===_c.length)o.estado='lista';else if(o.pasos.some(x=>x.estado==='active'))o.estado='en_produccion';sk('ordenes');render();}
-function avPN(otId,idx){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos[idx];const n=Q('np'+idx);if(n&&n.value)p.nota=n.value;const now=new Date();const h=now.toISOString().slice(0,10);if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}const _c=pasosContables(o);const dn=_c.filter(x=>x.estado==='done').length;if(dn===_c.length)o.estado='lista';else if(o.pasos.some(x=>x.estado==='active'))o.estado='en_produccion';sk('ordenes');cm();om('vot',otId);}
+function avP(otId,nom){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos.find(x=>x.nombre===nom);if(!p)return;const now=new Date();const h=now.toISOString().slice(0,10);if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}recomputeEstadoOT(o);sk('ordenes');render();}
+function avPN(otId,idx){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos[idx];const n=Q('np'+idx);if(n&&n.value)p.nota=n.value;const now=new Date();const h=now.toISOString().slice(0,10);if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}recomputeEstadoOT(o);sk('ordenes');cm();om('vot',otId);}
 async function savRem(){const cid=gCid('rem-id');if(!cid){alert('Seleccioná un cliente');return;}const otId=parseInt(Q('remo').value)||null;const ot=otId?S.ordenes.find(o=>o.id===otId):null;const numSeq=await nid('rem'),id=uid(),num=`R-${String(numSeq).padStart(4,'0')}`;S.remitos.push({id,num,clienteId:cid,otNum:ot?.num||'',fecha:Q('rf').value,dir:Q('rd').value,det:Q('rdet').value,estado:'emitido'});sk('remitos');cm();render();}
 function mkRem(id,st){const i=S.remitos.findIndex(r=>r.id===id);if(i>=0){S.remitos[i].estado=st;sk('remitos');cm();render();}}
 function savGas(){const c=Q('gc')?.value.trim();if(!c){alert('Ingresá el concepto');return;}const id=uid();S.gastos.push({id,concepto:c,tipo:Q('gti').value,monto:parseFloat(Q('gm').value)||0,mes:Q('gme').value});sk('gastos');cm();render();}
