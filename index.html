@@ -2190,13 +2190,17 @@ function cotImpDet(pd){
   if(pd.impDescPct>0)t+=` <span style="color:#1a7f37;font-weight:700">− ${pd.impDescPct}% desc. ($ ${cotFmt(pd.impBase-pd.impCosto)})</span>`;
   return t;
 }
+// Detalle del papel en una fila ancha: costo x mil × millares, hojas por unidad y qué se compra
 function cotPapelDet(pd){
   if(!(pd.papelCXM>0))return '';
-  let t=`costo x mil: $ ${cotFmt(pd.papelCXM)} × ${cotFmtDec(pd.pliegosTot/1000,3)} millares (c/demasía${pd.entradas>1?' × '+pd.entradas+' entradas':''})`;
-  if(pd.cantMult>1)t+=` · ${cotFmt(pd.cantEf)} hojas (${cotFmtDec(pd.cantMult,0)} x unidad)`;
-  if(pd.compra&&pd.compra.cajas)t+=`<br><span style="color:#7b3fa0;font-weight:600"><i class="ti ti-shopping-cart"></i> Compra: ${cotFmt(pd.compra.cajas)} caja${pd.compra.cajas>1?'s':''} x ${cotFmt(pd.compra.porCaja)} = ${cotFmt(pd.compra.pliegos)} u.</span>`;
-  else if(pd.compra&&pd.compra.pliegos)t+=`<br><span style="color:#7b3fa0;font-weight:600"><i class="ti ti-shopping-cart"></i> Compra: ${cotFmt(pd.compra.pliegos)} pliegos de ${cotFmtDec(pd.compra.ancho,1)}×${cotFmtDec(pd.compra.alto,1)} (${pd.compra.cortes>1?pd.compra.cortes+' cortes c/u':'entero, sin corte'})</span>`;
-  return t;
+  const chip=(lab,val,col,bg)=>`<span style="display:inline-flex;align-items:baseline;gap:5px;background:${bg||'#f5f7fa'};border-radius:7px;padding:3px 9px;white-space:nowrap"><span style="font-size:9.5px;color:#888;font-weight:700;text-transform:uppercase">${lab}</span><span style="font-size:12px;font-weight:700;color:${col||'#1e293b'}">${val}</span></span>`;
+  let t=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">`;
+  t+=chip('Costo x mil','$ '+cotFmt(pd.papelCXM));
+  t+=`<span style="color:#aaa">×</span>`+chip('Millares',cotFmtDec(pd.pliegosTot/1000,3)+` <span style="font-weight:400;color:#888;font-size:10.5px">(${cotFmt(pd.pliegosTot)} pliegos c/demasía${pd.entradas>1?' · '+pd.entradas+' entradas':''})</span>`);
+  if(pd.cantMult>1)t+=chip('Hojas',`${cotFmt(pd.cantEf)} <span style="font-weight:400;color:#888;font-size:10.5px">(${cotFmtDec(pd.cantMult,0)} x unidad)</span>`);
+  if(pd.compra&&pd.compra.cajas)t+=chip('<i class="ti ti-shopping-cart"></i> Compra',`${cotFmt(pd.compra.cajas)} caja${pd.compra.cajas>1?'s':''} x ${cotFmt(pd.compra.porCaja)} = ${cotFmt(pd.compra.pliegos)} u.`,'#7b3fa0','#f4eefa');
+  else if(pd.compra&&pd.compra.pliegos)t+=chip('<i class="ti ti-shopping-cart"></i> Compra',`${cotFmt(pd.compra.pliegos)} pliegos de ${cotFmtDec(pd.compra.ancho,1)}×${cotFmtDec(pd.compra.alto,1)} <span style="font-weight:400;font-size:10.5px">· ${pd.compra.cortes>1?pd.compra.cortes+' cortes c/u':'entero, sin corte'}</span>`,'#7b3fa0','#f4eefa');
+  return t+`</div>`;
 }
 function cotLamDet(pd){
   if(!pd.lam||(!pd.lamCod&&!pd.lamPers))return '';
@@ -2462,7 +2466,21 @@ function cotPreviewPliego(p){
 const COT_MAQ_MAX={SM52:{a:51,b:36,minA:20,minB:12},SM74:{a:73,b:52,minA:43,minB:24},Xerox:{a:65,b:32.5,minA:0,minB:0}};
 const COT_MAQ_BASE=['SM52','SM74','Xerox'];
 // Máquinas / imprentas agregadas en Tablas de costos → Impresión (ej: DELIGRAF 72×102). Se guardan en cotConfig.maqExtra
-function cotMaqExtra(){const l=(S.cotConfig&&Array.isArray(S.cotConfig.maqExtra))?S.cotConfig.maqExtra:[];return l.filter(m=>m&&m.nombre);}
+function cotMaqExtra(){
+  if(!S.cotConfig)S.cotConfig={};
+  if(!Array.isArray(S.cotConfig.maqExtra))S.cotConfig.maqExtra=[];
+  const l=S.cotConfig.maqExtra;
+  // Auto-reparación: toda máquina que figure en un código de impresión (Tablas de costos → Impresión) y no sea
+  // SM52/SM74/Xerox es una máquina agregada. Si se perdió de la configuración (ej. DELIGRAF), se vuelve a crear;
+  // el pliego máximo se toma del nombre si lo trae (ej. "DELIGRAF 72x102").
+  const faltan=[...new Set((S.cotImpresion||[]).map(x=>String((x&&x.maquina)||'').trim()).filter(m=>m&&!COT_MAQ_BASE.includes(m)&&!l.some(e=>e&&e.nombre===m)))];
+  if(faltan.length){
+    faltan.forEach(n=>{const mm=n.match(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)/i);const d1=mm?cotNumDec(mm[1]):0,d2=mm?cotNumDec(mm[2]):0;
+      l.push({nombre:n,a:Math.max(d1,d2),b:Math.min(d1,d2)});try{asegurarExterno(n);}catch(e){}});
+    clearTimeout(window._maqExtraT);window._maqExtraT=setTimeout(()=>{try{sk('cotConfig');}catch(e){}},300);
+  }
+  return l.filter(m=>m&&m.nombre);
+}
 function cotMaqLista(){return COT_MAQ_BASE.concat(cotMaqExtra().map(m=>m.nombre));}
 function cotEsMaqExtra(m){return !!m&&cotMaqExtra().some(e=>e.nombre===m);}
 function cotMaqMax(m){
@@ -2755,7 +2773,8 @@ function cotPapelCatHTML(k,p){
     ${r.fmtFijo?` <button onclick="cotPapSelEd(${k},'fmt','')" style="font-size:10px;padding:1px 7px;margin-left:4px">Volver a automático</button>`:` <span style="font-size:9px;background:#1a7f37;color:#fff;border-radius:5px;padding:1px 6px;margin-left:4px">AUTOMÁTICO</span>`}
     ${(fam.acabados||[]).length&&!s.acabado?`<div style="color:#a35b00;font-weight:700"><i class="ti ti-alert-triangle"></i> Indicá ${fam.acabados.join(' o ')}: queda en la OT para pedir el papel correcto.</div>`:''}
   </div>`;
-  const alts=r.opciones.filter(x=>!(x.key===o.key&&x.cutKey===o.cutKey&&x.maq===o.maq)).slice(0,6);
+  // Otras opciones: solo las que cuestan hasta 20% más por unidad que la mejor (las más caras no se muestran)
+  const alts=r.opciones.filter(x=>!(x.key===o.key&&x.cutKey===o.cutKey&&x.maq===o.maq)).filter(x=>{const pc=pct(x);return pc==null||pc<=20;}).slice(0,6);
   if(alts.length&&fam.modo!=='millar')h+=`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;align-items:center"><span style="font-size:9px;color:#888;font-weight:700" title="El % es cuánto más cuesta cada opción por unidad (papel + impresión estimada) comparada con la más conveniente">OTRAS OPCIONES (% vs la mejor):</span>${alts.map(x=>{const pc=pct(x);return `<button onclick="cotPapSelOpcion(${k},'${cotEsc(x.key)}','${x.cutKey}','${cotEsc(x.maq)}')" title="Usar esta opción" style="font-size:10px;padding:2px 7px;border-radius:6px;border:1px solid rgba(0,0,0,.15);background:#fff;cursor:pointer">${cotEsc(x.key.replace('x','×'))}${x.cortes>1?' ÷'+x.cortes+' → '+f1(x.sw)+'×'+f1(x.sh):''} · ${cotEsc(x.maq)}${x.poses?' · '+x.poses+'p':''}${pc!=null?` <b style="color:${pc>0?'#a32d2d':'#1a7f37'}">${pc>0?'+':''}${pc}%</b>`:''}</button>`;}).join('')}</div>`;
   return h;
 }
@@ -3943,7 +3962,9 @@ function rCotizador(){
     <div id="cz-p${k}-preview" style="display:flex;justify-content:flex-end;margin:2px 0 8px">${cotPreviewPliego(p)}</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:auto">
     <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th style="width:110px">Rubro</th><th style="width:60px;text-align:center">Cód</th><th>Selección</th><th>Detalle</th><th style="text-align:right;width:120px">Costo</th></tr>`;
-    h+=fila('PAPEL',(_modoCod||_modoPers)?codInp('cz-p'+k+'-papelcodinp',p.papelCod,'papelCod'):'',papelCtl,'cz-p'+k+'-papel-det',cotPapelDet(pd),'cz-p'+k+'-papel-cost',pd.papelCosto);
+    h+=fila('PAPEL',(_modoCod||_modoPers)?codInp('cz-p'+k+'-papelcodinp',p.papelCod,'papelCod'):'',papelCtl,'cz-p'+k+'-papel-det0','','cz-p'+k+'-papel-cost',pd.papelCosto);
+    // Detalle del papel en fila extendida (debajo, a todo el ancho)
+    h+=`<tr><td></td><td colspan="4" id="cz-p${k}-papel-det" style="padding:0 6px 10px">${cotPapelDet(pd)}</td></tr>`;
     const impCtl=impSel+` <span style="font-size:10px;color:#888">desc:</span> <input value="${p.impDescPct||''}" onchange="cotPzEd(${k},'impDescPct',this.value)" placeholder="0" title="Descuento especial en impresión (%) — típico en interiores de muchas entradas" style="width:44px;padding:5px 4px;border:1.5px solid ${p.impDescPct>0?'#1a7f37':'rgba(0,0,0,.15)'};border-radius:6px;font-size:12px;font-weight:700;text-align:center;color:${p.impDescPct>0?'#1a7f37':'#555'}">%`;
     h+=fila('IMPRESIÓN',codInp('cz-p'+k+'-impcodinp',p.impCod,'impCod'),impCtl,'cz-p'+k+'-imp-det',cotImpDet(pd),'cz-p'+k+'-imp-cost',pd.impCosto);
     if(!_esXerox)h+=fila('CHAPAS CTP','',sel(chapasOpts,p.chapasCod,`cotPzEd(${k},'chapasCod',this.value)`,'250px','cz-p'+k+'-chapascod')+` <span style="font-size:10px;color:#888">cant x entrada:</span> ${ninp(p.chapasCant,`cotPzEd(${k},'chapasCant',this.value)`,'50px','cz-p'+k+'-chapascant')}`,'cz-p'+k+'-chapas-det',(pd.chapasWarn?`<span style="color:#c0392b;font-weight:700">⚠ retiración necesita poses PARES · así van ${pd.chapasColTot||8} chapas o pasá a SM74</span> `:'')+(pd.entradas>1?`${p.chapasCant||0} × ${pd.entradas} entradas = ${(p.chapasCant||0)*pd.entradas} chapas`:''),'cz-p'+k+'-chapas-cost',pd.chapasCosto);
@@ -4184,6 +4205,8 @@ function descargarBackup(){
   }catch(e){alert('No se pudo generar la copia: '+(e&&e.message||e));}
 }
 // ---- Recordatorio automático de backup semanal (viernes 16 hs) ----
+// Trabajos planificados ESTA semana (lunes a sábado) en un recurso: cuenta bloques, no módulos de 30 min ni otras semanas
+function _bloquesSemana(pm){const l=_lunesDeEstaSemana();const ini=l.toISOString().slice(0,10);const f=new Date(l);f.setDate(f.getDate()+6);const fin=f.toISOString().slice(0,10);let n=0;Object.keys(pm||{}).forEach(d=>{if(d<ini||d>fin)return;Object.values(pm[d]||{}).forEach(b=>{if(b&&b.otId&&!b.extra)n++;});});return n;}
 function _lunesDeEstaSemana(){const d=new Date();d.setHours(0,0,0,0);const day=d.getDay();const diff=day===0?-6:1-day;d.setDate(d.getDate()+diff);return d;}
 function backupPendienteEstaSemana(){
   const last=S.ids&&S.ids._lastBackup?new Date(S.ids._lastBackup+'T00:00:00'):null;
@@ -5645,7 +5668,7 @@ function rPlan(){
     h+=`<div class="maq-grid">`;
     S.maquinas.forEach(m=>{
       const cnt=S.ordenes.filter(o=>Object.values(o.asignaciones||{}).some(v=>v&&v.nombre===m)).length;
-      const pm=S.planificacion[m]||{};const bsem=Object.values(pm).reduce((a,d)=>a+Object.keys(d).length,0);
+      const pm=S.planificacion[m]||{};const bsem=_bloquesSemana(pm);
       let extraInfo='';
       if(m==='Pre-prensa'){
         const ppPend=S.ordenes.filter(o=>{if(o.estado==='entregada'||o.estado==='cancelada')return false;const ps=(o.pasos||[]).filter(x=>(pasoCol(x)==='ppd'||pasoCol(x)==='ctp')&&!x.na&&x.estado!=='na');return ps.length&&ps.some(p=>p.estado!=='done');}).length;
@@ -5668,7 +5691,7 @@ function rPlan(){
     h+=`<div class="maq-card ${planMaq==='__ENVIOS__'?'on':''}" onclick="planMaq='__ENVIOS__';render()" style="border:1.5px solid #0f6e56;background:${planMaq==='__ENVIOS__'?'#e3f5ee':'#f3fbf7'}"><div style="font-size:11px;color:#0f6e56;margin-bottom:4px;font-weight:600"><i class="ti ti-truck-loading"></i> Logística</div><div style="font-size:14px;font-weight:700">📦 ENVÍOS A EXTERNOS</div>
       <div style="font-size:11px;margin-top:3px">${_ec.enviar?`<span style="color:#c05600;font-weight:700">${_ec.enviar} para enviar</span>`:'<span style="color:#3b6d11">nada para enviar</span>'}${_ec.enviado?` · ${_ec.enviado} en proveedor`:''}${_ec.atrasados?` · <span style="color:#a32d2d;font-weight:700">${_ec.atrasados} atrasado${_ec.atrasados>1?'s':''}</span>`:''}</div></div>`;
     S.externos.forEach(e=>{
-      const pe=S.planificacion[e]||{};const bsem=Object.values(pe).reduce((a,d)=>a+Object.keys(d).length,0);
+      const pe=S.planificacion[e]||{};const bsem=_bloquesSemana(pe);
       // Trabajos de este proveedor (procesos externos y trabajos tercerizados de OTs activas)
       const eN=String(e).trim().toLowerCase();
       const suyos=_extIt.filter(x=>x.est!=='recibido'&&String(x.p.extDestino||(x.env&&x.env.prov)||'').trim().toLowerCase()===eN);
