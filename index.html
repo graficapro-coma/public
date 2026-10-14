@@ -964,7 +964,7 @@ function triAcc(verClick,editClick,delClick){
 
 // ==================== MÓDULO TABLAS DE COSTOS (Cotizador Etapa 1) ====================
 const COT_SEED={"papeles":[{"codigo":0,"descripcion":"personalizado","gramaje":0,"ancho":0,"alto":0,"usdKg":0,"fijo":null,"activo":true},{"codigo":1,"descripcion":"47,5 x 32,5 350 ILUS","gramaje":350.0,"ancho":47.5,"alto":32.5,"usdKg":1.6,"fijo":null,"activo":true},{"codigo":2,"descripcion":"65 x 47,5 350 ILUS","gramaje":350.0,"ancho":47.5,"alto":65.0,"usdKg":1.6,"fijo":null,"activo":true},{"codigo":3,"descripcion":"47,5 x 32,5 300 ILUS","gramaje":300.0,"ancho":47.5,"alto":32.5,"usdKg":1.5,"fijo":null,"activo":true},{"codigo":4,"descripcion":"65 x 47,5 300 ILUS","gramaje":300.0,"ancho":47.5,"alto":65.0,"usdKg":1.5,"fijo":null,"activo":true},{"codigo":5,"descripcion":"47,5 x 32,5 250 ILUS","gramaje":250.0,"ancho":47.5,"alto":32.5,"usdKg":1.5,"fijo":null,"activo":true},{"codigo":6,"descripcion":"65 x 47,5 250 ILUS","gramaje":250.0,"ancho":47.5,"alto":65.0,"usdKg":1.5,"fijo":null,"activo":true},{"codigo":7,"descripcion":"47,5 x 32,5 200 ILUS","gramaje":200.0,"ancho":47.5,"alto":32.5,"usdKg":1.5,"fijo":null,"activo":true},{"codigo":8,"descripcion":"65 x 47,5 200 ILUS","gramaje":200.0,"ancho":47.5,"alto":65.0,"usdKg":1.5,"fijo":null,"activo":true},{"codigo":9,"descripcion":"47,5 x 32,5 170 ILUS","gramaje":170.0,"ancho":47.5,"alto":32.5,"usdKg":1.5,"fijo":null,"activo":true},{"codigo":10,"descripcion":"65 x 47,5 170 ILUS","gramaje":170.0,"ancho":47.5,"alto":65.0,"usdKg":1.5,"fijo":null,"activo":true},{"codigo":11,"descripcion":"47,5 x 32,5 150 ILUS","gramaje":150.0,"ancho":47.5,"alto":32.5,"usdKg":1.5,"fijo":null,"activo":true},{"codigo":12,"descripcion":"65 x 47,5 150 ILUS","gramaje":150.0,"ancho":47.5,"alto":65.0,"usdKg":1.5,"fijo":null,"activo":true},{"codigo":13,"descripcion":"47,5 x 32,5 130 ILUS","gramaje":130.0,"ancho":47.5,"alto":32.5,"usdKg":1.5,"fijo":null,"activo":true},{"codigo":14,"descripcion":"65 x 47,5 130 ILUS","gramaje":130.0,"ancho":47.5,"alto":65.0,"usdKg":1.5,"fijo":null,"activo":true},{"codigo":15,"descripcion":"47,5 x 32,5 115 ILUS","gramaje":115.0,"ancho":47.5,"alto":32.5,"usdKg":1.6,"fijo":null,"activo":true},{"codigo":16,"descripcion":"65 x 47,5 115 ILUS","gramaje":115.0,"ancho":47.5,"alto":65.0,"usdKg":1.6,"fijo":null,"activo":true},{"codigo":17,"descripcion":"47,5 x 32,5   90 ILUS","gramaje":90.0,"ancho":47.5,"alto":32.5,"usdKg":1.6,"fijo":null,"activo":true},{"codigo":18,"descripcion":"65 x 47,5 90 ILUS","gramaje":90.0,"ancho":47.5,"alto":65.0,"usdKg":1.6,"fijo":null,"activo":true},{"codigo":19,"descripcion":"RESMITA A3   autor 80","gramaje":80.0,"ancho":42.0,"alto":29.7,"usdKg":null,"fijo":8500.0,"activo":true},{"codigo":20,"descripcion":"59 X 41 ILUS 350 CARPETAS","gramaje":350.0,"ancho":59.0,"alto":41.0,"usdKg":1.6,"fijo":null,"activo":true},{"codigo":21,"descripcion":"Cartulina 250 D/T 66 x 50","gramaje":250.0,"ancho":66.0,"alto":50.0,"usdKg":1.35,"fijo":null,"activo":true},{"codigo":22,"descripcion":"Cartulina 250 D/T 36 x 51","gramaje":250.0,"ancho":36.0,"alto":51.0,"usdKg":1.35,"fijo":null,"activo":true},{"codigo":23,"descripcion":"Cartulina 250 D/T 41 x 59","gramaje":250.0,"ancho":41.0,"alto":59.0,"usdKg":1.35,"fijo":null,"activo":true},{"codigo":24,"descripcion":"Cartulina 300 D/T 66 x 50","gramaje":300.0,"ancho":66.0,"alto":50.0,"usdKg":1.35,"fijo":null,"activo":true},{"codigo":25,"descripcion":"Cartulina 300 D/T 36 x 51","gramaje":300.0,"ancho":36.0,"alto":51.0,"usdKg":1.35,"fijo":null,"activo":true},{"codigo":26,"descripcion":"Cartulina 300 D/T 41 x 59","gramaje":300.0,"ancho":41.0,"alto":59.0,"usdKg":1.35,"fijo":null,"activo":true},{"codigo":27,"descripcion":"47,5 x 32.5 - Obra 70","gramaje":70.0,"ancho":32.5,"alto":47.5,"usdKg":1.45,"fijo":null,"activo":true},{"codigo":28,"descripcion":"36 x 51 - Obra 70  Manteles","gramaje":70.0,"ancho":36.0,"alto":51.0,"usdKg":1.45,"fijo":null,"activo":true},{"codigo":29,"descripcion":"65 X 47,5  Obra 70","gramaje":70.0,"ancho":65.0,"alto":47.5,"usdKg":1.45,"fijo":null,"activo":true},{"codigo":30,"descripcion":"47,5 x 32.5 - Obra 80","gramaje":80.0,"ancho":32.5,"alto":47.5,"usdKg":1.45,"fijo":null,"activo":true},{"codigo":31,"descripcion":"65 X 47,5  Obra 80","gramaje":80.0,"ancho":65.0,"alto":47.5,"usdKg":1.45,"fijo":null,"activo":true},{"codigo":32,"descripcion":"47,5 x 32.5 - Obra 90","gramaje":90.0,"ancho":32.5,"alto":47.5,"usdKg":1.45,"fijo":null,"activo":true},{"codigo":33,"descripcion":"65 X 47,5  Obra 90","gramaje":90.0,"ancho":65.0,"alto":47.5,"usdKg":1.45,"fijo":null,"activo":true},{"codigo":34,"descripcion":"36 x 46 - Obra 70","gramaje":70.0,"ancho":36.0,"alto":46.0,"usdKg":1.45,"fijo":null,"activo":true},{"codigo":36,"descripcion":"47,5 x 32.5 - Obra 120","gramaje":120.0,"ancho":32.5,"alto":47.5,"usdKg":1.7,"fijo":null,"activo":true},{"codigo":37,"descripcion":"65 X 47,5  Obra 120","gramaje":120.0,"ancho":65.0,"alto":47.5,"usdKg":1.7,"fijo":null,"activo":true},{"codigo":38,"descripcion":"47,5 x 32.5 - Obra 210","gramaje":210.0,"ancho":32.5,"alto":47.5,"usdKg":1.7,"fijo":null,"activo":true},{"codigo":39,"descripcion":"65 X 47,5  Obra 210","gramaje":210.0,"ancho":65.0,"alto":47.5,"usdKg":1.7,"fijo":null,"activo":true},{"codigo":40,"descripcion":"65 x 50 autoadhes brillo","gramaje":0.0,"ancho":65.0,"alto":50.0,"usdKg":null,"fijo":271700.0,"activo":true},{"codigo":41,"descripcion":"50 x 35 autoadhes brillo","gramaje":0.0,"ancho":50.0,"alto":35.0,"usdKg":null,"fijo":null,"activo":false},{"codigo":42,"descripcion":"50 x 32,5 autoadhes brillo","gramaje":0.0,"ancho":50.0,"alto":32.5,"usdKg":null,"fijo":135850.0,"activo":true},{"codigo":43,"descripcion":"25 x 32,5 autoadhes brillo","gramaje":0.0,"ancho":25.0,"alto":32.5,"usdKg":null,"fijo":67925.0,"activo":true},{"codigo":44,"descripcion":"32,5 x 16,67 autoadhesivo brillo","gramaje":0.0,"ancho":32.5,"alto":16.67,"usdKg":null,"fijo":45283.33,"activo":true},{"codigo":45,"descripcion":"33,33 x 23,33 autoadhes brillo","gramaje":0.0,"ancho":33.33,"alto":23.33,"usdKg":null,"fijo":null,"activo":false},{"codigo":46,"descripcion":"33,3 x 35 autoadhes brillo","gramaje":0.0,"ancho":33.33,"alto":35.0,"usdKg":null,"fijo":null,"activo":false},{"codigo":47,"descripcion":"Sobres CD 12,7x12,7","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":37000.0,"activo":true},{"codigo":48,"descripcion":"Sobres 19 x 25 cm","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":null,"activo":false},{"codigo":49,"descripcion":"Sobres Of Ingles 80 grs","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":33200.0,"activo":true},{"codigo":50,"descripcion":"Sobres Of Ingles 80 grs c/ventana","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":47100.0,"activo":true},{"codigo":51,"descripcion":"Sobres Of Ingles 90 grs","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":42000.0,"activo":true},{"codigo":52,"descripcion":"Sobres 23 x 32,5 Obra - 90 grs","gramaje":0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":102080.0,"activo":true},{"codigo":53,"descripcion":"Sobres 24 x 30 Obra - 90 grs","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":87300.0,"activo":true},{"codigo":54,"descripcion":"Sobres 25 x 35 Obra - 90 grs","gramaje":0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":120000.0,"activo":true},{"codigo":55,"descripcion":"Sobres 27 x 37 90 grs","gramaje":0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":100800.0,"activo":true},{"codigo":56,"descripcion":"Sobres 30 x 40 90 grs","gramaje":0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":156000.0,"activo":true},{"codigo":57,"descripcion":"Sobres 31 x 40 90 grs - MANILA","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":null,"activo":false},{"codigo":58,"descripcion":"Sobres 37 x 45  Obra - 90 grs","gramaje":0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":235000.0,"activo":true},{"codigo":59,"descripcion":"Quimico Duplicado 46 x 36","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":null,"activo":false},{"codigo":60,"descripcion":"Quimico Triplicado 46 x 36","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":null,"activo":false},{"codigo":61,"descripcion":"Quimico Cuadruplicado 46 x 36","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":null,"activo":false},{"codigo":62,"descripcion":"BIOXIDO 40 G  (VIENE 75X100)","gramaje":40.0,"ancho":37.5,"alto":50.0,"usdKg":null,"fijo":null,"activo":false},{"codigo":63,"descripcion":"KRAFT 80  ((DIMA 85X120))","gramaje":80.0,"ancho":42.5,"alto":30.0,"usdKg":null,"fijo":null,"activo":false},{"codigo":64,"descripcion":"DIMA PVC 65X50","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":772500.0,"activo":true},{"codigo":65,"descripcion":"KARTU KAFT PAPELMIL","gramaje":350.0,"ancho":72.0,"alto":100.0,"usdKg":1.4,"fijo":null,"activo":true},{"codigo":66,"descripcion":"CODIBLA OPP MATE  65x50","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":695250.0,"activo":true},{"codigo":67,"descripcion":"CODIBLA OPP MATE  32,5x50","gramaje":0.0,"ancho":0.0,"alto":0.0,"usdKg":null,"fijo":347625.0,"activo":true},{"codigo":68,"descripcion":"CAVA OPP  BTE 65x50","gramaje":0.0,"ancho":32.5,"alto":50.0,"usdKg":null,"fijo":651603.75,"activo":true},{"codigo":69,"descripcion":"CAVA OPP  BTE 32,5X50","gramaje":0.0,"ancho":32.5,"alto":47.5,"usdKg":null,"fijo":325801.88,"activo":true}],"impresion":[{"codigo":0,"maquina":"","descripcion":"NO","primerMillar":0,"millarSiguiente":0,"chapas":0,"activo":true},{"codigo":1,"maquina":"SM52","descripcion":"1/0  1 CH - PANTONE","primerMillar":100000,"millarSiguiente":35000,"chapas":1,"activo":true},{"codigo":2,"maquina":"SM52","descripcion":"1/1  1 CH - PANTONE","primerMillar":100000,"millarSiguiente":52500,"chapas":1,"activo":true},{"codigo":3,"maquina":"SM52","descripcion":"1/1  2 CH - PANTONE","primerMillar":150000,"millarSiguiente":52500,"chapas":2,"activo":true},{"codigo":4,"maquina":"SM52","descripcion":"2/0  2 CH - PANTONE","primerMillar":125000,"millarSiguiente":35000,"chapas":2,"activo":true},{"codigo":5,"maquina":"SM52","descripcion":"2/1  3 CH - PANTONE","primerMillar":225000,"millarSiguiente":70000,"chapas":3,"activo":true},{"codigo":6,"maquina":"SM52","descripcion":"2/2  2 CH - PANTONE","primerMillar":125000,"millarSiguiente":52500,"chapas":2,"activo":true},{"codigo":7,"maquina":"SM52","descripcion":"2/2  4 CH - PANTONE","primerMillar":187500,"millarSiguiente":52500,"chapas":4,"activo":true},{"codigo":8,"maquina":"SM52","descripcion":"3/0  3 CH - PANTONE","primerMillar":225000,"millarSiguiente":70000,"chapas":3,"activo":true},{"codigo":9,"maquina":"SM52","descripcion":"3/1  4 CH - PANTONE","primerMillar":325000,"millarSiguiente":105000,"chapas":4,"activo":true},{"codigo":10,"maquina":"SM52","descripcion":"3/2  5 CH - PANTONE","primerMillar":350000,"millarSiguiente":105000,"chapas":5,"activo":true},{"codigo":11,"maquina":"SM52","descripcion":"3/3  3 CH - PANTONE","primerMillar":225000,"millarSiguiente":105000,"chapas":3,"activo":true},{"codigo":12,"maquina":"SM52","descripcion":"3/3  6 CH - PANTONE","primerMillar":337500,"millarSiguiente":105000,"chapas":6,"activo":true},{"codigo":13,"maquina":"SM52","descripcion":"4/0  4 CH - Fotocormo","primerMillar":150000,"millarSiguiente":37500,"chapas":4,"activo":true},{"codigo":14,"maquina":"SM52","descripcion":"4/0 4 CH + barniz - Fotocormo","primerMillar":250000,"millarSiguiente":72500,"chapas":4,"activo":true},{"codigo":15,"maquina":"SM52","descripcion":"4/4  4 CH - Fotocormo","primerMillar":150000,"millarSiguiente":56250,"chapas":4,"activo":true},{"codigo":16,"maquina":"SM52","descripcion":"4/4  4 CH + barniz F/D - Fotocormo","primerMillar":250000,"millarSiguiente":108750,"chapas":4,"activo":true},{"codigo":17,"maquina":"SM52","descripcion":"4/4  8 CH - Fotocormo","primerMillar":225000,"millarSiguiente":56250,"chapas":8,"activo":true},{"codigo":18,"maquina":"SM52","descripcion":"4/4  8 CH + barniz F/D - Fotocormo","primerMillar":375000,"millarSiguiente":108750,"chapas":8,"activo":true},{"codigo":19,"maquina":"SM52","descripcion":"4/1  5 CH - Fotocormo","primerMillar":250000,"millarSiguiente":72500,"chapas":5,"activo":true},{"codigo":20,"maquina":"SM52","descripcion":"4/2  6 CH - Fotocormo","primerMillar":275000,"millarSiguiente":72500,"chapas":6,"activo":true},{"codigo":21,"maquina":"SM52","descripcion":"5/0  5 CH - Fotocormo + P","primerMillar":250000,"millarSiguiente":72500,"chapas":5,"activo":true},{"codigo":22,"maquina":"SM52","descripcion":"5/0  5 CH + barniz - Fotocormo + P","primerMillar":350000,"millarSiguiente":107500,"chapas":5,"activo":true},{"codigo":23,"maquina":"SM52","descripcion":"5/5  5 CH - Fotocormo + P","primerMillar":250000,"millarSiguiente":108750,"chapas":5,"activo":true},{"codigo":24,"maquina":"SM52","descripcion":"5/5  5 CH + barniz F/D - Fotocormo + P","primerMillar":350000,"millarSiguiente":143750,"chapas":5,"activo":true},{"codigo":25,"maquina":"SM52","descripcion":"5/5  10 CH - Fotocormo + P","primerMillar":375000,"millarSiguiente":163125,"chapas":10,"activo":true},{"codigo":26,"maquina":"SM52","descripcion":"4/0  4 CH - PANTONE","primerMillar":250000,"millarSiguiente":70000,"chapas":4,"activo":true},{"codigo":27,"maquina":"SM74","descripcion":"1/0  1 CH - PANTONE","primerMillar":170000,"millarSiguiente":45000,"chapas":1,"activo":true},{"codigo":28,"maquina":"SM74","descripcion":"1/1  1 CH - PANTONE","primerMillar":170000,"millarSiguiente":67500,"chapas":1,"activo":true},{"codigo":29,"maquina":"SM74","descripcion":"1/1  2 CH - PANTONE","primerMillar":255000,"millarSiguiente":67500,"chapas":2,"activo":true},{"codigo":30,"maquina":"SM74","descripcion":"2/0  2 CH - PANTONE","primerMillar":190000,"millarSiguiente":45000,"chapas":2,"activo":true},{"codigo":31,"maquina":"SM74","descripcion":"2/1  3 CH - PANTONE","primerMillar":360000,"millarSiguiente":90000,"chapas":3,"activo":true},{"codigo":32,"maquina":"SM74","descripcion":"2/2  2 CH - PANTONE","primerMillar":190000,"millarSiguiente":67500,"chapas":2,"activo":true},{"codigo":33,"maquina":"SM74","descripcion":"2/2  4 CH - PANTONE","primerMillar":285000,"millarSiguiente":67500,"chapas":4,"activo":true},{"codigo":34,"maquina":"SM74","descripcion":"3/0  3 CH - PANTONE","primerMillar":360000,"millarSiguiente":90000,"chapas":3,"activo":true},{"codigo":35,"maquina":"SM74","descripcion":"3/1  4 CH - PANTONE","primerMillar":530000,"millarSiguiente":135000,"chapas":4,"activo":true},{"codigo":36,"maquina":"SM74","descripcion":"3/2  5 CH - - PANTONE","primerMillar":550000,"millarSiguiente":135000,"chapas":5,"activo":true},{"codigo":37,"maquina":"SM74","descripcion":"3/3  3 CH - PANTONE","primerMillar":360000,"millarSiguiente":135000,"chapas":3,"activo":true},{"codigo":38,"maquina":"SM74","descripcion":"3/3  6 CH - PANTONE","primerMillar":540000,"millarSiguiente":135000,"chapas":6,"activo":true},{"codigo":39,"maquina":"SM74","descripcion":"4/0  4 CH - Fotocormo","primerMillar":205000,"millarSiguiente":50000,"chapas":4,"activo":true},{"codigo":40,"maquina":"SM74","descripcion":"4/0 4 CH + barniz - Fotocormo","primerMillar":375000,"millarSiguiente":95000,"chapas":4,"activo":true},{"codigo":41,"maquina":"SM74","descripcion":"4/4  4 CH - Fotocormo","primerMillar":205000,"millarSiguiente":75000,"chapas":4,"activo":true},{"codigo":42,"maquina":"SM74","descripcion":"4/4  4 CH + barniz F/D - Fotocormo","primerMillar":375000,"millarSiguiente":142500,"chapas":4,"activo":true},{"codigo":43,"maquina":"SM74","descripcion":"4/4  8 CH - Fotocormo","primerMillar":307500,"millarSiguiente":75000,"chapas":8,"activo":true},{"codigo":44,"maquina":"SM74","descripcion":"4/4  8 CH + barniz F/D - Fotocormo","primerMillar":562500,"millarSiguiente":142500,"chapas":8,"activo":true},{"codigo":45,"maquina":"SM74","descripcion":"4/1  5 CH - Fotocormo","primerMillar":375000,"millarSiguiente":95000,"chapas":5,"activo":true},{"codigo":46,"maquina":"SM74","descripcion":"4/2  6 CH - Fotocormo","primerMillar":395000,"millarSiguiente":95000,"chapas":6,"activo":true},{"codigo":47,"maquina":"SM74","descripcion":"5/0  5 CH - Fotocormo + P","primerMillar":375000,"millarSiguiente":95000,"chapas":5,"activo":true},{"codigo":48,"maquina":"SM74","descripcion":"5/0  5 CH + barniz - Fotocormo + P","primerMillar":545000,"millarSiguiente":140000,"chapas":5,"activo":true},{"codigo":49,"maquina":"SM74","descripcion":"5/5  5 CH - Fotocormo + P","primerMillar":375000,"millarSiguiente":142500,"chapas":5,"activo":true},{"codigo":50,"maquina":"SM74","descripcion":"5/5  5 CH + barniz F/D - Fotocormo + P","primerMillar":545000,"millarSiguiente":187500,"chapas":5,"activo":true},{"codigo":51,"maquina":"SM74","descripcion":"5/5  10 CH - Fotocormo + P","primerMillar":562500,"millarSiguiente":213750,"chapas":10,"activo":true},{"codigo":52,"maquina":"SM74","descripcion":"4/0  4 CH - PANTONE","primerMillar":380000,"millarSiguiente":90000,"chapas":4,"activo":true}],"chapas":[{"codigo":0,"tipo":"NO","costo":0,"activo":true},{"codigo":2,"tipo":"CTP SM52 - 52,5x45,9","costo":6500,"activo":true},{"codigo":3,"tipo":"CTP SM74 - 74,5x60,5","costo":12500,"activo":true}],"laminados":[{"codigo":0,"material":"NO","ancho":0.0,"alto":0.0,"precioM2":0.0,"activo":true},{"codigo":1,"material":"OPP BTE 65 X 47,5","ancho":65.0,"alto":47.5,"precioM2":250.0,"activo":true},{"codigo":2,"material":"OPP BTE 47,5 X 32,5","ancho":47.5,"alto":32.5,"precioM2":250.0,"activo":true},{"codigo":3,"material":"OPP MATE 65 X 47,5","ancho":65.0,"alto":47.5,"precioM2":250.0,"activo":true},{"codigo":4,"material":"OPP MATE 47,5 X 32,5","ancho":47.5,"alto":32.5,"precioM2":250.0,"activo":true},{"codigo":5,"material":"POLIETILENO 65 X 47,5","ancho":65.0,"alto":47.5,"precioM2":0.0,"activo":false},{"codigo":6,"material":"POLIETILENO 47,5 X 32,5","ancho":47.5,"alto":32.5,"precioM2":0.0,"activo":false},{"codigo":7,"material":"Laca Uv Plena  32,5x47,5","ancho":32.5,"alto":47.5,"precioM2":200.0,"activo":true},{"codigo":8,"material":"Laca Uv Plena  65x47,5","ancho":65.0,"alto":47.5,"precioM2":200.0,"activo":true}],"otros":[{"codigo":0,"concepto":"NO","primerMillar":0,"millarSiguiente":0,"activo":true},{"codigo":1,"concepto":"CORTE","primerMillar":25000,"millarSiguiente":1000,"activo":true},{"codigo":2,"concepto":"DOBLADO","primerMillar":50000,"millarSiguiente":10000,"activo":true},{"codigo":3,"concepto":"PUNTILLADO","primerMillar":50000,"millarSiguiente":10000,"activo":true},{"codigo":4,"concepto":"PEGADO manual","primerMillar":25000,"millarSiguiente":25000,"activo":true},{"codigo":5,"concepto":"TROQUELADO","primerMillar":65000,"millarSiguiente":35000,"activo":true},{"codigo":6,"concepto":"TROQUELADO  AGF 25 x 34,5","primerMillar":0,"millarSiguiente":0,"activo":true},{"codigo":7,"concepto":"ABROCHADO","primerMillar":25000,"millarSiguiente":25000,"activo":true},{"codigo":8,"concepto":"PEGADO SOBRES","primerMillar":0,"millarSiguiente":0,"activo":true},{"codigo":9,"concepto":"FLETE entrega","primerMillar":30000,"millarSiguiente":30000,"activo":true},{"codigo":10,"concepto":"FLETE interno terceros","primerMillar":20000,"millarSiguiente":20000,"activo":true},{"codigo":11,"concepto":"APLIC CINT. BIF.","primerMillar":50000,"millarSiguiente":50000,"activo":true},{"codigo":12,"concepto":"Laca UV Sectorizada","primerMillar":0,"millarSiguiente":0,"activo":true},{"codigo":13,"concepto":"PEGADO ESTUCHES TER","primerMillar":50000,"millarSiguiente":7000,"activo":true},{"codigo":15,"concepto":"PRUEBA COLOR C ENVIO","primerMillar":20000,"millarSiguiente":20000,"activo":true},{"codigo":16,"concepto":"HOT STAMPING","primerMillar":100000,"millarSiguiente":70000,"activo":true},{"codigo":17,"concepto":"CAJAS","primerMillar":2000,"millarSiguiente":1000,"activo":true}]};
-const COT_CONFIG_DEFAULT={dolarNominal:1500,spreadPct:3,demasia:250,margenPct:20,pesoMaxKg:800,pinzaCm:1.5,guillotinaCm:115};
+const COT_CONFIG_DEFAULT={dolarNominal:1500,spreadPct:3,demasia:250,margenPct:20,pesoMaxKg:800,pinzaCm:1.5,colaCm:1,guillotinaCm:115};
 let costosTab='papeles';
 function cotEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function cotNum(v){const n=parseFloat(String(v).replace(/\./g,'').replace(',','.'));return isNaN(n)?0:n;}
@@ -1078,7 +1078,7 @@ function cotPapelOpciones(p,maqForzada){
       let posesStd=0;
       hojas.forEach(hj=>{
         if(!cotPliegoEnMaq([hj.w,hj.h],m))return;
-        const poses=(PW>0&&PH>0)?cotPosesSug(PW,PH,hj.w,hj.h,cotPinza(m)):0;
+        const poses=(PW>0&&PH>0)?cotPosesSug(PW,PH,hj.w,hj.h,cotPinza(m,p)):0;
         if(PW>0&&PH>0&&!poses)return;
         if(hj.larga&&(posesStd>0||!(PW>0&&PH>0)))return; // la hoja larga solo cuando la pieza no entra en la estándar
         if(!hj.larga)posesStd=poses;
@@ -1159,7 +1159,7 @@ async function costosSeed(){
 function costosEdit(k,idx,campo,val){
   const arr=S[k];if(!arr||!arr[idx])return;
   const numeric=['gramaje','ancho','alto','usdKg','fijo','primerMillar','millarSiguiente','costo','precioM2','chapas','codigo','origAncho','origAlto','cortes'];
-  if(campo==='activo'){arr[idx][campo]=!!val;}
+  if(campo==='activo'||campo==='proporcional'){arr[idx][campo]=!!val;if(campo==='proporcional'){clearTimeout(window._costosSaveT);window._costosSaveT=setTimeout(()=>costosSave(k),700);render();return;}}
   else if(numeric.includes(campo)){
     const nuevo=(val===''||val==null)?(campo==='usdKg'||campo==='fijo'?null:0):cotNumDec(val);
     // Seguro: un precio que cambia más del 50% (para arriba o para abajo) se confirma antes de guardar
@@ -1168,6 +1168,7 @@ function costosEdit(k,idx,campo,val){
       if(!confirm(`¿Seguro? El valor cambia de ${cotFmtDec(ant,3)} a ${cotFmtDec(nuevo,3)} (${nuevo>ant?'+':''}${Math.round((nuevo/ant-1)*100)}%).`)){render();return;}
     }
     arr[idx][campo]=nuevo;
+    if(['usdKg','fijo','primerMillar','millarSiguiente','costo','precioM2'].includes(campo)&&nuevo!==ant&&_AJ_TABLA[k])_marcarAjusteCostos(_AJ_TABLA[k]+(k==='cotImpresion'&&arr[idx].maquina?' '+arr[idx].maquina:''));
   }
   else{arr[idx][campo]=String(val).replace(/[<>]/g,'').slice(0,120);}
   clearTimeout(window._costosSaveT);window._costosSaveT=setTimeout(()=>costosSave(k),700);
@@ -1319,6 +1320,20 @@ function costosAumentoMasivo(){
   setTimeout(()=>alert(n+' papeles actualizados ('+(inc>0?'+':'')+inc+' USD/kg). Los de precio fijo no se tocaron.'),100);
 }
 // ---- Edición del catálogo de papeles (Tablas de costos → Catálogo de papeles) ----
+// Registro del último ajuste de costos (fecha, quién, qué) — se ve arriba en Tablas de costos. Guarda los últimos 15.
+const _AJ_TABLA={cotPapeles:'Papeles (códigos)',cotImpresion:'Impresión',cotChapas:'Chapas CTP',cotLaminados:'Laminados',cotOtros:'Procesos',cotPapelCat:'Catálogo de papeles'};
+function _marcarAjusteCostos(que){
+  if(!S.cotConfig)S.cotConfig=Object.assign({},COT_CONFIG_DEFAULT);
+  const hoy=new Date().toISOString().slice(0,10);
+  const por=(typeof currentUser!=='undefined'&&currentUser&&currentUser.email)||'';
+  const l=Array.isArray(S.cotConfig.ajustes)?S.cotConfig.ajustes:[];
+  // Varias ediciones el mismo día, misma tabla y misma persona = un solo registro
+  const ult=l[0];
+  if(ult&&ult.fecha===hoy&&ult.que===que&&ult.por===por){ult.hora=new Date().toTimeString().slice(0,5);}
+  else l.unshift({fecha:hoy,hora:new Date().toTimeString().slice(0,5),por,que:String(que).slice(0,120)});
+  S.cotConfig.ajustes=l.slice(0,15);
+  clearTimeout(window._ajusteSaveT);window._ajusteSaveT=setTimeout(()=>costosSave('cotConfig'),900);
+}
 function _catMut(){
   if(!(Array.isArray(S.cotPapelCat)&&S.cotPapelCat.length))S.cotPapelCat=JSON.parse(JSON.stringify(COT_PAPEL_CAT_SEED));
   // Formatos viejos [ancho,alto] → {w,h} (Firestore no guarda listas dentro de listas)
@@ -1340,6 +1355,7 @@ function catEd(fi,campo,val,a,b){
   else if(campo==='vMarca'){if(f.variantes[a])f.variantes[a].marca=txt(val);}
   else if(['vW','vH','vCaja','vArs'].includes(campo)){const v=f.variantes[a];if(v)v[{vW:'w',vH:'h',vCaja:'caja',vArs:'ars'}[campo]]=((campo==='vArs'||campo==='vCaja')?cotNum(val):cotNumDec(val))||0;}
   else if(['vfW','vfH','vfUsd'].includes(campo)){const v=f.variantes[a];const ff=v&&v.formatos&&v.formatos[b];if(ff)ff[{vfW:'w',vfH:'h',vfUsd:'usd'}[campo]]=cotNumDec(val)||0;re=true;}
+  if(['gUsd','vArs','vfUsd'].includes(campo))_marcarAjusteCostos('Catálogo de papeles: '+(f.nombre||''));
   _catSave(re);
 }
 function catAdd(fi,tipo,a){
@@ -1379,7 +1395,10 @@ function costosSelTodos(v){document.querySelectorAll('.cot-sel').forEach(ch=>ch.
 function rCostos(){
   const tabs=[['catalogo','Catálogo de papeles'],['papeles','Papeles (códigos)'],['impresion','Impresión'],['chapas','Chapas CTP'],['laminados','Laminados'],['otros','Procesos'],['externos','Proveedores externos'],['estructuras','Estructuras'],['config','Configuración'],['numeracion','Numeración']];
   const cfg=cotCfg();
-  let h=`<div class="ph"><div><div class="pt">Tablas de costos</div><div class="ps">Cotizador offset SM52 / SM74 · Dólar efectivo (+${cfg.spreadPct}%): <strong>$ ${cotFmtDec(cotDolarEfectivo(),2)}</strong></div></div>
+  let h=`<div class="ph"><div><div class="pt">Tablas de costos</div><div class="ps">Cotizador offset SM52 / SM74 · Dólar efectivo (+${cfg.spreadPct}%): <strong>$ ${cotFmtDec(cotDolarEfectivo(),2)}</strong></div>
+  ${(()=>{const aj=Array.isArray(cfg.ajustes)?cfg.ajustes:[];if(!aj.length)return '';const f=a=>a.fecha.split('-').reverse().join('/');const u=aj[0];
+    const hist=aj.map(a=>`${f(a)}${a.hora?' '+a.hora:''} · ${a.que}${a.por?' · '+a.por:''}`).join('\n');
+    return `<div style="margin-top:4px;font-size:12px;color:#555" title="Últimos ajustes:\n${cotEsc(hist)}"><i class="ti ti-history" style="color:#1a7f37"></i> Último ajuste de costos: <strong style="color:#1a7f37">${f(u)}</strong> · ${cotEsc(u.que)}${u.por?` <span style="color:#999">· ${cotEsc(u.por.split('@')[0])}</span>`:''}${aj.length>1?` <span style="color:#999;cursor:help">(pasá el mouse para ver los anteriores)</span>`:''}</div>`;})()}</div>
   <div style="display:flex;gap:6px">${!costosHayDatos()?`<button class="bp" onclick="costosSeed()"><i class="ti ti-database-import"></i> Cargar tablas iniciales del Excel</button>`:''}</div></div>`;
   h+=`<div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap">`;
   tabs.forEach(([k,l])=>{h+=`<button onclick="costosTab='${k}';render()" style="padding:7px 14px;border-radius:8px;border:1px solid ${costosTab===k?'#185fa5':'rgba(0,0,0,.15)'};background:${costosTab===k?'#185fa5':'#fff'};color:${costosTab===k?'#fff':'#333'};font-size:12px;font-weight:600;cursor:pointer">${l}</button>`;});
@@ -1469,11 +1488,11 @@ function rCostos(){
     h+=`<div class="card" style="padding:12px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div style="font-size:11px;color:#888">Postura (1er millar, lo incluye) + millares adicionales × millar sig. — calculado sobre pliegos netos SIN demasía.</div>
-      <button class="bp" onclick="costosAdd('cotImpresion')" style="font-size:11px"><i class="ti ti-plus"></i> Agregar</button></div>
+      <div style="display:flex;gap:6px"><button onclick="cotImpAjustarPct()" title="Subir o bajar un % los precios (1er millar y millar sig.) de una o varias máquinas" style="font-size:11px;background:#e9f6ec;color:#1a7f37;border-color:#8fcf9f"><i class="ti ti-percentage"></i> Ajustar precios %</button><button class="bp" onclick="costosAdd('cotImpresion')" style="font-size:11px"><i class="ti ti-plus"></i> Agregar</button></div></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:11px">
       <span style="color:#888;font-weight:700;text-transform:uppercase;font-size:10px">Máquinas:</span>
       ${COT_MAQ_BASE.map(m=>`<span style="background:#eef4fb;color:#185fa5;border-radius:6px;padding:3px 8px;font-weight:700" title="${cotEsc(cotMaqRango(m))}">${m}</span>`).join('')}
-      ${cotMaqExtra().map((m,j)=>`<span style="background:#fdf3e7;color:#a35b00;border-radius:6px;padding:3px 4px 3px 8px;font-weight:700;display:inline-flex;align-items:center;gap:4px">${cotEsc(m.nombre)}${m.a&&m.b?` <span style="font-weight:400;color:#888">${cotFmtDec(m.b,1)}×${cotFmtDec(m.a,1)}</span>`:''}<button onclick="cotMaqEditar(${j})" title="Editar nombre y pliego máximo" style="border:none;background:none;padding:0 2px;cursor:pointer;color:#a35b00"><i class="ti ti-pencil"></i></button><button onclick="cotMaqBorrar(${j})" title="Eliminar máquina" style="border:none;background:none;padding:0 2px;cursor:pointer;color:#a32d2d"><i class="ti ti-x"></i></button></span>`).join('')}
+      ${cotMaqExtra().map((m,j)=>`<span style="background:#fdf3e7;color:#a35b00;border-radius:6px;padding:3px 4px 3px 8px;font-weight:700;display:inline-flex;align-items:center;gap:4px">${cotEsc(m.nombre)}${m.a&&m.b?` <span style="font-weight:400;color:#888">${cotFmtDec(m.b,1)}×${cotFmtDec(m.a,1)}</span>`:''} <span style="font-weight:400;color:#888">· pinza ${(x=>x.p===x.c?cotFmtDec(x.p,1):cotFmtDec(x.p,1)+' / cola '+cotFmtDec(x.c,1))(cotPinzaCola(m.nombre))}</span><button onclick="cotMaqEditar(${j})" title="Editar nombre, pliego máximo y pinza/cola" style="border:none;background:none;padding:0 2px;cursor:pointer;color:#a35b00"><i class="ti ti-pencil"></i></button><button onclick="cotMaqBorrar(${j})" title="Eliminar máquina" style="border:none;background:none;padding:0 2px;cursor:pointer;color:#a32d2d"><i class="ti ti-x"></i></button></span>`).join('')}
       <button onclick="cotMaqNueva()" style="font-size:11px;padding:3px 8px"><i class="ti ti-plus"></i> Nueva máquina</button>
     </div>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -1532,16 +1551,17 @@ function rCostos(){
     const arr=S.cotOtros||[];
     h+=`<div class="card" style="padding:12px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <div style="font-size:11px;color:#888">Misma lógica que impresión: 1er millar (mínimo) + millares adicionales × millar sig.</div>
+      <div style="font-size:11px;color:#888">Misma lógica que impresión: 1er millar (mínimo) + millares adicionales × millar sig.<br><b>Por pliego</b>: sin mínimo, se cobra proporcional a los pliegos <b>con demasía</b> (ej. $ 200.000 el millar = $ 200 por pliego: 10 + 5 de demasía = $ 3.000).</div>
       <button class="bp" onclick="costosAdd('cotOtros')" style="font-size:11px"><i class="ti ti-plus"></i> Agregar</button></div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;max-width:760px">
-    <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th>Cód</th><th>Concepto</th><th style="text-align:right">1er millar</th><th style="text-align:right">Millar sig.</th><th>Act</th><th></th></tr>`;
+    <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th>Cód</th><th>Concepto</th><th style="text-align:right">1er millar</th><th style="text-align:right">Millar sig.</th><th title="Sin mínimo: proporcional a los pliegos con demasía">Por pliego</th><th>Act</th><th></th></tr>`;
     arr.forEach((p,i)=>{
       h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.06);${p.activo?'':'opacity:.45'}">
       <td style="font-weight:600;color:#185fa5">${inp(p.codigo,`costosEdit('cotOtros',${i},'codigo',this.value)`,'42px')}</td>
       <td>${inpTxt(p.concepto,`costosEdit('cotOtros',${i},'concepto',this.value)`)}</td>
       <td>${inp(p.primerMillar,`costosEdit('cotOtros',${i},'primerMillar',this.value)`,'90px')}</td>
       <td>${inp(p.millarSiguiente,`costosEdit('cotOtros',${i},'millarSiguiente',this.value)`,'90px')}</td>
+      <td title="Sin mínimo de 1 millar: proporcional a los pliegos con demasía${p.proporcional?' · $ '+cotFmtDec((+p.millarSiguiente||+p.primerMillar||0)/1000,2)+' por pliego':''}">${chk(p.proporcional,`costosEdit('cotOtros',${i},'proporcional',this.checked)`)}${p.proporcional?` <span style="font-size:10px;color:#1a7f37;font-weight:700">$ ${cotFmtDec((+p.millarSiguiente||+p.primerMillar||0)/1000,2)}/pl.</span>`:''}</td>
       <td>${chk(p.activo,`costosEdit('cotOtros',${i},'activo',this.checked)`)}</td>
       <td>${delBtn('cotOtros',i)}</td></tr>`;
     });
@@ -1631,7 +1651,8 @@ function rCostos(){
     ${fila('Demasía por defecto','demasia',c.demasia,'pliegos')}
     ${fila('Margen por defecto','margenPct',c.margenPct,'%')}
     ${fila('Peso máx. flete propio','pesoMaxKg',c.pesoMaxKg,'kg — si la cotización supera este peso, se muestra alerta de flete')}
-    ${fila('Pinza / cola (offset)','pinzaCm',c.pinzaCm,'cm libres arriba y abajo del pliego (pinza y colorímetro) — se descuenta al calcular poses')}
+    ${fila('Pinza (offset)','pinzaCm',c.pinzaCm,'cm libres arriba del pliego (por donde lo toma la máquina) — se descuenta al calcular poses')}
+    ${fila('Cola / colorímetro (offset)','colaCm',cotPinzaCola('SM52').c,'cm libres abajo del pliego (tira de control de color) — en trabajos simples se puede achicar')}
     ${fila('Ancho de guillotina','guillotinaCm',c.guillotinaCm,'cm — largo máximo de corte (decide si un pliego se puede cortar cruzado)')}
     <div style="font-size:11px;color:#888;margin-top:10px"><i class="ti ti-info-circle"></i> El botón "Traer BNA" consulta el dólar oficial (dolarapi.com). Siempre confirmás el valor antes de aplicarlo, y podés escribirlo a mano.</div>
     </div>`;
@@ -2141,6 +2162,14 @@ function _tercCosto(w,cant){
   if(vb!=null&&base>0)return t.pu?vb*cant:vb*(cant/base);
   return 0;
 }
+// Costo de un proceso de la tabla (cotOtros) para c millares.
+// Normal: el 1er millar es el mínimo + adicionales × millar sig. "Por pliego" (proporcional): sin mínimo,
+// c × precio del millar (ej. plotter de corte $ 200.000 el millar = $ 200 por pliego).
+function _procCosto(t,c){
+  if(!t||t.codigo===0||!(c>0))return 0;
+  if(t.proporcional)return c*(+t.millarSiguiente||+t.primerMillar||0);
+  return c>1?(+t.primerMillar||0)+(c-1)*(+t.millarSiguiente||0):(+t.primerMillar||0);
+}
 function cotCalc(w,cantOverride){
   const cfg=cotCfg();
   const cant=(cantOverride!=null?cantOverride:w.cantidad)||0;
@@ -2187,7 +2216,7 @@ function cotCalc(w,cantOverride){
         pImpBase=E*(millares1>1?imp.primerMillar+(millares1-1)*imp.millarSiguiente:(millares1>0?imp.primerMillar:0));
       }
     }
-    const impDesc=Math.min(100,Math.max(0,p.impDescPct||0));
+    const impDesc=Math.min(100,Math.max(-200,p.impDescPct||0)); // negativo = recargo (ej. -10 = +10% por mucha carga de tinta)
     const pImpCosto=pImpBase*(1-impDesc/100);
     const chapa=(S.cotChapas||[]).find(x=>x.codigo===p.chapasCod);
     const pChapasCosto=(chapa?chapa.costo:0)*(p.chapasCant||0)*E;
@@ -2220,8 +2249,8 @@ function cotCalc(w,cantOverride){
       }
       const tp=(S.cotOtros||[]).find(x=>x.codigo===pr.cod);
       const modoP=pr.auto===true?'pliegos':(pr.auto||'');
-      const cc=pr.ov?(+pr.cant||0):(modoP==='unidades'?cantEf/1000:(modoP==='pliegos'?millares:(pr.cant||0)));
-      const costoAuto=(tp&&tp.codigo!==0)?(cc>1?tp.primerMillar+(cc-1)*tp.millarSiguiente:(cc>0?tp.primerMillar:0)):0;
+      const cc=pr.ov?(+pr.cant||0):(modoP==='unidades'?cantEf/1000:(modoP==='pliegos'?((tp&&tp.proporcional)?pliegosTot/1000:millares):(pr.cant||0)));
+      const costoAuto=_procCosto(tp,cc);
       const costoP=pr.ovMonto?(+pr.montoOv||0):costoAuto; // monto pisado a mano (cotización de proveedor)
       procPzCosto+=costoP;procPzDet.push({idx:pi,cod:pr.cod,cant:cc,modo:modoP,concepto:tp?tp.concepto:'—',proveedor:pr.proveedor||'',costo:costoP,ov:!!pr.ov,ovMonto:!!pr.ovMonto});
     });
@@ -2239,8 +2268,8 @@ function cotCalc(w,cantOverride){
     const t=(S.cotOtros||[]).find(x=>x.codigo===o.cod);
     const modo=o.auto===true?'pliegos':(o.auto||'');
     // Millares: automáticos por modo, salvo que el usuario los haya fijado a mano (ov = override)
-    const c=o.ov?(+o.cant||0):(modo==='unidades'?cant/1000:(modo==='pliegos'?millaresT:(o.cant||0)));
-    const costoAuto=(t&&t.codigo!==0)?(c>1?t.primerMillar+(c-1)*t.millarSiguiente:(c>0?t.primerMillar:0)):0;
+    const c=o.ov?(+o.cant||0):(modo==='unidades'?cant/1000:(modo==='pliegos'?((t&&t.proporcional)?pliegosTotT/1000:millaresT):(o.cant||0)));
+    const costoAuto=_procCosto(t,c);
     const costo=o.ovMonto?(+o.montoOv||0):costoAuto; // monto pisado a mano (cotización de proveedor)
     otrosCosto+=costo;otrosDet.push({idx:i,cod:o.cod,cant:c,modo,concepto:t?t.concepto:'—',proveedor:o.proveedor||'',costo,ov:!!o.ov,ovMonto:!!o.ovMonto});
   });
@@ -2285,6 +2314,7 @@ function cotImpDet(pd){
   if(pd.entradas>1)t=`${pd.entradas} entradas × (postura + ${cotFmtDec(Math.max(0,pd.millares1-1),3)} adic.) = ${cotFmtDec(pd.millares,3)} mill.`;
   else t=`${cotFmtDec(pd.millares,3)} mill. netos → postura + ${cotFmtDec(Math.max(0,pd.millares-1),3)} adicionales`;
   if(pd.impDescPct>0)t+=` <span style="color:#1a7f37;font-weight:700">− ${pd.impDescPct}% desc. ($ ${cotFmt(pd.impBase-pd.impCosto)})</span>`;
+  else if(pd.impDescPct<0)t+=` <span style="color:#a32d2d;font-weight:700">+ ${-pd.impDescPct}% recargo ($ ${cotFmt(pd.impCosto-pd.impBase)})</span>`;
   return t;
 }
 // Detalle del papel en una fila ancha: costo x mil × millares, hojas por unidad y qué se compra
@@ -2440,7 +2470,7 @@ function cotSync(){
       const PW=+p.piezaW||0,PH=+p.piezaH||0,pap=pd.papel;
       if(PW>0&&PH>0&&pap&&pap.ancho>0&&pap.alto>0){
         const SW=pap.ancho,SH=pap.alto;
-        const sug=cotPosesSug(PW,PH,SW,SH,cotPinza(cotMaqDeP(p))); // con pinza y cola
+        const sug=cotPosesSug(PW,PH,SW,SH,cotPinza(cotMaqDeP(p),p)); // con pinza y cola
         if(sug>0&&sug!==(+p.posturas||0))el.innerHTML=`<a href="javascript:void(0)" onclick="cotAplicarPoses(${k},${sug})" style="color:#1a7f37;font-weight:700" title="Encaje sugerido — click para aplicar">encaje: ${sug} ⟲</a>`;
         else if(sug>0)el.innerHTML=`<span style="color:#1a7f37;font-weight:700">encaje ✓</span>`;
         else el.textContent='';
@@ -2508,13 +2538,39 @@ function cotPapelDims(p){
   const papel=cotPapelDePieza(p);
   return (papel&&papel.ancho>0&&papel.alto>0)?[papel.ancho,papel.alto]:null;
 }
-// Pinza + cola (colorímetro): cm libres arriba y abajo del pliego en offset (el pliego entra por el lado largo). Digital: 0.
-function cotPinza(maq){return (maq&&/xerox|digital/i.test(maq))?0:Math.max(0,+cotCfg().pinzaCm||0);}
-// Poses que entran: mejor de las dos orientaciones de la pieza. mg = pinza/cola (se descuenta 2×mg del lado corto)
+// Pinza (arriba) y cola / colorímetro (abajo): cm libres del pliego en offset (el pliego entra por el lado largo). Digital: 0.
+// Se configuran por separado (Configuración); la cola puede ser menor en trabajos simples.
+// pz (opcional): la pieza; si en ese trabajo se achicó la pinza o la cola (ej. pinza 1 / cola 0), manda lo de la pieza.
+function cotPinzaCola(maq,pz){
+  if(maq&&/xerox|digital/i.test(maq))return {p:0,c:0,ov:false};
+  let r;
+  // Imprenta externa (ej. DELIGRAF) con su propia pinza/cola cargada en Tablas de costos → Impresión (igual arriba y abajo)
+  const x=maq&&cotMaqExtra().find(e=>e.nombre===maq);
+  if(x&&x.pinza!=null&&x.pinza!==''){const v=Math.max(0,+x.pinza||0);r={p:v,c:v};}
+  else{const cfg=cotCfg(),p=Math.max(0,+cfg.pinzaCm||0);r={p,c:(cfg.colaCm!=null&&cfg.colaCm!=='')?Math.max(0,+cfg.colaCm||0):p};}
+  r.base={p:r.p,c:r.c};r.ov=false;
+  if(pz&&pz.pinzaOv!=null&&pz.pinzaOv!==''){r.p=Math.max(0,+pz.pinzaOv||0);r.ov=true;}
+  if(pz&&pz.colaOv!=null&&pz.colaOv!==''){r.c=Math.max(0,+pz.colaOv||0);r.ov=true;}
+  return r;
+}
+// Total que se descuenta del lado corto del pliego (pinza + cola)
+function cotPinza(maq,pz){const x=cotPinzaCola(maq,pz);return x.p+x.c;}
+// Ajuste de pinza / cola de UNA pieza (vacío = el de Configuración)
+function cotPzPinzaEd(k,campo,val){
+  if(!cotW)return;
+  if(!Array.isArray(cotW.piezas)||!cotW.piezas.length)cotW.piezas=cotPiezasDe(cotW);
+  const p=cotW.piezas[k];if(!p)return;
+  const base=cotPinzaCola(cotMaqDeP(p)).base[campo==='pinzaOv'?'p':'c'];
+  const v=String(val).trim()===''?null:Math.max(0,cotNumDec(val));
+  if(v==null||Math.abs(v-base)<0.001)delete p[campo];else p[campo]=v; // igual a Configuración = sin ajuste
+  if(p.papelSel&&p.papelSel.fam&&!p.papelCod)_cotPapPost(k); // catálogo: recalcula formato/corte con el margen nuevo
+  else{cotAutoPoses(k);cotRerender();}
+}
+// Poses que entran: mejor de las dos orientaciones de la pieza. mg = pinza + cola (se descuenta del lado corto)
 function _posesGrid(PW,PH,SW,SH,mg){
   PW=+PW||0;PH=+PH||0;SW=+SW||0;SH=+SH||0;mg=+mg||0;
   if(PW<=0||PH<=0||SW<=0||SH<=0)return null;
-  const L=Math.max(SW,SH),C=Math.min(SW,SH)-2*mg;if(C<=0)return null;
+  const L=Math.max(SW,SH),C=Math.min(SW,SH)-mg;if(C<=0)return null;
   const e=1e-6;
   const a={cols:Math.floor((L+e)/PW),rows:Math.floor((C+e)/PH),pw:PW,ph:PH};
   const b={cols:Math.floor((L+e)/PH),rows:Math.floor((C+e)/PW),pw:PH,ph:PW};
@@ -2526,7 +2582,7 @@ function cotAutoPoses(k){
   const p=(cotW&&cotW.piezas)?cotW.piezas[k]:null;if(!p)return;
   if(p._pag)return; // pieza armada por el paginado: las poses las define el paginado (hojas distintas ≠ copias)
   const dims=cotPapelDims(p);if(!dims)return;
-  const sug=cotPosesSug(p.piezaW,p.piezaH,dims[0],dims[1],cotPinza(cotMaqDeP(p)));
+  const sug=cotPosesSug(p.piezaW,p.piezaH,dims[0],dims[1],cotPinza(cotMaqDeP(p),p));
   if(sug>0){
     p.posturas=sug;
     const i=document.getElementById('cz-p'+k+'-posturas');if(i)i.value=String(sug);
@@ -2538,23 +2594,24 @@ function cotPreviewPliego(p){
   const dims=cotPapelDims(p);const PW=+p.piezaW||0,PH=+p.piezaH||0;
   if(!dims||PW<=0||PH<=0)return '';
   const SW=Math.max(dims[0],dims[1]), SH=Math.min(dims[0],dims[1]); // pliego horizontal
-  const mg=cotPinza(cotMaqDeP(p));
+  const pc=cotPinzaCola(cotMaqDeP(p),p),mg=pc.p+pc.c;
+  const pcTxt=`pinza ${cotFmtDec(pc.p,1)} + cola ${cotFmtDec(pc.c,1)} cm`;
   const g=_posesGrid(PW,PH,SW,SH,mg);
-  if(!g||g.n<=0)return `<div style="font-size:11px;color:#c62828;text-align:right;max-width:180px"><i class="ti ti-alert-triangle"></i> La pieza ${cotFmtDec(PW,1)}×${cotFmtDec(PH,1)} no entra en el pliego ${cotFmtDec(SW,1)}×${cotFmtDec(SH,1)}${mg?' (con '+cotFmtDec(mg,1)+' cm de pinza y cola)':''}</div>`;
+  if(!g||g.n<=0)return `<div style="font-size:11px;color:#c62828;text-align:right;max-width:180px"><i class="ti ti-alert-triangle"></i> La pieza ${cotFmtDec(PW,1)}×${cotFmtDec(PH,1)} no entra en el pliego ${cotFmtDec(SW,1)}×${cotFmtDec(SH,1)}${mg?' (con '+pcTxt+')':''}</div>`;
   const cargadas=(p._pag||!(+p.posturas>0))?g.n:Math.round(+p.posturas);
   const n=Math.min(g.n,cargadas);
   // Bloque compacto de n poses: llena filas de la grilla posible y se centra en el área útil
   const cols=Math.min(g.cols,n), rows=Math.ceil(n/cols);
   const boxW=150, sc=boxW/SW, W=SW*sc, H=SH*sc;
-  const x0=(SW-cols*g.pw)/2, y0=mg+(g.C-rows*g.ph)/2;
+  const x0=(SW-cols*g.pw)/2, y0=pc.p+(g.C-rows*g.ph)/2;
   let rects='';
   for(let i=0;i<n;i++){const r=Math.floor(i/cols),c=i%cols;
     rects+=`<rect x="${((x0+c*g.pw)*sc+0.6).toFixed(1)}" y="${((y0+r*g.ph)*sc+0.6).toFixed(1)}" width="${(g.pw*sc-1.2).toFixed(1)}" height="${(g.ph*sc-1.2).toFixed(1)}" fill="#fff" stroke="#d32f2f" stroke-width="0.8"/>`;}
-  const banda=mg>0?`<rect x="0" y="0" width="${W.toFixed(1)}" height="${(mg*sc).toFixed(1)}" fill="#e9ecef"/><rect x="0" y="${((SH-mg)*sc).toFixed(1)}" width="${W.toFixed(1)}" height="${(mg*sc).toFixed(1)}" fill="#e9ecef"/>`:'';
+  const banda=(pc.p>0?`<rect x="0" y="0" width="${W.toFixed(1)}" height="${(pc.p*sc).toFixed(1)}" fill="#e9ecef"/>`:'')+(pc.c>0?`<rect x="0" y="${((SH-pc.c)*sc).toFixed(1)}" width="${W.toFixed(1)}" height="${(pc.c*sc).toFixed(1)}" fill="#e9ecef"/>`:'');
   const exceso=cargadas>g.n;
   return `<div style="display:inline-block;text-align:center">
     <svg width="${W.toFixed(0)}" height="${H.toFixed(0)}" viewBox="0 0 ${W.toFixed(1)} ${H.toFixed(1)}" style="background:#fff;border:1.5px solid #2e7d32;border-radius:2px;display:block">${banda}${rects}</svg>
-    <div style="font-size:10px;color:#555;margin-top:2px">Pliego ${cotFmtDec(SW,1)}×${cotFmtDec(SH,1)} · <strong style="color:#1a7f37">${n} poses</strong>${n<g.n?` <span style="color:#888">(entran ${g.n})</span>`:''}${mg?`<br><span style="color:#999">pinza y cola ${cotFmtDec(mg,1)} cm</span>`:''}</div>
+    <div style="font-size:10px;color:#555;margin-top:2px">Pliego ${cotFmtDec(SW,1)}×${cotFmtDec(SH,1)} · <strong style="color:#1a7f37">${n} poses</strong>${n<g.n?` <span style="color:#888">(entran ${g.n})</span>`:''}${mg?`<br><span style="color:#999">${pcTxt}</span>`:''}</div>
     ${exceso?`<div style="font-size:10px;color:#c62828;font-weight:700"><i class="ti ti-alert-triangle"></i> cargaste ${cargadas} poses y entran ${g.n}</div>`:''}
   </div>`;
 }
@@ -2617,6 +2674,33 @@ function cotMaqNueva(idx){
   if(idx!=null&&S.cotImpresion&&S.cotImpresion[idx]){S.cotImpresion[idx].maquina=nombre;costosSave('cotImpresion');}
   render();
 }
+// Ajuste masivo de precios de impresión por máquina (ej. SM52 y SM74 +10%): 1er millar y millar sig., redondeado a $ 10
+function cotImpAjustarPct(){
+  const arr=S.cotImpresion||[];
+  const maqs=[...new Set(arr.map(x=>x&&x.maquina).filter(Boolean))];
+  if(!maqs.length){alert('No hay códigos de impresión cargados.');return;}
+  const sel=prompt('¿Qué máquinas? Escribilas separadas por coma.\nDisponibles: '+maqs.join(', '),maqs.filter(m=>/SM52|SM74/i.test(m)).join(', '));
+  if(sel===null)return;
+  const elegidas=String(sel).split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  const filas=arr.filter(x=>x&&elegidas.includes(String(x.maquina||'').toLowerCase()));
+  if(!filas.length){alert('Ninguna máquina coincide con: '+sel);return;}
+  const pv=prompt('¿Qué porcentaje ajustás? Escribilo (ej. 5 · 7,5 · 15). Negativo baja (ej. -5).','');
+  if(pv===null||String(pv).trim()==='')return;
+  const pct=cotNumDec(pv);
+  if(!pct||pct<=-90||pct>200){alert('Porcentaje no válido.');return;}
+  const ej=filas.find(x=>+x.millarSiguiente>0)||filas[0];
+  const nv=v=>{const n=(+v||0)*(1+pct/100);return n>=100?Math.round(n/10)*10:Math.round(n*10000)/10000;}; // Xerox (U$S chicos) sin redondear a $10
+  const maqTxt=[...new Set(filas.map(x=>x.maquina))].join(', ');
+  if(!confirm(`Ajustar ${pct>0?'+':''}${cotFmtDec(pct,1)}% los precios de ${maqTxt}: ${filas.length} códigos.\n\nEjemplo, código ${ej.codigo} (${ej.descripcion||''}):\n1er millar ${cotFmt(+ej.primerMillar||0)} → ${cotFmt(nv(ej.primerMillar))}\nMillar sig. ${cotFmt(+ej.millarSiguiente||0)} → ${cotFmt(nv(ej.millarSiguiente))}\n\n¿Aplicar?`))return;
+  filas.forEach(x=>{
+    if(+x.primerMillar>0)x.primerMillar=nv(x.primerMillar);
+    if(+x.millarSiguiente>0)x.millarSiguiente=nv(x.millarSiguiente);
+  });
+  costosSave('cotImpresion');
+  _marcarAjusteCostos(`Impresión ${maqTxt} ${pct>0?'+':''}${cotFmtDec(pct,1)}% (${filas.length} códigos)`);
+  render();
+  alert(`Listo: ${filas.length} códigos de ${maqTxt} ajustados ${pct>0?'+':''}${cotFmtDec(pct,1)}%.`);
+}
 function cotMaqEditar(i){
   const x=cotMaqExtra()[i];if(!x)return;
   const viejo=x.nombre;
@@ -2625,7 +2709,11 @@ function cotMaqEditar(i){
   if(n.toLowerCase()!==viejo.toLowerCase()&&cotMaqLista().some(m=>m.toLowerCase()===n.toLowerCase())){alert('Ya existe una máquina con ese nombre.');return;}
   const f=_cotMaqFmtPrompt(n,x.a&&x.b?`${cotFmtDec(x.b,1)}x${cotFmtDec(x.a,1)}`:'');
   if(f===null)return;
+  const glob=cotPinzaCola('');
+  const pz=prompt('Pinza y cola de '+n+' en cm (lo que queda libre arriba y abajo del pliego, cada uno).\nVacío = igual que las nuestras (pinza '+cotFmtDec(glob.p,1)+' / cola '+cotFmtDec(glob.c,1)+' cm). Ej: con 1 cm, en 72×102 entra una pieza de 70×100.',x.pinza!=null?cotFmtDec(x.pinza,1):'');
+  if(pz===null)return;
   x.nombre=n;x.a=f.a;x.b=f.b;
+  if(String(pz).trim()==='')delete x.pinza;else x.pinza=Math.max(0,cotNumDec(pz));
   if(n!==viejo){(S.cotImpresion||[]).forEach(p=>{if(p.maquina===viejo)p.maquina=n;});costosSave('cotImpresion');asegurarExterno(n);}
   costosSave('cotConfig');render();
 }
@@ -2668,6 +2756,23 @@ function cotAutoMaquina(k){
   }
   return '';
 }
+// Medida cerrada / final en casilleros (ancho × alto × prof. opcional), igual que la abierta.
+// Se sigue guardando también como texto "21x29,7" o "20x20x10" (lo usan la OT, la IA y el paginado).
+function _mcPartes(p){
+  if(p&&Array.isArray(p._mc))return [0,1,2].map(i=>(p._mc[i]==null||p._mc[i]==='')?null:+p._mc[i]);
+  const m=String((p&&p.medidaCerrada)||'').match(/\d+(?:[.,]\d+)?/g)||[];
+  return [0,1,2].map(i=>m[i]!=null?cotNumDec(m[i]):null);
+}
+function cotPzMcEd(k,i,val){
+  if(!cotW)return;
+  if(!Array.isArray(cotW.piezas)||!cotW.piezas.length)cotW.piezas=cotPiezasDe(cotW);
+  const p=cotW.piezas[k];if(!p)return;
+  const mc=_mcPartes(p);
+  mc[i]=String(val).trim()===''?null:cotNumDec(val);
+  p._mc=mc;
+  const s=n=>String(+n).replace('.',',');
+  p.medidaCerrada=(mc[0]>0&&mc[1]>0)?s(mc[0])+'x'+s(mc[1])+(mc[2]>0?'x'+s(mc[2]):''):'';
+}
 // ---- Edición por pieza ----
 function cotPzEd(k,campo,val){
   if(!cotW)return;
@@ -2678,7 +2783,7 @@ function cotPzEd(k,campo,val){
     p[campo]=(val===''||val==null)?0:cotNumDec(val);
     if(campo==='cantMult'&&(!p.cantMult||p.cantMult<1))p.cantMult=1;
     if(campo==='entradas'&&(!p.entradas||p.entradas<1))p.entradas=1;
-    if(campo==='impDescPct'){p.impDescPct=Math.min(100,Math.max(0,p.impDescPct||0));}
+    if(campo==='impDescPct'){p.impDescPct=Math.min(100,Math.max(-200,p.impDescPct||0));cotSync();cotRerender();return;}
     if(campo==='piezaW'||campo==='piezaH'){
       cotAutoPoses(k);
       // Papel por catálogo: con la medida nueva puede convenir otro formato/corte → actualizo el recuadro del papel
@@ -2692,7 +2797,7 @@ function cotPzEd(k,campo,val){
     cotSync();return;
   }
   if(campo==='nombre'){p.nombre=String(val).replace(/[<>]/g,'').slice(0,60);return;}
-  if(campo==='medidaCerrada'){p.medidaCerrada=String(val).replace(/[<>]/g,'').slice(0,60);return;}
+  if(campo==='medidaCerrada'){p.medidaCerrada=String(val).replace(/[<>]/g,'').slice(0,60);delete p._mc;return;}
   if(campo==='papelCod'){
     const antes=p.papelCod;
     p.papelCod=parseInt(val)||0;
@@ -2858,7 +2963,14 @@ function cotPapelCatHTML(k,p){
   if(!fam)return h;
   if(!r){
     const mq=cotMaqDeP(p);
-    const falta=(fam.modo==='kg'&&!s.grs)?'Elegí el gramaje.':`Ningún formato de ${cotEsc(fam.nombre)} entra en ${mq?cotEsc(mq):'SM52 / SM74'}${(+p.piezaW>0&&+p.piezaH>0)?' con la medida de la pieza':''}.`;
+    let falta=(fam.modo==='kg'&&!s.grs)?'Elegí el gramaje.':`Ningún formato de ${cotEsc(fam.nombre)} entra en ${mq?cotEsc(mq):'SM52 / SM74'}${(+p.piezaW>0&&+p.piezaH>0)?' con la medida de la pieza':''}.`;
+    // Explicar por qué: la pieza más la pinza y cola contra el pliego máximo de la máquina
+    const M=mq&&cotMaqMax(mq),pg=cotPinza(mq,p);
+    if(!(fam.modo==='kg'&&!s.grs)&&M&&+p.piezaW>0&&+p.piezaH>0){
+      const pc=Math.min(+p.piezaW,+p.piezaH),pl=Math.max(+p.piezaW,+p.piezaH);
+      const pcx=cotPinzaCola(mq,p);
+      falta+=` La pieza ${cotFmtDec(pc,1)}×${cotFmtDec(pl,1)}${pg?` + pinza ${cotFmtDec(pcx.p,1)} + cola ${cotFmtDec(pcx.c,1)} cm necesita un pliego de ${cotFmtDec(pc+pg,1)}×${cotFmtDec(pl,1)}`:''}; el máximo de ${cotEsc(mq)} es ${cotFmtDec(M.b,1)}×${cotFmtDec(M.a,1)}.${pg&&cotEsMaqExtra(mq)?' Si esa imprenta usa menos pinza, cargala en Tablas de costos → Impresión (lápiz de la máquina).':''}`;
+    }
     return h+`<div style="margin-top:5px;font-size:11px;color:#a35b00;font-weight:600"><i class="ti ti-alert-triangle"></i> ${falta}</div>`;
   }
   const o=r.opcion,best=r.opciones[0];
@@ -3384,6 +3496,111 @@ function cotEmbedAplicar(){
   cotEmbedCerrar();
   _renderItems();
 }
+// ===== Actualizar una cotización a los valores de HOY =====
+// Recalcula el costeo de cada ítem con las tablas de costos y el dólar actuales, y arma los precios de nuevo.
+// Los precios de papel editados a mano en esa cotización vuelven a los del catálogo. Lo que no sale de las tablas
+// (montos de proveedor cargados a mano, líneas manuales, tercerizado) queda igual y se avisa.
+function _cotLimpiarPreciosPapel(piezas,notas){
+  (piezas||[]).forEach(p=>{
+    const s=p&&p.papelSel;if(!s)return;
+    if(+s.usdKg>0||(s.precioOv&&Object.values(s.precioOv).some(v=>+v>0))||+s.arsOv>0)notas.add('Precio de papel editado a mano: vuelve al del catálogo');
+    delete s.usdKg;s.precioOv={};s.arsOv=0;
+  });
+}
+function cotActualizarItem(it){
+  const res={nombre:it.nombre||String(it.desc||'').slice(0,40)||'Ítem',filas:[],notas:[],sinCosteo:!it.costeo,dolarAntes:0};
+  if(!it.costeo){(it.filas||[]).forEach(f=>res.filas.push({qty:+f.qty||0,antes:+f.subtotal||0,despues:+f.subtotal||0}));return {item:it,res};}
+  const notas=new Set();
+  const w=JSON.parse(JSON.stringify(it.costeo));
+  res.dolarAntes=(w.calc&&+w.calc.dolarEfectivo)||0;
+  if(w._piezasBase){w.piezas=w._piezasBase;delete w._piezasBase;}
+  w.piezas=cotPiezasDe(w);
+  _cotLimpiarPreciosPapel(w.piezas,notas);
+  Object.values(w.porCant||{}).forEach(pc=>_cotLimpiarPreciosPapel(pc&&pc.piezas,notas));
+  const aMano=(w.otros||[]).filter(o=>o.ovMonto).length+w.piezas.reduce((a,p)=>a+(p.procesos||[]).filter(x=>x.ovMonto||x.manual).length,0);
+  if(aMano)notas.add(aMano+' monto'+(aMano>1?'s':'')+' de proveedor cargado'+(aMano>1?'s':'')+' a mano: queda'+(aMano>1?'n':'')+' igual');
+  if((w.manuales||[]).some(m=>+m.monto>0||+m.pu>0))notas.add('Líneas manuales: quedan igual');
+  if(w.terc&&w.terc.on)notas.add('Tercerizado: el presupuesto del proveedor queda igual');
+  // Cantidades: las del ítem mandan (por si se cambiaron después de costear)
+  const fl=it.filas||[];
+  if(fl.length){w.cantidad=+fl[0].qty||w.cantidad;w.variantes=fl.slice(1).filter(f=>+f.qty>0).map(f=>({cantidad:+f.qty}));}
+  const r=cotCalc(w);
+  w.calc={total:Math.round(r.total),venta:Math.round(r.venta),unitario:Math.round(r.unitario*100)/100,pesoKg:Math.round(r.pesoKg*10)/10,dolarEfectivo:Math.round(cotDolarEfectivo()*100)/100,guardado:new Date().toISOString()};
+  w.calcVariantes=(w.variantes||[]).filter(v=>v.cantidad>0).map(v=>{const rv=cotCalc(w,v.cantidad);
+    return {cantidad:v.cantidad,total:Math.round(rv.total),venta:Math.round(rv.venta),unitario:Math.round(rv.unitario*100)/100,pesoKg:Math.round(rv.pesoKg*10)/10};});
+  const mk=(q,venta,unit,costo)=>{
+    const old=fl.find(f=>Math.round(+f.qty||0)===Math.round(+q||0));
+    let f;
+    if(old&&old.manual){ // precio fijado a mano: se mueve en la misma proporción que el costo (mantiene tu margen)
+      const k=(+old.costo>0&&costo>0)?costo/old.costo:1;
+      const sub=Math.round((+old.subtotal||0)*k);
+      f={qty:q,subtotal:sub,precio:q?sub/q:0,manual:true,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};
+      notas.add(k!==1?'Precio fijado a mano: se ajustó en la misma proporción que el costo':'Precio fijado a mano: queda igual');
+    }else f={qty:q,subtotal:Math.round(venta),precio:unit,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};
+    res.filas.push({qty:q,antes:old?(+old.subtotal||0):0,despues:f.subtotal});
+    return f;
+  };
+  const filas=[mk(w.cantidad,w.calc.venta,w.calc.unitario,w.calc.total)];
+  w.calcVariantes.forEach(v=>filas.push(mk(v.cantidad,v.venta,v.unitario,v.total)));
+  res.notas=[...notas];
+  return {item:Object.assign({},it,{filas,costeo:w}),res};
+}
+function cotActualizarAbrir(){
+  _leerItemsDOMNuevo();
+  const items=_itemsState();
+  if(!items.some(it=>it&&it.costeo)){alert('Esta cotización no tiene ítems costeados: los precios se cargaron a mano, no hay nada que recalcular.');return;}
+  const out=items.map(cotActualizarItem);
+  window._cotActRes=out;
+  const fmt=v=>'$ '+cotFmt(v||0);
+  const dolHoy=cotDolarEfectivo(),dolAntes=(out.find(o=>o.res.dolarAntes)||{res:{}}).res.dolarAntes||0;
+  let rows='';
+  out.forEach(({res})=>{
+    res.filas.forEach((f,i)=>{
+      const pc=f.antes>0?Math.round((f.despues/f.antes-1)*1000)/10:null;
+      rows+=`<tr style="border-top:0.5px solid rgba(0,0,0,.08)"><td style="padding:6px 8px;font-weight:${i?400:700}">${i?'':cotEsc(res.nombre)}${res.sinCosteo&&!i?' <span style="font-size:10px;color:#a35b00;font-weight:400">(sin costeo: no cambia)</span>':''}</td>
+        <td style="padding:6px 8px;text-align:right">${cotFmt(f.qty)}</td><td style="padding:6px 8px;text-align:right;color:#888">${fmt(f.antes)}</td>
+        <td style="padding:6px 8px;text-align:right;font-weight:700">${fmt(f.despues)}</td>
+        <td style="padding:6px 8px;text-align:right;font-weight:700;color:${pc>0?'#a32d2d':pc<0?'#1a7f37':'#888'}">${pc==null?'—':(pc>0?'+':'')+cotFmtDec(pc,1)+'%'}</td></tr>`;
+    });
+    if(res.notas.length)rows+=`<tr><td colspan="5" style="padding:0 8px 6px 18px;font-size:11px;color:#a35b00">${res.notas.map(n=>'<i class="ti ti-info-circle"></i> '+cotEsc(n)).join('<br>')}</td></tr>`;
+  });
+  const hoy=new Date().toISOString().slice(0,10);
+  const dias=_cotDiasValidez();
+  let ov=document.getElementById('cot-actualizar');
+  if(!ov){ov=document.createElement('div');ov.id='cot-actualizar';ov.style.cssText='position:fixed;inset:0;z-index:100003;background:rgba(15,25,35,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:28px';document.body.appendChild(ov);}
+  ov.innerHTML=`<div style="background:#fff;border-radius:12px;max-width:720px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.4)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong style="font-size:15px;color:#185fa5"><i class="ti ti-refresh"></i> Actualizar a valores de hoy</strong><button onclick="cotActualizarCerrar()">✕</button></div>
+    <div style="font-size:12px;color:#555;margin-bottom:10px;line-height:1.6">Se recalcula cada costeo con las <b>Tablas de costos actuales</b> (papel, impresión, chapas, laminados, procesos) y el <b>dólar de hoy: $ ${cotFmtDec(dolHoy,2)}</b>${dolAntes&&Math.abs(dolAntes-dolHoy)>0.01?` <span style="color:#888">(estaba cotizada con $ ${cotFmtDec(dolAntes,2)})</span>`:''}.<br>
+      Fecha: <b>${hoy.split('-').reverse().join('/')}</b> · válida ${dias} días, hasta <b>${_cotSumarDias(hoy,dias).split('-').reverse().join('/')}</b>.</div>
+    <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th style="padding:4px 8px">Ítem</th><th style="padding:4px 8px;text-align:right">Cantidad</th><th style="padding:4px 8px;text-align:right">Antes</th><th style="padding:4px 8px;text-align:right">Hoy</th><th style="padding:4px 8px;text-align:right">Dif.</th></tr>
+      ${rows}
+    </table></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+      <button onclick="cotActualizarCerrar()">Cancelar</button>
+      <button class="bp" onclick="cotActualizarAplicar()"><i class="ti ti-refresh"></i> Actualizar todo</button>
+    </div>
+    <div style="font-size:10.5px;color:#999;text-align:right;margin-top:6px">Después revisá y guardá la cotización (Borrador o Enviar y PDF).</div></div>`;
+}
+function cotActualizarCerrar(){const ov=document.getElementById('cot-actualizar');if(ov)ov.remove();window._cotActRes=null;}
+// Días de validez de la cotización abierta (fecha → válido hasta); 15 si no se puede calcular
+function _cotDiasValidez(){
+  const f=Q('cf')&&Q('cf').value,v=Q('cv')&&Q('cv').value;
+  const d=(f&&v)?Math.round((new Date(v)-new Date(f))/864e5):0;
+  return d>0?d:15;
+}
+function _cotSumarDias(iso,d){const x=new Date(iso+'T12:00:00');x.setDate(x.getDate()+d);return x.toISOString().slice(0,10);}
+function cotActualizarAplicar(){
+  const out=window._cotActRes;if(!out){cotActualizarCerrar();return;}
+  const items=_itemsState();
+  items.splice(0,items.length,...out.map(o=>o.item));
+  const hoy=new Date().toISOString().slice(0,10),dias=_cotDiasValidez();
+  if(Q('cf'))Q('cf').value=hoy;
+  if(Q('cv'))Q('cv').value=_cotSumarDias(hoy,dias);
+  cotActualizarCerrar();
+  _renderItems();
+  if(typeof toast==='function')toast('Cotización actualizada a valores de hoy. Revisá y guardá.');
+}
 function cotEmbedCerrar(){
   _cotUnswap();
   window._cotEmbed=null;window._cotVistaCant=null;
@@ -3458,7 +3675,7 @@ function cotPagCalc(pg){
     const W=parseFloat(String(pg.cuadW||'').replace(',','.'))||0, H=parseFloat(String(pg.cuadH||'').replace(',','.'))||0;
     const pzDe=rol=>((cotW&&cotW.piezas)||[]).find(x=>x._pag===rol);
     const dimsDe=rol=>{const pz=pzDe(rol);const d=pz?cotPapelDims(pz):null;return d||[47.5,65];};
-    const posesDe=(pw,ph,rol)=>{const d=dimsDe(rol),pz=pzDe(rol);return cotPosesSug(pw,ph,d[0],d[1],cotPinza(pz?cotMaqDeP(pz)||'SM74':'SM74'))||0;};
+    const posesDe=(pw,ph,rol)=>{const d=dimsDe(rol),pz=pzDe(rol);return cotPosesSug(pw,ph,d[0],d[1],cotPinza(pz?cotMaqDeP(pz)||'SM74':'SM74',pz))||0;};
     const tapaTipo=pg.tapaTipo==='dura'?'dura':'blanda';
     o.tapaTipo=tapaTipo;o.W=W;o.H=H;o.faltaMedida=!(W>0&&H>0);
     if(pg.tapaTipo!=='sin'){
@@ -3511,7 +3728,7 @@ function cotPagCalc(pg){
     const hppDe=rol=>{
       if(hppMan)return hppMan;
       if(!(cW>0&&cH>0))return hpp;
-      const d=dimsR(rol);return Math.max(1,cotPosesSug(hojaW,hojaH,d[0],d[1],cotPinza(maqR(rol)))||1); // descuenta pinza y cola
+      const d=dimsR(rol);return Math.max(1,cotPosesSug(hojaW,hojaH,d[0],d[1],cotPinza(maqR(rol),pzR(rol)))||1); // descuenta pinza y cola (la de la pieza si se achicó)
     };
     // Con medida cerrada, cada pieza lleva la medida de la HOJA abierta: así el catálogo elige el formato que más hojas rinde
     const hojaPz=(cW>0&&cH>0)?{pw:hojaW,ph:hojaH,hoja:true}:{};
@@ -3636,6 +3853,7 @@ function _cotPagAplicar1(){
       setPz(p,s,sc.col,(s.ch!=null?s.ch:sc.ch),sc.cantMult,sc.rol);
       if(sc.pw>0&&sc.ph>0){ // cuaderno: la pieza lleva su medida; revista: la hoja abierta (así se ve cómo entra en el pliego)
         p.piezaW=sc.pw;p.piezaH=sc.ph;p.personalizado=false;
+        delete p._mc; // los casilleros se leen de la medida nueva
         if(r.W>0&&r.H>0)p.medidaCerrada=r.W+'x'+r.H;
         else if(sc.hoja&&r.cW>0&&r.cH>0)p.medidaCerrada=cotFmtDec(r.cW,2)+'x'+cotFmtDec(r.cH,2)+' cerrada';
       }
@@ -4052,7 +4270,7 @@ function rCotizador(){
       </div>
     </div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
-      <div><div style="font-size:10px;color:#888;font-weight:600" title="Medida plana/desplegada que va a la máquina">MEDIDA ABIERTA (cm)</div>${ninp(p.piezaW,`cotPzEd(${k},'piezaW',this.value)`,'52px')} × ${ninp(p.piezaH,`cotPzEd(${k},'piezaH',this.value)`,'52px')}<div style="font-size:10px;color:#888;font-weight:600;margin-top:6px" title="Medida final del producto terminado (folleto cerrado, o alto×ancho×fuelle en bolsa, alto×largo×prof en estuche)">MEDIDA CERRADA / FINAL</div><input value="${cotEsc(p.medidaCerrada||'')}" onchange="cotPzEd(${k},'medidaCerrada',this.value)" placeholder="ej: 21x30 · o 20x20x10" style="width:150px;padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px"></div>
+      <div><div style="font-size:10px;color:#888;font-weight:600" title="Medida plana/desplegada que va a la máquina">MEDIDA ABIERTA (cm)</div>${ninp(p.piezaW,`cotPzEd(${k},'piezaW',this.value)`,'52px')} × ${ninp(p.piezaH,`cotPzEd(${k},'piezaH',this.value)`,'52px')}<div style="font-size:10px;color:#888;font-weight:600;margin-top:6px" title="Medida final del producto terminado (folleto cerrado, o alto×ancho×fuelle en bolsa, alto×largo×prof en estuche)">MEDIDA CERRADA / FINAL</div>${(()=>{const mc=_mcPartes(p);return ninp(mc[0],`cotPzMcEd(${k},0,this.value)`,'52px')+' × '+ninp(mc[1],`cotPzMcEd(${k},1,this.value)`,'52px')+' <span style="color:#bbb">×</span> '+ninp(mc[2],`cotPzMcEd(${k},2,this.value)`,'44px').replace('<input ','<input placeholder="prof." title="Opcional: fuelle (bolsa) o profundidad (estuche)" ');})()}</div>
       <div><div style="font-size:10px;color:#888;font-weight:600">MÁQUINA</div>
         <span style="display:inline-flex;border:1.5px solid #185fa5;border-radius:8px;overflow:hidden">
         <button onclick="cotPzMaq(${k},'SM52')" title="${_fit52?'Filtrar códigos de impresión de SM52':('El pliego no entra en la SM52 (válido: '+cotMaqRango('SM52')+')')}" style="padding:5px 10px;border:none;cursor:pointer;font-size:11px;font-weight:700;background:${maqPz==='SM52'?'#185fa5':'#fff'};color:${maqPz==='SM52'?'#fff':(_fit52?'#185fa5':'#c0c0c0')};${_fit52?'':'text-decoration:line-through'}">SM52</button>
@@ -4065,12 +4283,18 @@ function rCotizador(){
       <div><label style="font-size:10px;color:${p.personalizado?'#7b3fa0':'#888'};font-weight:700;display:flex;align-items:center;gap:4px;cursor:pointer" title="Marcá esto si cada postura del pliego es un MOTIVO DISTINTO (personalizado, ej: 15 cartas diferentes). Entonces NO se divide la cantidad por las posturas: hacen falta 'cantidad' pliegos por entrada."><input type="checkbox" ${p.personalizado?'checked':''} onchange="cotPzPers(${k},this.checked)" style="margin:0;accent-color:#7b3fa0"> PERSONALIZADO</label><div style="font-size:9px;color:#999">cada postura distinta</div></div>
     </div>
     <div id="cz-p${k}-preview" style="display:flex;justify-content:flex-end;margin:2px 0 8px">${cotPreviewPliego(p)}</div>
+    ${(()=>{const mq=cotMaqDeP(p);if(mq&&/xerox|digital/i.test(mq))return '';const pc=cotPinzaCola(mq,p);
+      const box=(campo,v,base)=>`<input value="${cotEsc(cotFmtDec(v,1))}" onchange="cotPzPinzaEd(${k},'${campo}',this.value)" title="Vacío = ${cotFmtDec(base,1)} cm (Configuración)" style="width:42px;padding:3px 5px;border:1px solid ${v!==base?'#e0a030':'rgba(0,0,0,.15)'};background:${v!==base?'#fff8e6':'#fff'};border-radius:6px;font-size:11px;text-align:right">`;
+      return `<div style="display:flex;justify-content:flex-end;align-items:center;gap:5px;font-size:10px;color:#888;margin:-4px 0 8px" title="Lo ideal es la de Configuración. En trabajos simples se puede achicar (ej. pinza 1 / cola 0) para que entren más poses o un pliego más chico.">
+        Pinza ${box('pinzaOv',pc.p,pc.base.p)} Cola ${box('colaOv',pc.c,pc.base.c)} cm
+        ${pc.ov?`<span style="color:#a35b00;font-weight:700">achicada en este trabajo</span> <button onclick="cotPzPinzaEd(${k},'pinzaOv','');cotPzPinzaEd(${k},'colaOv','')" style="font-size:10px;padding:1px 6px">volver a ${cotFmtDec(pc.base.p,1)} / ${cotFmtDec(pc.base.c,1)}</button>`:''}</div>`;})()}
     <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:auto">
     <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase"><th style="width:110px">Rubro</th><th style="width:60px;text-align:center">Cód</th><th>Selección</th><th>Detalle</th><th style="text-align:right;width:120px">Costo</th></tr>`;
     h+=fila('PAPEL',(_modoCod||_modoPers)?codInp('cz-p'+k+'-papelcodinp',p.papelCod,'papelCod'):'',papelCtl,'cz-p'+k+'-papel-det0','','cz-p'+k+'-papel-cost',pd.papelCosto);
     // Detalle del papel en fila extendida (debajo, a todo el ancho)
     h+=`<tr><td></td><td colspan="4" id="cz-p${k}-papel-det" style="padding:0 6px 10px">${cotPapelDet(pd)}</td></tr>`;
-    const impCtl=impSel+` <span style="font-size:10px;color:#888">desc:</span> <input value="${p.impDescPct||''}" onchange="cotPzEd(${k},'impDescPct',this.value)" placeholder="0" title="Descuento especial en impresión (%) — típico en interiores de muchas entradas" style="width:44px;padding:5px 4px;border:1.5px solid ${p.impDescPct>0?'#1a7f37':'rgba(0,0,0,.15)'};border-radius:6px;font-size:12px;font-weight:700;text-align:center;color:${p.impDescPct>0?'#1a7f37':'#555'}">%`;
+    const _dc=p.impDescPct>0?'#1a7f37':(p.impDescPct<0?'#a32d2d':'');
+    const impCtl=impSel+` <span style="font-size:10px;color:${_dc||'#888'}">${p.impDescPct<0?'recargo:':'desc:'}</span> <input value="${p.impDescPct?cotFmtDec(p.impDescPct,1):''}" onchange="cotPzEd(${k},'impDescPct',this.value)" placeholder="0" title="Descuento en impresión (%) — típico en interiores de muchas entradas. Negativo = recargo: -10 sube la impresión un 10% (ej. mucha carga de tinta)" style="width:44px;padding:5px 4px;border:1.5px solid ${_dc||'rgba(0,0,0,.15)'};border-radius:6px;font-size:12px;font-weight:700;text-align:center;color:${_dc||'#555'}">%`;
     h+=fila('IMPRESIÓN',codInp('cz-p'+k+'-impcodinp',p.impCod,'impCod'),impCtl,'cz-p'+k+'-imp-det',cotImpDet(pd),'cz-p'+k+'-imp-cost',pd.impCosto);
     if(!_esXerox)h+=fila('CHAPAS CTP','',sel(chapasOpts,p.chapasCod,`cotPzEd(${k},'chapasCod',this.value)`,'250px','cz-p'+k+'-chapascod')+` <span style="font-size:10px;color:#888">cant x entrada:</span> ${ninp(p.chapasCant,`cotPzEd(${k},'chapasCant',this.value)`,'50px','cz-p'+k+'-chapascant')}`,'cz-p'+k+'-chapas-det',(pd.chapasWarn?`<span style="color:#c0392b;font-weight:700">⚠ retiración necesita poses PARES · así van ${pd.chapasColTot||8} chapas o pasá a SM74</span> `:'')+(pd.entradas>1?`${p.chapasCant||0} × ${pd.entradas} entradas = ${(p.chapasCant||0)*pd.entradas} chapas`:''),'cz-p'+k+'-chapas-cost',pd.chapasCosto);
     h+=fila('LAMINADO / LACA','',
@@ -7961,7 +8185,7 @@ function mNC2(){
 <div style="margin-bottom:9px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
     <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.05em">Ítems de venta</label>
-    <div style="display:flex;gap:6px"><button onclick="aiInterpretarAbrir()" title="Pegá el pedido del cliente y la IA precarga los ítems" style="background:#efe7fb;color:#6b28b6;border-color:#a855f7"><i class="ti ti-sparkles"></i> Interpretar pedido con IA</button><button onclick="estrArmarAbrir()" title="Armar la cotización con la estructura típica de una familia" style="background:#e6f0fb;color:#185fa5;border-color:#7db3e8"><i class="ti ti-box"></i> Armar estructura</button><button onclick="addItemNuevo()"><i class="ti ti-plus"></i>Agregar ítem</button></div>
+    <div style="display:flex;gap:6px"><button onclick="aiInterpretarAbrir()" title="Pegá el pedido del cliente y la IA precarga los ítems" style="background:#efe7fb;color:#6b28b6;border-color:#a855f7"><i class="ti ti-sparkles"></i> Interpretar pedido con IA</button><button onclick="estrArmarAbrir()" title="Armar la cotización con la estructura típica de una familia" style="background:#e6f0fb;color:#185fa5;border-color:#7db3e8"><i class="ti ti-box"></i> Armar estructura</button><button onclick="cotActualizarAbrir()" title="Recalcular todos los ítems con las tablas de costos y el dólar de hoy, con fecha y validez nuevas" style="background:#e9f6ec;color:#1a7f37;border-color:#8fcf9f"><i class="ti ti-refresh"></i> Actualizar a hoy</button><button onclick="addItemNuevo()"><i class="ti ti-plus"></i>Agregar ítem</button></div>
   </div>
   <div id="ci2"></div>
   <div style="display:flex;justify-content:flex-end;gap:12px;font-size:12px;margin-top:5px;padding:7px 10px;background:#f5f5f3;border-radius:7px"><span>Sub: <strong id="csd">$0</strong></span><span>IVA 21%: <strong id="cid2">$0</strong></span><span>Total venta: <strong id="ctd" style="color:#185fa5">$0</strong></span></div>
@@ -8653,7 +8877,7 @@ function mVC2(id){
   var _btnA=(c.estado==='borrador'||c.estado==='enviada')&&!itemsV.length?`<button class="bs" onclick="chCot(${_bid},'aprobada')"><i class="ti ti-check"></i> Aprobar</button>`:'';
   var _btnOT=(c.estado==='aprobada'&&!ot)?`<button class="bp" onclick="genOT(${_bid})"><i class="ti ti-clipboard-plus"></i> Generar OT</button>`:'';
   var _btnOTcomp=(c.estado==='aprobada'&&ot)?`<button class="bp" style="background:#5a7fa0" onclick="omCotNuevaOT(${_bid})"><i class="ti ti-plus"></i> OT complementaria</button>`:'';
-  var _btnDup=`<button onclick="dupCot(${_bid})" title="Duplicar esta cotización"><i class="ti ti-copy"></i> Duplicar</button>`;
+  var _btnDup=`<button onclick="dupCot(${_bid})" title="Duplicar esta cotización tal cual"><i class="ti ti-copy"></i> Duplicar</button><button onclick="dupCot(${_bid},true)" title="Copia nueva con fecha de hoy, validez nueva y todo recalculado con las tablas de costos y el dólar actuales" style="background:#e9f6ec;color:#1a7f37;border-color:#8fcf9f"><i class="ti ti-refresh"></i> Duplicar actualizada</button>`;
   h+=`<div class="mf"><button onclick="cm()">Cerrar</button><button onclick="generarPDFCotizacion(${_bid})"><i class="ti ti-printer"></i> PDF</button>${_btnDup}${_btnA}${_btnOT}${_btnOTcomp}</div>`;
   return h;
 }
@@ -9975,7 +10199,8 @@ function mEditProv(id){const p=S.proveedores.find(x=>x.id===id);if(!p)return'';c
       window._cotItems=rawItems.map(it=>({
         nombre:it.nombre||'',
         desc:it.desc||'',
-        filas:(it.filas||[{qty:0,precio:0,subtotal:0}]).map(f=>({qty:f.qty||0,precio:f.precio||0,subtotal:f.subtotal||0})),
+        filas:(it.filas||[{qty:0,precio:0,subtotal:0}]).map(f=>Object.assign({qty:f.qty||0,precio:f.precio||0,subtotal:f.subtotal||0},
+          f.manual?{manual:true}:{},f.costo!=null?{costo:f.costo}:{},f.ventaCalc!=null?{ventaCalc:f.ventaCalc}:{})), // conserva precio fijado a mano y costo de referencia
         costeo:it.costeo?JSON.parse(JSON.stringify(it.costeo)):undefined,
         estrTipo:it.estrTipo,estrFamilia:it.estrFamilia,estrPartes:it.estrPartes
       }));
@@ -10719,7 +10944,7 @@ function delProv(id){const p=S.proveedores.find(x=>x.id==id);if(!p)return;if(!co
 function _cotTieneOTs(cotId){return S.ordenes.filter(o=>o.cotId==cotId).length;}
 function delCot(id){const c=S.cotizaciones.find(x=>x.id==id);if(!c)return;const n=_cotTieneOTs(id);if(n){alert(`No se puede eliminar la cotización ${c.num}: tiene ${n} orden(es) de trabajo asociada(s).`);return;}if(!confirm(`¿Eliminar la cotización ${c.num}?\nEsta acción no se puede deshacer.`))return;S.cotizaciones=S.cotizaciones.filter(x=>x.id!=id);sk('cotizaciones');render();}
 function delCotIdx(idx){const c=S.cotizaciones[idx];if(!c)return;const n=_cotTieneOTs(c.id);if(n){alert(`No se puede eliminar la cotización ${c.num}: tiene ${n} orden(es) de trabajo asociada(s).`);return;}if(!confirm(`¿Eliminar la cotización ${c.num}?\nEsta acción no se puede deshacer.`))return;S.cotizaciones.splice(idx,1);sk('cotizaciones');render();}
-async function dupCot(id){
+async function dupCot(id,actualizar){
   const orig=S.cotizaciones.find(x=>x.id==id);if(!orig)return;
   const {id:newId,num}=await nidCot(); // nº correcto y reservado atómicamente (anti-colisión)
   const hoy=new Date().toISOString().slice(0,10);
@@ -10733,11 +10958,18 @@ async function dupCot(id){
   if(typeof addDiasHabiles==='function'&&nueva.plazo){
     nueva.entrega=addDiasHabiles(hoy,nueva.plazo);
   }
+  // Validez: los mismos días que tenía la original, contados desde hoy
+  {const d=(orig.fecha&&orig.validez)?Math.round((new Date(orig.validez)-new Date(orig.fecha))/864e5):0;
+   nueva.validez=_cotSumarDias(hoy,d>0?d:15);}
+  // La copia no hereda la aprobación de la original
+  (nueva.itemsVariantes||[]).forEach(it=>{if(it)delete it.filaAprobada;});
+  delete nueva.variantesAprobadas;
   S.cotizaciones.push(nueva);
   sk('cotizaciones');
   cm();render();
-  // Abrir modal de edición de la nueva cotización para que pueda ajustar antes de confirmar
-  setTimeout(()=>{mEditCot(newId);},50);
+  // Abrir modal de edición de la nueva cotización para que pueda ajustar antes de confirmar.
+  // "Duplicar actualizada": además muestra el recálculo a valores de hoy (antes / hoy) para confirmar.
+  setTimeout(()=>{mEditCot(newId);if(actualizar)setTimeout(()=>{try{cotActualizarAbrir();}catch(e){console.warn(e);}},120);},50);
 }
 async function omCotNuevaOT(cotId){
   const c=S.cotizaciones.find(x=>x.id==cotId);if(!c)return;
