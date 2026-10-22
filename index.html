@@ -2253,8 +2253,44 @@ function rInsumos(){
 let cotW=null, cotVista='editor';
 const COT_PROCESOS_SUGERIDOS=[
   {match:/packag/i,procesos:[{cod:5,auto:'pliegos'},{cod:4,auto:'unidades'}],nota:'Packaging → se agregaron Troquelado y Pegado'},
-  {match:/follet/i,procesos:[{cod:2,auto:'unidades'}],nota:'Folletería → se agregó Doblado (x mill. de unidades)'}
+  {match:/follet/i,procesos:[{cod:2,auto:'unidades'}],nota:'Folletería → se agregó Doblado (x mill. de unidades)'},
+  // Bolsas: lista estándar completa, en el orden del trabajo (tabla + manuales). Valores de referencia, se ajustan en cada costeo.
+  {match:/bolsa/i,procesos:[],nota:'Bolsas → se cargaron los procesos estándar (revisá los valores de referencia)',lista:[
+    {t:'o',cod:6,auto:'pliegos'},                                   // Sacabocado
+    {t:'o',cod:5,auto:'pliegos'},                                   // Troquelado
+    {t:'m',concepto:'Adhesivo (balde 20 kg ≈ 5.000 bolsas a $ 50.000)',modo:'unidades',pu:10000}, // $10 por bolsa = $10.000 el millar
+    {t:'m',concepto:'Cinta / Cordón',modo:'pu',pu:0},             // depende del modelo: cargar $ por bolsa
+    {t:'m',concepto:'Confección',modo:'unidades',pu:50000},         // ≈ $50.000 el millar
+    {t:'m',concepto:'Sin cajas — va strechado',modo:'fijo',monto:0},
+    {t:'o',cod:10,auto:false},                                      // Flete interno
+    {t:'o',cod:9,auto:false}                                        // Flete de entrega
+  ]}
 ];
+// Procesos sugeridos según el tipo de trabajo. Con "lista" (Bolsas) se carga la lista estándar completa y en orden,
+// solo si el costeo todavía no tiene procesos ni líneas manuales (no pisa lo que ya armaste).
+function _cotAplicarSugeridos(w){
+  let nota=null;
+  if(!w||!w.tipoTrabajo)return nota;
+  if(!Array.isArray(w.otros))w.otros=[];if(!Array.isArray(w.manuales))w.manuales=[];
+  COT_PROCESOS_SUGERIDOS.forEach(s=>{
+    if(!s.match.test(w.tipoTrabajo))return;
+    if(s.lista){
+      // Solo si no se tocó: lo único cargado son los procesos que trae un costeo nuevo (corte, cajas, flete) sin montos a mano
+      const soloDef=w.otros.every(o=>[1,17,9].includes(o.cod)&&!o.ovMonto&&!o.ov);
+      if(!soloDef||w.manuales.some(m=>!m._pag))return;
+      w.otros=[];
+      s.lista.forEach((x,n)=>{
+        if(x.t==='o'){if((S.cotOtros||[]).some(o=>o.codigo===x.cod))w.otros.push({cod:x.cod,cant:1,auto:x.auto,ord:n});}
+        else w.manuales.push({concepto:x.concepto,modo:x.modo,pu:x.pu||0,monto:x.monto||0,ord:n});
+      });
+      nota=s.nota;return;
+    }
+    s.procesos.forEach(p=>{if(!w.otros.some(o=>o.cod===p.cod))w.otros.push({cod:p.cod,cant:1,auto:p.auto});});
+    nota=s.nota;
+  });
+  return nota;
+}
+function _cotTieneLista(tipo){return !!tipo&&COT_PROCESOS_SUGERIDOS.some(s=>s.lista&&s.match.test(tipo));}
 // Estructuras por familia: esqueleto de ítems típicos de cada producto.
 // tipo: 'pieza' (lleva papel/impresión/costeo) · 'insumo' (cordón, troquel, acetato...) · 'proceso' (troquelado, pegado, abrochado...) · 'manoobra' (armado).
 // opcional: true = no se carga por defecto, aparece como casilla para tildar.
@@ -2406,13 +2442,27 @@ function cotCalc(w,cantOverride){
       lam={codigo:0,material:'personalizado',ancho:p.lamCustom.ancho||0,alto:p.lamCustom.alto||0,precioM2:p.lamCustom.precioM2||0};lamPers=true;
     }
     const lamOn=!!(lam&&(lam.codigo!==0||lamPers));
+    // Medida a laminar: la que se cargó a mano (ej. el pliego 72×51 se corta y se lamina en 68×41),
+    // si no la del pliego que se imprime, y recién si no hay pliego la de la tabla. Se cobra solo el precio por m² de la tabla.
+    const lmA=+(p.lamMedida&&p.lamMedida.ancho)||0,lmB=+(p.lamMedida&&p.lamMedida.alto)||0,lamManual=lmA>0&&lmB>0;
+    let lamOrigen='tabla';
+    if(lamOn){
+      let la=lam.ancho,lb=lam.alto;
+      if(lamManual){la=lmA;lb=lmB;lamOrigen='manual';}
+      else if(!(lamPers&&lam.ancho>0&&lam.alto>0)&&papel&&papel.ancho>0&&papel.alto>0){la=Math.max(papel.ancho,papel.alto);lb=Math.min(papel.ancho,papel.alto);lamOrigen='pliego';}
+      else if(lamPers)lamOrigen='pers';
+      lam=Object.assign({},lam,{ancho:la,alto:lb,material:_lamNombre(lam.material)+' '+cotFmtDec(Math.max(la,lb),1)+'×'+cotFmtDec(Math.min(la,lb),1)});
+    }
     const lamCXM=lamOn?(lam.ancho/100)*(lam.alto/100)*(lam.precioM2||0)*1000:0;
     const lamCaras=p.lamCaras||1;
-    const lamMillares=lamOn?millares*lamCaras:0;
+    // Con demasía: se laminan todos los pliegos que entran a máquina (cuando la demasía se necesita para stamping, troquel, etc.)
+    const lamConDem=!!p.lamConDemasia;
+    const lamMillares=lamOn?(lamConDem?pliegosTot/1000:millares)*lamCaras:0;
     const pLamCosto=lamCXM*lamMillares;
     let lamDims=null,lamMismatch=false;
     if(lamOn&&lam.ancho&&lam.alto)lamDims=[Math.min(lam.ancho,lam.alto),Math.max(lam.ancho,lam.alto)];
-    if(papelDims&&lamDims)lamMismatch=(Math.abs(papelDims[0]-lamDims[0])>1||Math.abs(papelDims[1]-lamDims[1])>1);
+    // Solo se avisa si la medida cargada a mano es MÁS GRANDE que el pliego impreso
+    if(papelDims&&lamDims&&lamOrigen!=='pliego')lamMismatch=(lamDims[0]>papelDims[0]+0.5||lamDims[1]>papelDims[1]+0.5);
     // Procesos de ESTA pieza (troquelado, doblado, etc.). modo "pliegos" = millares de esta pieza (no de todas)
     let procPzCosto=0;const procPzDet=[];
     (p.procesos||[]).forEach((pr,pi)=>{
@@ -2433,7 +2483,7 @@ function cotCalc(w,cantOverride){
     return {k,nombre:p.nombre,posturas:post,demasia:dem,cantMult,entradas:E,cantEf,millares1,impDescPct:impDesc,impBase:pImpBase,pliegosNetos,pliegosTot,millares,
       papel,papelCXM:pCXM,papelCosto:pPapelCosto,papelDims,compra,
       imp,impCosto:pImpCosto,impDigital:esDigital,impLargo,chapasCosto:pChapasCosto,chapasWarn,chapasColTot:_colTot,
-      lam,lamCod:p.lamCod,lamPers,lamCXM,lamCaras,lamMillares,lamCosto:pLamCosto,lamDims,lamMismatch,
+      lam,lamCod:p.lamCod,lamPers,lamCXM,lamCaras,lamMillares,lamCosto:pLamCosto,lamDims,lamMismatch,lamOrigen,lamConDem,
       procPzCosto,procPzDet,
       pesoKg:pPeso};
   });
@@ -2452,7 +2502,8 @@ function cotCalc(w,cantOverride){
   // Líneas manuales: "fijo" (igual en todas las cantidades), "unidad" (escala proporcional a la cantidad)
   // o "pu" = $ por unidad (precio unitario × cantidad; ej. encuadernador $800 por cuaderno)
   const _cantBase=+w.cantidad||0;
-  let manCosto=0;(w.manuales||[]).forEach(m=>{manCosto+=_manMonto(m,cant,_cantBase);});
+  const _mctx={millares:millaresT,pesoKg,kgCaja:Math.max(1,+cfg.kgPorCaja||20)};
+  let manCosto=0;const manDet=[];(w.manuales||[]).forEach((m,i)=>{const mm=_manMonto(m,cant,_cantBase,_mctx);manCosto+=mm;manDet.push({idx:i,cantCalc:_manCantCalc(m,cant,_mctx),costo:mm});});
   // Mínimo del laminador (arranque de trabajo): si hay laminado y da menos del mínimo, se cobra el mínimo
   const LAM_MIN=(cfg.lamMin!=null?+cfg.lamMin:30000);
   const lamCostoRaw=lamCosto;
@@ -2469,7 +2520,7 @@ function cotCalc(w,cantOverride){
   const venta=mg<1?total/(1-mg):total;
   return {cant,piezasDet,tercOn,tercCosto,tercProv:tercOn?((w.terc&&w.terc.prov)||''):'',
     pliegosNetos:pliegosNetosT,pliegosTot:pliegosTotT,millares:millaresT,
-    papelCosto,impCosto,chapasCosto,lamCosto,lamCostoRaw,lamMinAplicado,lamMinEnPieza,lamMin:LAM_MIN,otrosCosto,otrosDet,manCosto,procPzTotal,
+    papelCosto,impCosto,chapasCosto,lamCosto,lamCostoRaw,lamMinAplicado,lamMinEnPieza,lamMin:LAM_MIN,otrosCosto,otrosDet,manCosto,manDet,procPzTotal,
     total,venta,margenMonto:venta-total,
     unitario:cant?venta/cant:0,costoUnit:cant?total/cant:0,pesoKg,cfg};
 }
@@ -2508,15 +2559,35 @@ function cotPapelDet(pd){
 }
 function cotLamDet(pd){
   if(!pd.lam||(!pd.lamCod&&!pd.lamPers))return '';
-  let t=`${cotFmtDec(pd.millares,3)} mill. × ${pd.lamCaras} cara${pd.lamCaras>1?'s':''} = ${cotFmtDec(pd.lamMillares,3)} mill. × $ ${cotFmt(pd.lamCXM)}`;
+  const ldim=pd.lamDims?cotFmtDec(pd.lamDims[1],1)+'×'+cotFmtDec(pd.lamDims[0],1):'?';
+  const _mb=pd.lamConDem?pd.pliegosTot/1000:pd.millares;
+  let t=`<b>${ldim}</b> <span style="color:#888">(${({pliego:'el pliego impreso',manual:'medida a mano',pers:'personalizado',tabla:'de la tabla'})[pd.lamOrigen]||''})</span> · ${cotFmtDec(_mb,3)} mill.${pd.lamConDem?' <b style="color:#7b3fa0">con demasía</b>':''} × ${pd.lamCaras} cara${pd.lamCaras>1?'s':''} = ${cotFmtDec(pd.lamMillares,3)} mill. × $ ${cotFmt(pd.lamCXM)}`;
   if(pd.lamMismatch){
     const pdim=pd.papelDims?cotFmtDec(pd.papelDims[1],1)+'×'+cotFmtDec(pd.papelDims[0],1):'?';
-    const ldim=pd.lamDims?cotFmtDec(pd.lamDims[1],1)+'×'+cotFmtDec(pd.lamDims[0],1):'?';
-    t+=` <span style="color:#c62828;font-weight:700"><i class="ti ti-alert-triangle"></i> El laminado (${ldim}) NO coincide con el pliego (${pdim})</span>`;
+    t+=` <span style="color:#c62828;font-weight:700"><i class="ti ti-alert-triangle"></i> La medida a laminar (${ldim}) es más grande que el pliego (${pdim})</span>`;
   }
   if(pd.lamMin)t+=` <span style="color:#a35b00;font-weight:700">· calc $ ${cotFmt(pd.lamCostoRaw||0)} → mínimo laminador $ ${cotFmt(pd.lamCosto)}</span>`;
   else if(pd.lamCosto>0&&pd.lamCosto<30000)t+=` <span style="color:#a35b00;font-weight:600">· el laminador cobra mínimo $30.000 por trabajo (se ajusta en el total)</span>`;
   return t;
+}
+// Nombre del laminado sin la medida de la tabla ("OPP MATE/BTE 65x47,5" → "OPP MATE/BTE"): la medida sale del pliego
+function _lamNombre(m){return String(m||'').replace(/\s*\d+(?:[.,]\d+)?\s*[xX×]\s*\d+(?:[.,]\d+)?/g,'').replace(/\s+/g,' ').trim()||String(m||'');}
+// Opciones del selector: una por material y precio (las filas de distintas medidas del mismo material se juntan)
+function _lamOpciones(){
+  const vistos=new Map();
+  (S.cotLaminados||[]).filter(x=>x.activo&&x.codigo!==0).forEach(x=>{const n=_lamNombre(x.material),key=n.toLowerCase()+'|'+(+x.precioM2||0);if(!vistos.has(key))vistos.set(key,{v:x.codigo,l:n+' ($'+x.precioM2+'/m²)',key});});
+  return [...vistos.values()];
+}
+function _lamOpcionDe(cod){const x=(S.cotLaminados||[]).find(l=>l.codigo===cod);if(!x)return cod;const key=_lamNombre(x.material).toLowerCase()+'|'+(+x.precioM2||0);const o=_lamOpciones().find(y=>y.key===key);return o?o.v:cod;}
+function cotLamMedida(k,campo,val){
+  if(!cotW)return;
+  if(!Array.isArray(cotW.piezas)||!cotW.piezas.length)cotW.piezas=cotPiezasDe(cotW);
+  const p=cotW.piezas[k];if(!p)return;
+  if(campo==='conDem'){p.lamConDemasia=!!val;cotSync();return;}
+  if(campo==='reset'){delete p.lamMedida;cotRerender();return;}
+  if(!p.lamMedida)p.lamMedida={ancho:0,alto:0};
+  p.lamMedida[campo]=cotNumDec(val)||0;
+  cotSync();
 }
 function cotLamAutoMatch(k){
   if(!cotW)return;
@@ -2688,15 +2759,7 @@ function cotEd(campo,val){
   if(campo==='margenPct'){cotW.margenPct=(val===''||val==null)?0:cotNumDec(val);cotSync();return;}
   if(campo==='tipoTrabajo'){
     cotW.tipoTrabajo=String(val).replace(/[<>]/g,'').slice(0,60);
-    let agregado=null;
-    COT_PROCESOS_SUGERIDOS.forEach(s=>{
-      if(s.match.test(cotW.tipoTrabajo)){
-        s.procesos.forEach(p=>{
-          if(!(cotW.otros||[]).some(o=>o.cod===p.cod))cotW.otros.push({cod:p.cod,cant:1,auto:p.auto});
-        });
-        agregado=s.nota;
-      }
-    });
+    const agregado=_cotAplicarSugeridos(cotW);
     if(agregado){cotRerender();setTimeout(()=>{const el=document.getElementById('cz-tipo-nota');if(el)el.textContent=agregado;},50);}
     else cotSync();
     return;
@@ -3626,13 +3689,13 @@ function cotRevista(){
 function cotOtroEd(i,campo,val){
   if(!cotW.otros[i])return;
   const o=cotW.otros[i];
-  if(campo==='modo'){o.auto=(val==='manual')?false:val;o.ov=false;cotRerender();return;}
+  if(campo==='modo'){o.auto=(val==='manual'||val==='fijo')?false:val;o.ov=false;cotRerender();return;}
   if(campo==='cod'){o.cod=parseInt(val)||0;cotSync();return;}
   if(campo==='proveedor'){o.proveedor=String(val==null?'':val).replace(/[<>]/g,'').slice(0,80);return;}
   if(campo==='costo'){const v=String(val==null?'':val).trim();if(v===''){o.ovMonto=false;}else{o.ovMonto=true;o.montoOv=cotNum(val);}cotRerender();return;} // pisar costo con cotización de proveedor
   o.cant=cotNumDec(val);o.ov=true;cotSync(); // editar los millares = fijarlos a mano
 }
-function cotOtroAdd(){cotW.otros.push({cod:0,cant:1,auto:'pliegos'});cotRerender();}
+function cotOtroAdd(){_cotProcOrdNorm(cotW);cotW.otros.push({cod:0,cant:1,auto:'pliegos',ord:_cotProcOrdSig(cotW)});cotRerender();}
 function cotOtroDel(i){cotW.otros.splice(i,1);cotRerender();}
 // ---- Procesos por pieza (se trasladan a la OT de esa pieza) ----
 function cotPzProcAdd(k){
@@ -3663,9 +3726,22 @@ function cotPzProcDel(k,i){
   p.procesos.splice(i,1);cotRerender();
 }
 // Monto de una línea manual para una cantidad: fijo / escala con la cantidad / $ por unidad
-function _manMonto(m,cant,base){
+// Cantidad sobre la que se cobra una línea manual con precio unitario (pu):
+// pliegos = millares de pliegos de todas las piezas · unidades = millares de unidades · peso = cajas (1 c/N kg) · pu = unidades
+function _manCantCalc(m,cant,ctx){
+  if(!m)return 0;
+  if(m.modo==='pu')return +cant||0;
+  if(!ctx)return 0;
+  if(m.modo==='pliegos')return +ctx.millares||0;
+  if(m.modo==='unidades')return (+cant||0)/1000;
+  if(m.modo==='peso')return ctx.pesoKg>0?Math.ceil(ctx.pesoKg/Math.max(1,+ctx.kgCaja||20)-1e-9):1;
+  return 0;
+}
+function _manCtx(r){return r?{millares:r.millares,pesoKg:r.pesoKg,kgCaja:Math.max(1,+((r.cfg||cotCfg()).kgPorCaja)||20)}:null;}
+function _manMonto(m,cant,base,ctx){
   if(!m)return 0;
   if(m.modo==='pu')return (+m.pu||0)*(+cant||0);
+  if(['pliegos','unidades','peso'].includes(m.modo))return ctx?(+m.pu||0)*_manCantCalc(m,cant,ctx):(+m.monto||0);
   if(m.modo==='unidad'&&(+base)>0)return (+m.monto||0)*((+cant||0)/(+base));
   return +m.monto||0;
 }
@@ -3674,7 +3750,33 @@ function cotManEd(i,campo,val){
   cotW.manuales[i][campo]=(campo==='monto'||campo==='pu')?cotNum(val):String(val).replace(/[<>]/g,'').slice(0,120);
   if(campo==='modo'||campo==='pu')cotRerender();else cotSync();
 }
-function cotManAdd(){cotW.manuales.push({concepto:'',monto:0});cotRerender();}
+// ---- Orden de los procesos comunes (tabla + manuales mezclados, tal cual el recorrido del trabajo) ----
+// Cada fila guarda "ord". Las que no lo tienen (costeos viejos, agregadas por la IA o por una estructura) van al final.
+function _cotProcLista(w){
+  const l=[];
+  (w&&w.otros||[]).forEach((x,i)=>l.push({t:'o',i,x,ord:x&&x.ord!=null?+x.ord:1e4+i}));
+  (w&&w.manuales||[]).forEach((x,i)=>l.push({t:'m',i,x,ord:x&&x.ord!=null?+x.ord:2e4+i}));
+  return l.sort((a,b)=>a.ord-b.ord);
+}
+function _cotProcOrdNorm(w){_cotProcLista(w).forEach((e,n)=>{e.x.ord=n;});}
+function _cotProcOrdSig(w){return _cotProcLista(w).reduce((mx,e)=>Math.max(mx,e.ord<1e4?e.ord:-1),-1)+1;}
+let _procDrag=null;
+function cotProcDragStart(ev,key){_procDrag=key;try{ev.dataTransfer.setData('text/plain',key);ev.dataTransfer.effectAllowed='move';const tr=ev.target.closest('tr');if(tr)ev.dataTransfer.setDragImage(tr,20,15);}catch(e){}}
+function cotProcDragOver(ev){if(!_procDrag)return;ev.preventDefault();const tr=ev.currentTarget;const r=tr.getBoundingClientRect(),abajo=ev.clientY>r.top+r.height/2;
+  document.querySelectorAll('tr[data-pk]').forEach(x=>{x.style.boxShadow='';});tr.style.boxShadow=abajo?'inset 0 -3px 0 #185fa5':'inset 0 3px 0 #185fa5';}
+function cotProcDrop(ev,key){
+  ev.preventDefault();document.querySelectorAll('tr[data-pk]').forEach(x=>{x.style.boxShadow='';});
+  const src=_procDrag;_procDrag=null;if(!src||src===key||!cotW)return;
+  const r=ev.currentTarget.getBoundingClientRect(),abajo=ev.clientY>r.top+r.height/2;
+  const l=_cotProcLista(cotW),k=e=>e.t+e.i;
+  const a=l.findIndex(e=>k(e)===src);if(a<0)return;
+  const [mov]=l.splice(a,1);
+  let b=l.findIndex(e=>k(e)===key);if(b<0)return;if(abajo)b++;
+  l.splice(b,0,mov);l.forEach((e,n)=>{e.x.ord=n;});
+  cotRerender();
+}
+function cotProcDragEnd(){_procDrag=null;document.querySelectorAll('tr[data-pk]').forEach(x=>{x.style.boxShadow='';});}
+function cotManAdd(){if(!cotW.manuales)cotW.manuales=[];_cotProcOrdNorm(cotW);cotW.manuales.push({concepto:'',monto:0,ord:_cotProcOrdSig(cotW)});cotRerender();}
 function cotManDel(i){cotW.manuales.splice(i,1);cotRerender();}
 // ---- Variantes de cantidad ----
 function cotVarAdd(){
@@ -3855,15 +3957,11 @@ function cotDesdeItem(ii){
     const f0=item.filas[0]||{};
     cotW.cantidad=f0.qty||0;
     cotW.variantes=item.filas.slice(1).filter(f=>f.qty>0).map(f=>({cantidad:f.qty}));
-    COT_PROCESOS_SUGERIDOS.forEach(s=>{
-      if(cotW.tipoTrabajo&&s.match.test(cotW.tipoTrabajo)){
-        s.procesos.forEach(p=>{if(!cotW.otros.some(o=>o.cod===p.cod))cotW.otros.push({cod:p.cod,cant:1,auto:p.auto});});
-      }
-    });
+    _cotAplicarSugeridos(cotW);
     // Estructura de la familia (armada a mano o reconocida por la IA): el costeo arranca con sus piezas, procesos e insumos.
-    // Revistas no: ahí el paginado arma tapa + interior.
+    // Revistas no: ahí el paginado arma tapa + interior. Si el tipo tiene lista estándar (Bolsas), de la estructura van solo las piezas.
     if(!(item.aiSug&&item.aiSug.revista&&(+item.aiSug.revista.intPags||+item.aiSug.revista.tapaPags))){
-      try{cotW._estrNota=estrAplicarAlCosteo(estrPartesDeItem(item),item);}catch(e){console.warn('estructura',e);}
+      try{const _pt=estrPartesDeItem(item);cotW._estrNota=estrAplicarAlCosteo(_cotTieneLista(cotW.tipoTrabajo)?_pt.filter(p=>p.tipo==='pieza'):_pt,item);}catch(e){console.warn('estructura',e);}
     }
     // Precarga del costeo con lo sugerido por la IA: medidas, papel, la máquina MÁS ECONÓMICA, procesos. El humano revisa.
     if(item.aiSug){
@@ -4075,6 +4173,7 @@ function cotActualizarItem(it){
       const k=(+old.costo>0&&costo>0)?costo/old.costo:1;
       const sub=Math.round((+old.subtotal||0)*k);
       f={qty:q,subtotal:sub,precio:q?sub/q:0,manual:true,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};
+      if(old.puManual&&k===1&&+old.precio>0){f.precio=+old.precio;f.puManual=true;f.subtotal=Math.round(old.precio*q*100)/100;} // unitario redondo a mano: queda igual
       notas.add(k!==1?'Precio fijado a mano: se ajustó en la misma proporción que el costo':'Precio fijado a mano: queda igual');
     }else{const sub=cotRedondearVenta(venta);f={qty:q,subtotal:sub,precio:q?sub/q:unit,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};}
     res.filas.push({qty:q,antes:old?(+old.subtotal||0):0,despues:f.subtotal});
@@ -4651,7 +4750,7 @@ function rCotizador(){
   const impOptsSM74=(S.cotImpresion||[]).filter(p=>p.activo&&p.maquina==='SM74');
   const impOptsXerox=(S.cotImpresion||[]).filter(p=>p.activo&&p.maquina==='Xerox');
   const chapasOpts=[{v:0,l:'— sin chapas —'}].concat((S.cotChapas||[]).filter(p=>p.activo&&p.codigo!==0).map(p=>({v:p.codigo,l:p.tipo+' ($ '+cotFmt(p.costo)+')'})));
-  const lamOpts=[{v:0,l:'— sin laminado / laca —'}].concat((S.cotLaminados||[]).filter(p=>p.activo&&p.codigo!==0).map(p=>({v:p.codigo,l:p.material+' ($'+p.precioM2+'/m²)'})));
+  const lamOpts=[{v:0,l:'— sin laminado / laca —'}].concat(_lamOpciones());
   const otrosOpts=[{v:0,l:'—'}].concat((S.cotOtros||[]).filter(p=>p.activo&&p.codigo!==0).map(p=>({v:p.codigo,l:p.codigo+' · '+p.concepto})));
   const over=r.pesoKg>r.cfg.pesoMaxKg;
   let h=emb?'':`<div class="ph"><div><div class="pt">Cotizador offset</div><div class="ps">SM52 / SM74 · Dólar efectivo: <strong>$ ${cotFmtDec(cotDolarEfectivo(),2)}</strong> · Demasía solo en papel</div></div>
@@ -4885,11 +4984,17 @@ function rCotizador(){
     h+=fila('IMPRESIÓN',codInp('cz-p'+k+'-impcodinp',p.impCod,'impCod'),impCtl,'cz-p'+k+'-imp-det',cotImpDet(pd),'cz-p'+k+'-imp-cost',pd.impCosto);
     if(!_esXerox)h+=fila('CHAPAS CTP','',sel(chapasOpts,p.chapasCod,`cotPzEd(${k},'chapasCod',this.value)`,'250px','cz-p'+k+'-chapascod')+` <span style="font-size:10px;color:#888">cant x entrada:</span> ${ninp(p.chapasCant,`cotPzEd(${k},'chapasCant',this.value)`,'50px','cz-p'+k+'-chapascant')}`,'cz-p'+k+'-chapas-det',(pd.chapasWarn?`<span style="color:#c0392b;font-weight:700">⚠ retiración necesita poses PARES · así van ${pd.chapasColTot||8} chapas o pasá a SM74</span> `:'')+(pd.entradas>1?`${p.chapasCant||0} × ${pd.entradas} entradas = ${(p.chapasCant||0)*pd.entradas} chapas`:''),'cz-p'+k+'-chapas-cost',pd.chapasCosto);
     h+=fila('LAMINADO / LACA','',
-      `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${sel(lamOpts,p.lamCod,`cotPzEd(${k},'lamCod',this.value)`,'220px','cz-p'+k+'-lamsel')}
+      `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${sel(lamOpts,_lamOpcionDe(p.lamCod),`cotPzEd(${k},'lamCod',this.value)`,'200px','cz-p'+k+'-lamsel')}
        <button onclick="cotToggleLamPers(${k})" title="Laca/laminado personalizado: medida y precio/m² a mano" style="font-size:11px;font-weight:800;padding:4px 9px;border-radius:6px;border:1.5px solid #b89b3e;background:${(lcOpen||lcActivo)?'#b89b3e':'#fdf9ee'};color:${(lcOpen||lcActivo)?'#fff':'#8a7a40'}">P</button>
        <span style="display:inline-flex;border:1.5px solid #185fa5;border-radius:8px;overflow:hidden;flex-shrink:0">
         <button id="cz-p${k}-caras1" onclick="cotCaras(${k},1)" style="padding:6px 10px;border:none;cursor:pointer;font-size:11px;font-weight:700;background:${pd.lamCaras===1?'#185fa5':'#fff'};color:${pd.lamCaras===1?'#fff':'#185fa5'}">Solo frente</button>
         <button id="cz-p${k}-caras2" onclick="cotCaras(${k},2)" style="padding:6px 10px;border:none;border-left:1.5px solid #185fa5;cursor:pointer;font-size:11px;font-weight:700;background:${pd.lamCaras===2?'#185fa5':'#fff'};color:${pd.lamCaras===2?'#fff':'#185fa5'}">Frente y dorso ×2</button></span>
+       ${pd.lam&&(p.lamCod||lcActivo)?(()=>{const lm=p.lamMedida||{},man=+lm.ancho>0&&+lm.alto>0,d=pd.lamDims||[0,0];
+         return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:${man?'#c05600':'#888'}" title="Medida que se lamina. Por defecto la del pliego que se imprime; cambiala si el pliego se corta antes de laminar (ej. 72×51 → 68×41)">medida
+           <input value="${man?cotFmtDec(+lm.ancho,1):''}" placeholder="${cotFmtDec(d[1],1)}" onchange="cotLamMedida(${k},'ancho',this.value)" style="width:44px;padding:4px;border:1.5px solid ${man?'#c05600':'rgba(0,0,0,.15)'};border-radius:6px;font-size:12px;text-align:center;font-weight:${man?700:400}">×
+           <input value="${man?cotFmtDec(+lm.alto,1):''}" placeholder="${cotFmtDec(d[0],1)}" onchange="cotLamMedida(${k},'alto',this.value)" style="width:44px;padding:4px;border:1.5px solid ${man?'#c05600':'rgba(0,0,0,.15)'};border-radius:6px;font-size:12px;text-align:center;font-weight:${man?700:400}">
+           ${man?`<button onclick="cotLamMedida(${k},'reset')" title="Volver a la medida del pliego" style="font-size:10px;padding:2px 6px">↺ pliego</button>`:''}</span>
+           <label style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:11px;font-weight:700;color:${p.lamConDemasia?'#7b3fa0':'#666'};cursor:pointer" title="Tildalo cuando la demasía también se lamina (stamping, laca sectorizada, troquelado, pegado especial): se cobra sobre TODOS los pliegos que entran a máquina"><input type="checkbox" ${p.lamConDemasia?'checked':''} onchange="cotLamMedida(${k},'conDem',this.checked)"> con demasía${pd.lamConDem?` (${cotFmt(pd.pliegosTot)} pl.)`:''}</label>`;})():''}
        ${lcActivo&&!lcOpen?`<span style="font-size:10px;color:#8a7a40;font-weight:600">${lc.ancho||'?'}×${lc.alto||'?'} · $${lc.precioM2||'?'}/m²</span>`:''}
        ${lcOpen?`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#fdf9ee;border:1px solid #e8dcb8;border-radius:8px;padding:5px 8px;width:100%;margin-top:2px">
           <span style="font-size:10px;color:#8a7a40;font-weight:700">PERSONALIZADO:</span>
@@ -4942,43 +5047,49 @@ function rCotizador(){
   } // fin producción propia
   // ---- PROCESOS COMUNES ----
   h+=`<div class="card" style="padding:12px;margin-bottom:12px">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <strong style="font-size:12px">Procesos y servicios <span style="font-weight:400;color:#888;font-size:10px">(comunes a todas las piezas)</span></strong>
-    <div style="display:flex;gap:6px">
-      <button onclick="cotOtroAdd()" style="font-size:11px"><i class="ti ti-plus"></i> Proceso de tabla</button>
-      <button onclick="cotManAdd()" style="font-size:11px"><i class="ti ti-plus"></i> Línea manual</button>
-    </div></div>
+  <div style="margin-bottom:8px">
+    <strong style="font-size:12px">Procesos y servicios <span style="font-weight:400;color:#888;font-size:10px">(comunes a todas las piezas · arrastrá <i class="ti ti-grip-vertical"></i> para ordenarlos como va el trabajo)</span></strong></div>
   <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
   <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase">
-    <th>Proceso</th><th style="width:118px">Proveedor</th><th style="width:158px">Cantidad calculada por</th><th style="width:84px;text-align:right">Millares</th><th style="width:108px;text-align:right">Costo</th><th style="width:34px"></th></tr>`;
-  r.otrosDet.forEach(o=>{
-    const modoSel=`<select onchange="cotOtroEd(${o.idx},'modo',this.value)" style="width:100%;padding:4px 5px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:11px;background:#fff">
-      <option value="pliegos" ${o.modo==='pliegos'?'selected':''}>mill. de pliegos (todas las piezas)</option>
-      <option value="unidades" ${o.modo==='unidades'?'selected':''}>mill. de unidades</option>
-      <option value="peso" ${o.modo==='peso'?'selected':''}>cajas por peso (1 c/${cotFmt(Math.max(1,+cotCfg().kgPorCaja||20))} kg)</option>
-      <option value="manual" ${!o.modo?'selected':''}>manual</option></select>`;
+    <th style="width:22px"></th><th>Proceso</th><th style="width:118px">Proveedor</th><th style="width:158px">Cantidad calculada por</th><th style="width:84px;text-align:right">Millares</th><th style="width:108px;text-align:right">Costo</th><th style="width:34px"></th></tr>`;
+  // Mismas formas de calcular en las filas de tabla y en las manuales
+  const _kgC=cotFmt(Math.max(1,+cotCfg().kgPorCaja||20));
+  const _modos=[['pliegos','mill. de pliegos (todas las piezas)'],['unidades','mill. de unidades'],['peso',`cajas por peso (1 c/${_kgC} kg)`],['pu','$ por unidad'],['unidad','x cantidad (escala)'],['fijo','manual (monto fijo)']];
+  const _selModo=(on,cur,soloTabla)=>`<select onchange="${on}" style="width:100%;padding:4px 5px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:11px;background:#fff">${_modos.filter(x=>!soloTabla||['pliegos','unidades','peso','fijo'].includes(x[0])).map(x=>`<option value="${x[0]}" ${x[0]===cur?'selected':''}>${x[1]}</option>`).join('')}</select>`;
+  const _grip=key=>`<td style="padding:6px 0;text-align:center;cursor:grab;color:#aaa" draggable="true" ondragstart="cotProcDragStart(event,'${key}')" ondragend="cotProcDragEnd()" title="Arrastrá para cambiar el orden"><i class="ti ti-grip-vertical" style="font-size:15px"></i></td>`;
+  const _trDnD=key=>`data-pk="${key}" ondragover="cotProcDragOver(event)" ondrop="cotProcDrop(event,'${key}')"`;
+  const _ordenProc=_cotProcLista(w);
+  _ordenProc.forEach(e=>{
+   if(e.t==='o'){
+    const o=r.otrosDet[e.i];if(!o)return;
+    const modoSel=_selModo(`cotOtroEd(${o.idx},'modo',this.value)`,o.modo||'fijo',true);
     const ovM=!!o.ovMonto; // costo pisado a mano (cotización de proveedor)
-    h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.06)">
+    h+=`<tr ${_trDnD('o'+o.idx)} style="border-top:0.5px solid rgba(0,0,0,.06)">${_grip('o'+o.idx)}
     <td style="padding:6px;overflow:visible">${sel(otrosOpts,o.cod,`cotOtroEd(${o.idx},'cod',this.value)`,'100%')}</td>
     <td style="padding:6px"><input value="${escHtml(o.proveedor||'')}" onchange="cotOtroEd(${o.idx},'proveedor',this.value)" placeholder="A definir" title="Proveedor sugerido. Si lo dejás vacío, lo define logística según tiempos/disponibilidad." style="width:100%;font-size:11px;padding:4px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px"></td>
     <td style="padding:6px;overflow:visible">${modoSel}</td>
     <td style="padding:6px;text-align:right"><input id="cz-ot-cant-${o.idx}" value="${o.modo==='peso'?cotFmt(o.cant):cotFmtDec(o.cant,3)}" onchange="cotOtroEd(${o.idx},'cant',this.value)" ${ovM?'disabled':''} title="${ovM?'Costo fijado a mano — los millares no se usan':(o.ov?'Millares fijados a mano (elegí un modo para volver al automático)':'Millares automáticos — editalos si este proceso va solo a algunas piezas (ej: troquelado solo en inserts)')}" style="width:70px;padding:4px 6px;border:1px solid ${o.ov?'#7b3fa0':'rgba(0,0,0,.15)'};border-radius:6px;font-size:12px;text-align:right;${ovM?'opacity:.4':''};${o.ov?'color:#7b3fa0;font-weight:700':''}"></td>
     <td style="padding:6px;text-align:right"><input id="cz-ot-cost-${o.idx}" value="${o.costo?cotFmt(o.costo):(ovM?'0':'')}" onchange="cotOtroEd(${o.idx},'costo',this.value)" placeholder="auto" title="${ovM?'Monto fijado a mano (cotización de proveedor). Borralo para volver al costo automático.':'Costo automático — escribí acá para pisarlo con la cotización de un proveedor'}" style="width:98px;font-size:12px;font-weight:700;padding:4px 6px;border:1px solid ${ovM?'#7b3fa0':'rgba(0,0,0,.12)'};border-radius:6px;text-align:right;${ovM?'color:#7b3fa0':'color:#333'}"></td>
     <td style="text-align:center"><button onclick="cotOtroDel(${o.idx})" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>`;
-  });
-  (w.manuales||[]).forEach((m,i)=>{
-    const modoManSel=`<select onchange="cotManEd(${i},'modo',this.value)" style="width:100%;padding:4px 5px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:11px;background:#fff"><option value="fijo" ${m.modo!=='unidad'&&m.modo!=='pu'?'selected':''}>fijo (todas las cant.)</option><option value="unidad" ${m.modo==='unidad'?'selected':''}>x cantidad (escala)</option><option value="pu" ${m.modo==='pu'?'selected':''}>$ por unidad</option></select>`;
-    const esPU=m.modo==='pu';
-    h+=`<tr style="border-top:0.5px solid rgba(0,0,0,.06);background:#fdfbf2">
+   }else{
+    const m=e.x,i=e.i,md=(r.manDet||[])[i]||{};
+    const modo=m.modo||'fijo',conPU=['pu','pliegos','unidades','peso'].includes(modo);
+    const uLbl={pu:'$ x unidad',pliegos:'$ x mil pliegos',unidades:'$ x mil unidades',peso:'$ x caja'}[modo];
+    const cLbl={pu:cotFmt(md.cantCalc||0)+' u.',pliegos:cotFmtDec(md.cantCalc||0,3)+' mill.',unidades:cotFmtDec(md.cantCalc||0,3)+' mill.',peso:cotFmt(md.cantCalc||0)+' caja'+((md.cantCalc||0)!==1?'s':'')}[modo];
+    h+=`<tr ${_trDnD('m'+i)} style="border-top:0.5px solid rgba(0,0,0,.06);background:#fdfbf2">${_grip('m'+i)}
     <td style="padding:6px"><input value="${cotEsc(m.concepto)}" onchange="cotManEd(${i},'concepto',this.value)" placeholder="Concepto manual (ej: Anillado, Laca sectorizada mínimo)" style="width:100%;padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px"></td>
     <td style="padding:6px"><input value="${escHtml(m.proveedor||'')}" onchange="cotManEd(${i},'proveedor',this.value)" placeholder="A definir" title="Proveedor sugerido (opcional)" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px"></td>
-    <td style="padding:6px">${modoManSel}</td>
-    <td style="padding:6px;text-align:right"><span style="font-size:10px;color:#888">${esPU?`$ x unidad<br><span style="font-size:9px;color:#1a7f37;font-weight:700">= $ ${cotFmt((+m.pu||0)*(r.cant||0))}</span>`:`monto $${m.modo==='unidad'?'<br><span style="font-size:9px">(a la cant. base)</span>':''}`}</span></td>
-    <td style="padding:6px;text-align:right">${esPU?ninp(m.pu,`cotManEd(${i},'pu',this.value)`,'98px'):ninp(m.monto,`cotManEd(${i},'monto',this.value)`,'98px')}</td>
+    <td style="padding:6px">${_selModo(`cotManEd(${i},'modo',this.value)`,modo,false)}</td>
+    <td style="padding:6px;text-align:right"><span style="font-size:10px;color:#888">${conPU?`${cLbl}<br><span style="font-size:9px;color:#1a7f37;font-weight:700">= $ ${cotFmt(md.costo||0)}</span>`:`monto $${modo==='unidad'?'<br><span style="font-size:9px">(a la cant. base)</span>':''}`}</span></td>
+    <td style="padding:6px;text-align:right">${conPU?ninp(m.pu,`cotManEd(${i},'pu',this.value)`,'98px').replace('<input ',`<input title="${uLbl}" placeholder="${uLbl}" `):ninp(m.monto,`cotManEd(${i},'monto',this.value)`,'98px')}</td>
     <td style="text-align:center"><button onclick="cotManDel(${i})" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>`;
+   }
   });
   h+=`</table>
-  <div style="font-size:10px;color:#aaa;margin-top:6px"><i class="ti ti-info-circle"></i> "Mill. de pliegos" suma los pliegos de TODAS las piezas (ej: el abrochado procesa tapa + interiores). Las líneas manuales se repiten igual en todas las cantidades.</div></div>`;
+  <div style="display:flex;gap:6px;margin-top:8px">
+    <button onclick="cotOtroAdd()" style="font-size:11px"><i class="ti ti-plus"></i> Proceso de tabla</button>
+    <button onclick="cotManAdd()" style="font-size:11px"><i class="ti ti-plus"></i> Línea manual</button></div>
+  <div style="font-size:10px;color:#aaa;margin-top:6px"><i class="ti ti-info-circle"></i> "Mill. de pliegos" suma los pliegos de TODAS las piezas (ej: el abrochado procesa tapa + interiores). El orden de esta lista es el que sale en la OT.</div></div>`;
   // ---- VARIANTES DE CANTIDAD ----
   h+=`<div class="card" style="padding:12px;margin-bottom:12px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -5492,7 +5603,7 @@ function updateCotResults(){
             if(!pz)return;
             hay.push(pz.medidaCerrada,(pz.piezaW||'')+'x'+(pz.piezaH||''));
             const pap=(S.cotPapeles||[]).find(x=>x.codigo===pz.papelCod);if(pap)hay.push(pap.descripcion,pap.gramaje,(pap.ancho||'')+'x'+(pap.alto||''));
-            const lam=(S.cotLaminados||[]).find(x=>x.codigo===pz.lamCod);if(lam)hay.push(lam.material);
+            const lam=(S.cotLaminados||[]).find(x=>x.codigo===pz.lamCod);if(lam)hay.push(_lamNombre(lam.material));
             const im=(S.cotImpresion||[]).find(x=>x.codigo===pz.impCod);if(im)hay.push(im.descripcion,im.maquina);
           });
         }
@@ -9722,7 +9833,7 @@ function _renderItems(){
     h+=`<input placeholder="Nombre del trabajo (corto)" class="in2" data-ii="${ii}" value="${(item.nombre||'').replace(/"/g,'&quot;')}" oninput="onItemNombre(${ii},this.value)" style="font-size:12px;font-weight:600">`;
     h+=`<input placeholder="Cant." type="text" inputmode="decimal" class="iq" data-ii="${ii}" data-fi="0" data-raw="${f0.qty||0}" value="${f0.qty?$n(f0.qty):''}" oninput="moneyFmt(this);onItemQty(${ii},0,this)" style="font-size:12px">`;
     h+=`<input placeholder="Total $" type="text" inputmode="decimal" class="is" data-ii="${ii}" data-fi="0" data-raw="${f0.subtotal||0}" value="${f0.subtotal?$n(f0.subtotal):''}" oninput="moneyFmt(this);onItemSub(${ii},0,this)" title="${f0.manual?'Precio definitivo fijado a mano — el costeo no lo pisa':''}" style="font-size:12px${f0.manual?';border:1.5px solid #1a7f37':''}">`;
-    h+=`<input placeholder="Unit." class="ip" readonly style="background:#f5f5f3;color:#888;font-size:12px" value="${f0.precio?$n(f0.precio):''}">`;
+    h+=`<input placeholder="Unit." type="text" inputmode="decimal" class="ip" data-raw="${f0.precio||0}" value="${f0.precio?$n(f0.precio):''}" oninput="moneyFmt(this);onItemPu(${ii},0,this)" title="Precio unitario: si lo cambiás, el total se recalcula (unitario × cantidad)" style="font-size:12px${f0.puManual?';border:1.5px solid #1a7f37;color:#1a7f37;font-weight:700':';color:#666'}">`;
     h+=`<div style="display:flex;gap:3px;padding:0 2px">`;
     if(typeof puedeVerFinanzas!=='function'||puedeVerFinanzas()){
       h+=`<button onclick="cotDesdeItem(${ii})" title="${item.costeo?'Ítem costeado — click para revisar el costeo':'Costear este ítem con el cotizador'}" style="font-size:10px;padding:2px 7px;background:${item.costeo?'#1a7f37':'#eafae4'};color:${item.costeo?'#fff':'#1a7f37'};border-color:#1a7f37;white-space:nowrap"><i class="ti ti-calculator"></i> ${item.costeo?'Costeado ✓':'Costear'}</button>`;
@@ -9744,7 +9855,7 @@ function _renderItems(){
         h+=`<div style="font-size:11px;color:#555;padding-left:8px;display:flex;align-items:center;gap:4px"><i class="ti ti-corner-down-right" style="font-size:11px;color:#aaa"></i> variante ${fi}</div>`;
         h+=`<input placeholder="Cant." type="text" inputmode="decimal" class="iq" data-ii="${ii}" data-fi="${fi}" data-raw="${f.qty||0}" value="${f.qty?$n(f.qty):''}" oninput="moneyFmt(this);onItemQty(${ii},${fi},this)" style="font-size:12px">`;
         h+=`<input placeholder="Total $" type="text" inputmode="decimal" class="is" data-ii="${ii}" data-fi="${fi}" data-raw="${f.subtotal||0}" value="${f.subtotal?$n(f.subtotal):''}" oninput="moneyFmt(this);onItemSub(${ii},${fi},this)" title="${f.manual?'Precio definitivo fijado a mano — el costeo no lo pisa':''}" style="font-size:12px;background:${color}${f.manual?';border:1.5px solid #1a7f37':''}">`;
-        h+=`<input placeholder="Unit." class="ip" readonly style="background:rgba(255,255,255,.5);color:#888;font-size:12px" value="${f.precio?$n(f.precio):''}">`;
+        h+=`<input placeholder="Unit." type="text" inputmode="decimal" class="ip" data-raw="${f.precio||0}" value="${f.precio?$n(f.precio):''}" oninput="moneyFmt(this);onItemPu(${ii},${fi},this)" title="Precio unitario: si lo cambiás, el total se recalcula (unitario × cantidad)" style="font-size:12px;background:rgba(255,255,255,.6)${f.puManual?';border:1.5px solid #1a7f37;color:#1a7f37;font-weight:700':';color:#666'}">`;
         h+=`<div style="padding:0 2px"><button onclick="removeItemVariante(${ii},${fi})" style="font-size:10px;padding:2px 5px;color:#a32d2d;border-color:rgba(163,45,45,.3);background:rgba(255,255,255,.5)"><i class="ti ti-x"></i></button></div>`;
         h+=`</div>`;
       });
@@ -9803,11 +9914,32 @@ function onItemQty(ii,fi,el){
   const item=_itemsState()[ii];if(!item)return;
   const f=item.filas[fi];if(!f)return;
   f.qty=valOf(el);
+  const groups=document.querySelectorAll(`#ci2 .cit-group`);
+  const g=groups[ii];
+  // Si el unitario se fijó a mano, manda el unitario: cambia el total. Si no, manda el total: cambia el unitario.
+  if(f.puManual&&f.precio){
+    f.subtotal=Math.round(f.precio*(f.qty||0)*100)/100;
+    const iss=g&&g.querySelectorAll('.is');if(iss&&iss[fi]){iss[fi].value=f.subtotal?$n(f.subtotal):'';iss[fi].setAttribute('data-raw',f.subtotal);}
+    calcT();return;
+  }
   if(f.subtotal&&f.qty){f.precio=f.subtotal/f.qty;}
   // actualizar unit en el mismo grupo
-  const groups=document.querySelectorAll(`#ci2 .cit-group`);
-  const g=groups[ii];if(!g)return;
-  const ips=g.querySelectorAll('.ip');if(ips[fi])ips[fi].value=f.precio?$n(f.precio):'';
+  if(!g)return;
+  const ips=g.querySelectorAll('.ip');if(ips[fi]){ips[fi].value=f.precio?$n(f.precio):'';ips[fi].setAttribute('data-raw',f.precio||0);}
+  calcT();
+}
+// Unitario escrito a mano (ej. redondear $54,20 a $55): total = unitario × cantidad
+function onItemPu(ii,fi,el){
+  const item=_itemsState()[ii];if(!item)return;
+  const f=item.filas[fi];if(!f)return;
+  f.precio=valOf(el);
+  f.puManual=!!f.precio;
+  f.manual=true; // precio definitivo: el costeo no lo pisa
+  f.subtotal=Math.round(f.precio*(f.qty||0)*100)/100;
+  const g=document.querySelectorAll('#ci2 .cit-group')[ii];if(!g)return;
+  const iss=g.querySelectorAll('.is');
+  if(iss[fi]){iss[fi].value=f.subtotal?$n(f.subtotal):'';iss[fi].setAttribute('data-raw',f.subtotal);iss[fi].style.border='1.5px solid #1a7f37';}
+  el.style.border='1.5px solid #1a7f37';el.style.color='#1a7f37';el.style.fontWeight='700';
   calcT();
 }
 function onItemSub(ii,fi,el){
@@ -9815,10 +9947,11 @@ function onItemSub(ii,fi,el){
   const f=item.filas[fi];if(!f)return;
   f.subtotal=valOf(el);
   f.manual=true; // precio de venta pisado a mano: el costeo no lo vuelve a recalcular
+  f.puManual=false; // ahora manda el total
   if(f.qty&&f.subtotal){f.precio=f.subtotal/f.qty;}
   const groups=document.querySelectorAll('#ci2 .cit-group');
   const g=groups[ii];if(!g)return;
-  const ips=g.querySelectorAll('.ip');if(ips[fi])ips[fi].value=f.precio?$n(f.precio):'';
+  const ips=g.querySelectorAll('.ip');if(ips[fi]){ips[fi].value=f.precio?$n(f.precio):'';ips[fi].setAttribute('data-raw',f.precio||0);ips[fi].style.border='';ips[fi].style.color='#666';ips[fi].style.fontWeight='';}
   calcT();
 }
 
@@ -10319,7 +10452,7 @@ function _terminacionDesdeRows(cot,entradas){
       const piezas=(typeof cotPiezasDe==='function')?cotPiezasDe(co):[co];
       const pzs=(e.piezaIdx!=null&&piezas[e.piezaIdx])?[piezas[e.piezaIdx]]:piezas;
       pzs.forEach(pz=>{
-        if(pz&&pz.lamCod){const lam=(S.cotLaminados||[]).find(p=>p.codigo===pz.lamCod);add(lam?lam.material:'Laminado/Laca');}
+        if(pz&&pz.lamCod){const lam=(S.cotLaminados||[]).find(p=>p.codigo===pz.lamCod);add(lam?_lamNombre(lam.material):'Laminado/Laca');}
         // Procesos propios de ESTA pieza → van a la OT de la pieza
         ((pz&&pz.procesos)||[]).forEach(pr=>{
           const pzNom=(pz&&pz.nombre||'').trim();
@@ -10330,12 +10463,13 @@ function _terminacionDesdeRows(cot,entradas){
         });
       });
       if(e.comunes){
-        (co.otros||[]).forEach(o=>{
-          if([0,1,9,10,17].indexOf(o.cod)>=0)return;
+        _cotProcLista(co).forEach(e=>{ // en el orden del costeo (recorrido del trabajo)
+          if(e.t==='m'){if(e.x.concepto)add(e.x.concepto,e.x.proveedor,'');return;}
+          const o=e.x;if([0,1,9,10,17].indexOf(o.cod)>=0)return;
           const t=(S.cotOtros||[]).find(p=>p.codigo===o.cod);
           if(t)add(t.concepto,o.proveedor,'');
         });
-        (co.manuales||[]).forEach(m=>{if(m.concepto)add(m.concepto,m.proveedor,'');});if(co.terc&&co.terc.on)add('Trabajo tercerizado',co.terc.prov||'','');
+        if(co.terc&&co.terc.on)add('Trabajo tercerizado',co.terc.prov||'','');
       }
     });
   }catch(e){}
@@ -11444,7 +11578,7 @@ function mEditProv(id){const p=S.proveedores.find(x=>x.id===id);if(!p)return'';c
         nombre:it.nombre||'',
         desc:it.desc||'',
         filas:(it.filas||[{qty:0,precio:0,subtotal:0}]).map(f=>Object.assign({qty:f.qty||0,precio:f.precio||0,subtotal:f.subtotal||0},
-          f.manual?{manual:true}:{},f.costo!=null?{costo:f.costo}:{},f.ventaCalc!=null?{ventaCalc:f.ventaCalc}:{})), // conserva precio fijado a mano y costo de referencia
+          f.manual?{manual:true}:{},f.puManual?{puManual:true}:{},f.costo!=null?{costo:f.costo}:{},f.ventaCalc!=null?{ventaCalc:f.ventaCalc}:{})), // conserva precio fijado a mano y costo de referencia
         costeo:it.costeo?JSON.parse(JSON.stringify(it.costeo)):undefined,
         estrTipo:it.estrTipo,estrFamilia:it.estrFamilia,estrPartes:it.estrPartes
       }));
@@ -11503,14 +11637,15 @@ function _terminacionDesdeCosteo(cot,descs){
     (descs||[]).forEach(d=>{
       const rv=_costeoDeItemDesc(cot,d);
       const co=rv&&rv.costeo;if(!co)return;
-      (co.otros||[]).forEach(o=>{
-        if([0,1,9,10,17].indexOf(o.cod)>=0)return; // corte, fletes y cajas ya tienen paso propio
+      _cotProcLista(co).forEach(e=>{ // procesos comunes en el orden del costeo (tabla y manuales mezclados)
+        if(e.t==='m'){if(e.x.concepto)add(e.x.concepto,e.x.proveedor,'');return;}
+        const o=e.x;if([0,1,9,10,17].indexOf(o.cod)>=0)return; // corte, fletes y cajas ya tienen paso propio
         const t=(S.cotOtros||[]).find(p=>p.codigo===o.cod);
         if(t)add(t.concepto,o.proveedor,'');
       });
       const _pzs=(typeof cotPiezasDe==='function')?cotPiezasDe(co):[co];
       _pzs.forEach(pz=>{
-        if(pz&&pz.lamCod){const lam=(S.cotLaminados||[]).find(p=>p.codigo===pz.lamCod);add(lam?lam.material:'Laminado/Laca');}
+        if(pz&&pz.lamCod){const lam=(S.cotLaminados||[]).find(p=>p.codigo===pz.lamCod);add(lam?_lamNombre(lam.material):'Laminado/Laca');}
         // Procesos propios de la pieza (troquelado, sacabocado, elástico a mano, etc.) → van a la OT como terminación
         ((pz&&pz.procesos)||[]).forEach(pr=>{
           const pzNom=(pz&&pz.nombre||'').trim();
@@ -11520,7 +11655,7 @@ function _terminacionDesdeCosteo(cot,descs){
           if(t)add(t.concepto,pr.proveedor,pzNom);
         });
       });
-      (co.manuales||[]).forEach(m=>{if(m.concepto)add(m.concepto,m.proveedor,'');});if(co.terc&&co.terc.on)add('Trabajo tercerizado',co.terc.prov||'','');
+      if(co.terc&&co.terc.on)add('Trabajo tercerizado',co.terc.prov||'','');
     });
   }catch(e){}
   return out;
@@ -11554,8 +11689,11 @@ function _fichaCosteoView(f,cot){
         h+=fila(pref+'LAMINADO / LACA',pd.lam?escHtml(pd.lam.material)+(pd.lamCaras>1?' · frente y dorso ×2':' · solo frente'):'',pd.lamCosto);
       });
       if(r.lamMinAplicado&&!r.lamMinEnPieza){const rawLam=(r.piezasDet||[]).reduce((a,pd)=>a+(pd.lamCosto||0),0);h+=fila('AJUSTE MÍN. LAMINADOR','el laminador cobra mínimo $'+cotFmt(r.lamMin)+' por trabajo',(r.lamMin-rawLam));}
-      (r.otrosDet||[]).forEach(o=>{h+=fila(escHtml(String(o.concepto||'').toUpperCase()),Number(o.cant).toLocaleString('es-AR',{maximumFractionDigits:3})+' millares',o.costo);});
-      (co.manuales||[]).forEach(m=>{h+=fila(escHtml(String(m.concepto||'MANUAL').toUpperCase()),m.modo==='pu'?('$ '+cotFmt(m.pu||0)+' x unidad'+(m.proveedor?' · '+escHtml(m.proveedor):'')):'manual',_manMonto(m,r.cant,co.cantidad));});
+      _cotProcLista(co).forEach(e=>{
+        if(e.t==='o'){const o=(r.otrosDet||[])[e.i];if(o)h+=fila(escHtml(String(o.concepto||'').toUpperCase()),Number(o.cant).toLocaleString('es-AR',{maximumFractionDigits:3})+' millares',o.costo);return;}
+        const m=e.x,ul={pu:' x unidad',pliegos:' x mil pliegos',unidades:' x mil unidades',peso:' x caja'}[m.modo];
+        h+=fila(escHtml(String(m.concepto||'MANUAL').toUpperCase()),ul?('$ '+cotFmt(m.pu||0)+ul+(m.proveedor?' · '+escHtml(m.proveedor):'')):'manual',_manMonto(m,r.cant,co.cantidad,_manCtx(r)));
+      });
       if(r.tercOn&&r.tercCosto)h+=fila('TRABAJO TERCERIZADO',escHtml((r.tercProv||'')+((co.terc&&co.terc.obs)?' · '+co.terc.obs:'')),r.tercCosto);
       h+=`</table>`;
       const mg=(co.margenPct!=null?co.margenPct:20);
@@ -11619,13 +11757,14 @@ function _ceDesdeCosteo(ot,cot){
       });
       // Procesos comunes (corte, flete, cajas, doblado, abrochado, manuales): solo en la OT que corresponde
       if(par.comunes){
-        (r.otrosDet||[]).forEach(o=>{
+        _cotProcLista(par.costeo).forEach(e=>{
+          if(e.t==='m'){const m=e.x,mm=_manMonto(m,r.cant,par.costeo.cantidad,_manCtx(r));if(mm>0)procesos.push({nombre:m.concepto||'Manual',proveedor:m.proveedor||'',monto:Math.round(mm)});return;}
+          const o=(r.otrosDet||[])[e.i];if(!o)return;
           if(o.cod===1)acc.corte+=o.costo;
           else if(o.cod===9||o.cod===10)acc.flete+=o.costo;
           else if(o.cod===17)acc.cajas+=o.costo;
           else if(o.costo>0)procesos.push({nombre:o.concepto||'Proceso',proveedor:'',monto:Math.round(o.costo)});
         });
-        (par.costeo.manuales||[]).forEach(m=>{const mm=_manMonto(m,r.cant,par.costeo.cantidad);if(mm>0)procesos.push({nombre:m.concepto||'Manual',proveedor:m.proveedor||'',monto:Math.round(mm)});});
         if(r.tercOn&&r.tercCosto>0)procesos.push({nombre:'Trabajo tercerizado',proveedor:r.tercProv||'',monto:Math.round(r.tercCosto)});
       }
       if(!maqFicha)maqFicha=_maqDesdeCosteo(par.costeo);
