@@ -98,6 +98,7 @@ body.modo-taller .main{margin-left:0 !important;padding:12px !important}
   <div class="ni" onclick="nav('insumos')"><i class="ti ti-flask"></i>Stock de insumos</div>
   <div class="ni" onclick="nav('plan')"><i class="ti ti-calendar-event"></i>Planificación <span id="badge-plan" style="display:none;margin-left:auto;background:#c0392b;color:#fff;border-radius:10px;padding:0 7px;font-size:10px;font-weight:700;line-height:17px"></span></div>
   <div class="ni" onclick="nav('entregas')"><i class="ti ti-truck-delivery"></i>Entregas y fletes</div>
+  <div class="ni" onclick="nav('reparto')" title="Confirmar entregas desde el celular, con la foto del remito"><i class="ti ti-device-mobile"></i>Reparto (celu)</div>
   <div class="ni" onclick="nav('rem')"><i class="ti ti-clipboard-list"></i>Remitos internos</div>
   <div class="ni" onclick="nav('mov')" title="Qué hay que subir, bajar, llevar a externos o traer"><i class="ti ti-arrows-up-down"></i>Movimientos <span id="badge-mov" style="display:none;margin-left:auto;background:#7b3fa0;color:#fff;border-radius:10px;padding:0 7px;font-size:10px;font-weight:700;line-height:17px"></span></div>
   <div class="ni" onclick="nav('taller')" title="Pantalla del maquinista: iniciar, pausar y terminar trabajos (para tablet o celular)"><i class="ti ti-tool"></i>Modo taller</div>
@@ -624,7 +625,7 @@ async function iniciarSinMigrar(){
   migrarPasos9();
   migrarAprobarExistentes();
   limpiarOTsDemo();
-  nav(esUsuarioTaller()?'taller':'dash');
+  nav(esUsuarioTaller()?'taller':((/logistica/.test(rolUsuario())&&window.innerWidth<760)?'reparto':'dash')); // Logística desde el celu: directo al reparto
   try{dolarAutoIniciar();}catch(e){console.warn('dólar automático',e);}
 }
 // ===== Dólar BNA automático (dolarapi.com) =====
@@ -1054,7 +1055,7 @@ function cotCostoXMilPapel(p){
 const COT_PAPEL_CAT_SEED=[
   {id:'obra',nombre:'Obra',modo:'kg',acabados:[],grupos:[{grs:[70,80,90],usdKg:1.30},{grs:[120,150,180,210],usdKg:1.70}],formatos:[{w:63,h:88},{w:65,h:95},{w:72,h:102},{w:74,h:110},{w:82,h:118}]},
   {id:'ilus',nombre:'Ilustración',modo:'kg',acabados:['Brillante','Mate'],grupos:[{grs:[90,115],usdKg:1.35},{grs:[130,150,170,200,250,300,350],usdKg:1.30}],formatos:[{w:63,h:88},{w:65,h:95},{w:72,h:102},{w:74,h:110},{w:82,h:118}]},
-  {id:'triplex',nombre:'Cartulina Triplex',modo:'kg',acabados:[],grupos:[{grs:[215,250,270,300,325,350],usdKg:1.35}],formatos:[{w:66,h:100},{w:72,h:102},{w:76,h:112},{w:82,h:112}]},
+  {id:'triplex',nombre:'Cartulina Triplex',modo:'kg',acabados:[],grupos:[{grs:[215,250,270,300,325,350],usdKg:1.35}],formatos:[{w:66,h:100},{w:72,h:102},{w:76,h:112},{w:82,h:112}],bobinas:[66,72,76,82,92]},
   {id:'auto',nombre:'Autoadhesivo',modo:'hoja',variantes:[
     {nombre:'Papel autoadhesivo',marca:'',formatos:[{w:50,h:65,usd:0.19},{w:50,h:70,usd:0.205},{w:70,h:100,usd:0.41}]},
     {nombre:'OPP mate autoadhesivo',marca:'Codibla',formatos:[{w:50,h:65,usd:0.50},{w:70,h:100,usd:0.92}]},
@@ -1072,6 +1073,12 @@ const COT_PAPEL_CAT_SEED=[
 function cotPapelCat(){return (Array.isArray(S.cotPapelCat)&&S.cotPapelCat.length)?S.cotPapelCat:COT_PAPEL_CAT_SEED;}
 function _catFam(id){return cotPapelCat().find(f=>f&&f.id===id)||null;}
 function _catGrupo(fam,grs){return ((fam&&fam.grupos)||[]).find(g=>(g.grs||[]).map(Number).includes(+grs))||null;}
+// Anchos de bobina (cm) de una familia por kilo. Los catálogos guardados antes de las bobinas: Triplex trae las de fábrica.
+function _catBobinas(fam){
+  if(!fam||fam.modo!=='kg')return [];
+  const b=Array.isArray(fam.bobinas)?fam.bobinas:(fam.id==='triplex'?[66,72,76,82,92]:[]);
+  return b.map(Number).filter(x=>x>0);
+}
 function _catGramajes(fam){const s=new Set();((fam&&fam.grupos)||[]).forEach(g=>(g.grs||[]).forEach(x=>{if(+x>0)s.add(+x);}));return [...s].sort((a,b)=>a-b);}
 // Formato de compra → [ancho, alto]. Se guarda como {w,h}: Firestore no acepta listas dentro de listas.
 function _fmtWH(f){return Array.isArray(f)?[+f[0]||0,+f[1]||0]:[+(f&&f.w)||0,+(f&&f.h)||0];}
@@ -1166,6 +1173,36 @@ function cotPapelOpciones(p,maqForzada){
       });
     }));
   });
+  // BOBINAS (cartulinas por kilo): de una bobina de ancho fijo (66/72/76/82/92…) se corta el LARGO que convenga,
+  // así no se desperdician los costados ni el final de un pliego estándar. Para cada ancho (entero o dividido en 2)
+  // y cada máquina se busca el largo que da el menor costo de papel por unidad. La fibra va a lo largo de la bobina.
+  {const fam=_catFam(s.fam);
+   if(fam&&_catBobinas(fam).length&&PW>0&&PH>0&&+s.grs>0){
+    const g=_catGrupo(fam,+s.grs),usdKg=(+s.usdKg>0)?+s.usdKg:(g?+g.usdKg||0:0),dol=cotDolarEfectivo();
+    if(usdKg>0)_catBobinas(fam).forEach(bw=>{
+      [[bw,1],[Math.round(bw/2*10)/10,2]].forEach(([w,partes])=>{
+        if(w<15)return;
+        maqs.forEach(m=>{
+          if(/xerox/i.test(m))return; // a la Xerox va hoja estándar
+          const M=cotMaqMax(m);const maxL=M?M.a:110;let best=null;
+          for(let L=10;L<=maxL+1e-9;L+=0.5){
+            if(!cotPliegoEnMaq([w,L],m))continue;
+            const fibraEnLargo=L>=w-0.01,orient=_orientFibra(p,fibraEnLargo);
+            let poses=_B.estuche?_estPoses(_B.estuche,w,L,cotPinza(m,p),orient,_estPinzaNat(p,m),_pzLaminada(p)).n:cotPosesSug(PW,PH,w,L,cotPinza(m,p),orient,cotCalleHV(p),_B.px,_B.py)*_B.n;
+            if(!poses)continue;
+            if(p.posFijas&&+p.posturas>0&&!p._pag){if(poses<+p.posturas)continue;poses=Math.round(+p.posturas);}
+            const ars=(w*L*(+s.grs)/1e7)*usdKg*dol,cu=ars/poses;
+            if(!best||cu<best.cu-1e-9)best={L:Math.round(L*10)/10,poses,ars,cu,fibraEnLargo};
+          }
+          if(!best)return;
+          const key='BOB'+bw,arsCorte=best.ars*partes; // lo que se compra: el corte de bobina entero (ancho completo × largo)
+          out.push({key,w:bw,h:best.L,ars:arsCorte,usdKg,usdBase:g?+g.usdKg||0:0,bobina:bw,bobinaPartes:partes,i:partes,j:1,cortes:partes,sw:w,sh:best.L,cw:w,ch:best.L,refil:false,larga:false,
+            fibraEnLargo:best.fibraEnLargo,maq:m,poses:best.poses,uo:best.poses*partes,cu:best.cu,cutKey:'L'+best.L+(partes>1?'h':''),
+            notaCorte:`Bobina ${cotFmtDec(bw,1)} cm cortada a ${cotFmtDec(best.L,1)} cm`+(partes>1?` y partida al medio (${cotFmtDec(w,1)} cm)`:'')});
+        });
+      });
+    });
+  }}
   // Costo por unidad = papel + impresión estimada (un pliego chico rinde menos poses → más impresos y chapas).
   // Impresión por pliego: el código de la pieza si es de esa máquina; si no, la mediana de los códigos de esa máquina.
   const _impPP={};
@@ -1198,7 +1235,8 @@ function cotPapelSelResolver(p,maqForzada){
     const delFmt=ops.filter(x=>x.key===s.fmt);
     o=(s.cut&&delFmt.find(x=>x.cutKey===s.cut))||delFmt[0]||null;
   }
-  if(!o)o=ops[0];
+  // Automático: el mejor pliego. La bobina (pedido mínimo, a pedido de corte) solo si se elige a mano o si no hay otra.
+  if(!o)o=ops.find(x=>!x.bobina)||ops[0];
   const v=fam.modo!=='kg'?((fam.variantes||[])[+s.var||0]||{}):{};
   const desc=fam.modo==='kg'?(fam.nombre+(s.acabado?' '+s.acabado:'')):(v.nombre||fam.nombre);
   return {codigo:0,cat:true,familia:fam.nombre,modo:fam.modo,descripcion:desc,acabado:s.acabado||'',
@@ -1439,6 +1477,7 @@ function catEd(fi,campo,val,a,b){
   if(campo==='nombre'){f.nombre=txt(val)||f.nombre;}
   else if(campo==='acabados'){f.acabados=String(val||'').split(/[,;\/]+/).map(x=>txt(x)).filter(Boolean);}
   else if(campo==='formatos'){f.formatos=_catParseFmts(val);re=true;}
+  else if(campo==='bobinas'){f.bobinas=[...new Set(String(val||'').split(/[^\d.]+/).map(Number).filter(x=>x>=15&&x<=200))].sort((x,y)=>x-y);re=true;}
   else if(campo==='gGrs'){if(f.grupos[a])f.grupos[a].grs=String(val||'').split(/[^\d]+/).map(Number).filter(x=>x>0);re=true;}
   else if(campo==='gUsd'){if(f.grupos[a])f.grupos[a].usdKg=cotNumDec(val)||0;re=true;}
   else if(campo==='vNombre'){if(f.variantes[a])f.variantes[a].nombre=txt(val);}
@@ -1471,6 +1510,28 @@ function catFamAdd(){
   const f={id,nombre:n,modo};
   if(modo==='kg'){f.acabados=[];f.grupos=[{grs:[],usdKg:0}];f.formatos=[];}else f.variantes=[];
   _catMut().push(f);_catSave(true);
+}
+// Nuevo tipo de papel desde el costeo: copia costos, gramajes, formatos y bobinas de otro tipo (ej. Duplex = Triplex)
+// y solo cambia el nombre, que es lo que sale en la OT y en el pedido de papel. Los precios se ajustan después en el catálogo.
+function cotNuevoTipo(k){
+  const n=String(prompt('Nombre del nuevo tipo de papel (ej: Cartulina Kraft, Cartulina Duplex):')||'').replace(/[<>"'`\\]/g,'').trim().slice(0,40);
+  if(!n){render();return;}
+  const cat=cotPapelCat();
+  if(cat.some(f=>String(f.nombre).toLowerCase()===n.toLowerCase())){alert('Ya existe un tipo llamado "'+n+'".');render();return;}
+  const def=Math.max(0,cat.findIndex(f=>f.id==='triplex'));
+  const r=prompt('¿De qué tipo copia los costos, gramajes, formatos y bobinas?\n'+cat.map((f,i)=>(i+1)+' = '+f.nombre).join('\n')+'\n\n(después los podés cambiar en Tablas de costos → Catálogo de papeles)',String(def+1));
+  if(r==null){render();return;}
+  const base=cat[(parseInt(r,10)||def+1)-1]||cat[def];
+  const f=JSON.parse(JSON.stringify(base));
+  f.id=n.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'')+'_'+Date.now().toString(36).slice(-4);
+  f.nombre=n;
+  if(f.modo==='kg')f.bobinas=_catBobinas(base);
+  _catMut().push(f);_catSave(false);
+  _marcarAjusteCostos('Catálogo de papeles: nuevo tipo '+n);
+  const g=cotW&&cotW.piezas&&cotW.piezas[k]&&cotW.piezas[k].papelSel&&cotW.piezas[k].papelSel.grs;
+  cotPapSelEd(k,'fam',f.id);
+  // Si ya tenía gramaje y el nuevo tipo lo tiene, se mantiene
+  if(g&&_catGramajes(f).includes(+g))cotPapSelEd(k,'grs',g);
 }
 function catFamDel(fi){
   const f=_catMut()[fi];if(!f)return;
@@ -1514,6 +1575,7 @@ function rCostos(){
       if(f.modo==='kg'){
         h+=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
           <div><div style="font-size:10px;color:#888;font-weight:700">FORMATOS DE COMPRA (cm)</div>${inpTxt((f.formatos||[]).map(_fmtWH).map(x=>cotFmtDec(x[0],1)+'x'+cotFmtDec(x[1],1)).join(', '),`catEd(${fi},'formatos',this.value)`,'380px')}<div style="font-size:9px;color:#999">separados por coma · ej: 63x88, 65x95, 72x102</div></div>
+          <div><div style="font-size:10px;color:#888;font-weight:700">BOBINAS (ancho, cm)</div>${inpTxt(_catBobinas(f).map(x=>cotFmtDec(x,1)).join(', '),`catEd(${fi},'bobinas',this.value)`,'160px')}<div style="font-size:9px;color:#999">ej: 66, 72, 76, 82, 92 (vacío = no viene en bobina)</div></div>
           <div><div style="font-size:10px;color:#888;font-weight:700">ACABADOS</div>${inpTxt((f.acabados||[]).join(', '),`catEd(${fi},'acabados',this.value)`,'180px')}<div style="font-size:9px;color:#999">ej: Brillante, Mate (vacío = sin acabado)</div></div></div>
         <table style="border-collapse:collapse;font-size:12px"><tr>${th('Gramajes (g)')}${th('u$s / kg')}${th('$ pliego '+((f.formatos||[])[0]?cotFmtDec(_fmtWH(f.formatos[0])[0],1)+'×'+cotFmtDec(_fmtWH(f.formatos[0])[1],1):''))}<th></th></tr>`;
         (f.grupos||[]).forEach((g,gi)=>{
@@ -2305,7 +2367,9 @@ function cotCalc(w,cantOverride){
       if(papel.gramaje&&papel.ancho&&papel.alto)pPeso=(papel.areaPliego?papel.areaPliego/1e4:((papel.corteAncho||papel.ancho)/100)*((papel.corteAlto||papel.alto)/100))*papel.gramaje/1000*pliegosTot;
       if(papel.ancho&&papel.alto)papelDims=[Math.min(papel.ancho,papel.alto),Math.max(papel.ancho,papel.alto)];
       // Compra interna: pliegos GRANDES de origen (ej: 65×47,5 sale de 95×65 en 2 cortes)
-      if(papel.cortes>0&&pliegosTot>0)compra={ancho:papel.origAncho||0,alto:papel.origAlto||0,cortes:papel.cortes,pliegos:Math.ceil(pliegosTot/papel.cortes)};
+      if(papel.cortes>0&&pliegosTot>0){compra={ancho:papel.origAncho||0,alto:papel.origAlto||0,cortes:papel.cortes,pliegos:Math.ceil(pliegosTot/papel.cortes)};
+        const ob=papel.opcion&&papel.opcion.bobina?papel.opcion:null;
+        if(ob){compra.bobina=ob.bobina;compra.metros=Math.ceil(compra.pliegos*ob.h/100);}}
     }
     // Sobres y similares se compran por caja: se redondea a cajas completas
     const pliegosPapel=(papel&&papel.multiplo>0&&pliegosTot>0)?Math.ceil(pliegosTot/papel.multiplo)*papel.multiplo:pliegosTot;
@@ -2438,6 +2502,7 @@ function cotPapelDet(pd){
   t+=`<span style="color:#aaa">×</span>`+chip('Millares',cotFmtDec(pd.pliegosTot/1000,3)+` <span style="font-weight:400;color:#888;font-size:10.5px">(${cotFmt(pd.pliegosTot)} pliegos c/demasía${pd.entradas>1?' · '+pd.entradas+' entradas':''})</span>`);
   if(pd.cantMult>1)t+=chip('Hojas',`${cotFmt(pd.cantEf)} <span style="font-weight:400;color:#888;font-size:10.5px">(${cotFmtDec(pd.cantMult,0)} x unidad)</span>`);
   if(pd.compra&&pd.compra.cajas)t+=chip('<i class="ti ti-shopping-cart"></i> Compra',`${cotFmt(pd.compra.cajas)} caja${pd.compra.cajas>1?'s':''} x ${cotFmt(pd.compra.porCaja)} = ${cotFmt(pd.compra.pliegos)} u.`,'#7b3fa0','#f4eefa');
+  else if(pd.compra&&pd.compra.bobina)t+=chip('<i class="ti ti-shopping-cart"></i> Compra',`Bobina ${cotFmtDec(pd.compra.bobina,1)} cm: ${cotFmt(pd.compra.pliegos)} hojas cortadas a ${cotFmtDec(pd.compra.alto,1)} cm <span style="font-weight:400;font-size:10.5px">· ≈ ${cotFmt(pd.compra.metros)} m lineales${pd.compra.cortes>1?' · partir al medio':''}</span>`,'#7b3fa0','#f4eefa');
   else if(pd.compra&&pd.compra.pliegos)t+=chip('<i class="ti ti-shopping-cart"></i> Compra',`${cotFmt(pd.compra.pliegos)} pliegos de ${cotFmtDec(pd.compra.ancho,1)}×${cotFmtDec(pd.compra.alto,1)} <span style="font-weight:400;font-size:10.5px">· ${pd.compra.cortes>1?pd.compra.cortes+' cortes c/u':'entero, sin corte'}</span>`,'#7b3fa0','#f4eefa');
   return t+`</div>`;
 }
@@ -3375,7 +3440,7 @@ function cotPapelCatHTML(k,p){
   const f1=n=>cotFmtDec(+n,1);
   const lbl=t=>`<span style="font-size:9px;color:#888;font-weight:700;text-transform:uppercase">${t}</span>`;
   let h=`<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">`;
-  h+=`<div>${lbl('Tipo')}<br><select onchange="cotPapSelEd(${k},'fam',this.value)" style="${st};font-weight:700;color:#185fa5"><option value="">— Tipo de papel —</option>${cotPapelCat().map(f=>`<option value="${cotEsc(f.id)}" ${f.id===s.fam?'selected':''}>${cotEsc(f.nombre)}</option>`).join('')}</select></div>`;
+  h+=`<div>${lbl('Tipo')}<br><select onchange="if(this.value==='__nuevo')cotNuevoTipo(${k});else cotPapSelEd(${k},'fam',this.value)" style="${st};font-weight:700;color:#185fa5"><option value="">— Tipo de papel —</option>${cotPapelCat().map(f=>`<option value="${cotEsc(f.id)}" ${f.id===s.fam?'selected':''}>${cotEsc(f.nombre)}</option>`).join('')}<option value="__nuevo" style="color:#1a7f37;font-weight:700">＋ Nuevo tipo…</option></select></div>`;
   const r=fam?cotPapelSelResolver(p):null;
   if(fam&&fam.modo==='kg'){
     h+=`<div>${lbl('Gramaje')}<br><select onchange="cotPapSelEd(${k},'grs',this.value)" style="${st};${s.grs?'':'border-color:#e0a030'}"><option value="0">— grs —</option>${_catGramajes(fam).map(g=>`<option value="${g}" ${+s.grs===g?'selected':''}>${g} g</option>`).join('')}</select></div>`;
@@ -3385,12 +3450,12 @@ function cotPapelCatHTML(k,p){
   }
   if(fam){
     const ors=_catOrigenes(s);
-    if(fam.modo!=='millar'&&ors.length)h+=`<div>${lbl('Formato de compra')}<br><select onchange="cotPapSelEd(${k},'fmt',this.value)" style="${st};${s.fmt?'border-color:#7b3fa0;color:#7b3fa0;font-weight:700':''}"><option value="">Auto (el más conveniente)</option>${ors.map(o=>`<option value="${cotEsc(o.key)}" ${s.fmt===o.key?'selected':''}>${cotEsc(o.key.replace('x','×'))}</option>`).join('')}</select></div>`;
+    if(fam.modo!=='millar'&&ors.length)h+=`<div>${lbl('Formato de compra')}<br><select onchange="cotPapSelEd(${k},'fmt',this.value)" style="${st};${s.fmt?'border-color:#7b3fa0;color:#7b3fa0;font-weight:700':''}"><option value="">Auto (el más conveniente)</option>${ors.map(o=>`<option value="${cotEsc(o.key)}" ${s.fmt===o.key?'selected':''}>${cotEsc(o.key.replace('x','×'))}</option>`).join('')}${_catBobinas(fam).map(b=>`<option value="BOB${b}" ${s.fmt==='BOB'+b?'selected':''}>Bobina ${cotFmtDec(+b,1)} cm</option>`).join('')}</select></div>`;
     // Corte: todas las formas de dividir ESTE formato que entran en la máquina (verticales × horizontales)
     if(fam.modo!=='millar'&&r){
       const o=r.opcion,vistos=new Set();
       const cs=r.opciones.filter(x=>x.key===o.key&&!vistos.has(x.cutKey+'|'+x.maq)&&vistos.add(x.cutKey+'|'+x.maq));
-      const lab=x=>(x.cortes===1?`Entero`:`÷${x.cortes} (${x.i}×${x.j})`)+(x.refil?` → ${f1(x.cw)}×${f1(x.ch)} → refilado ${f1(x.sw)}×${f1(x.sh)}`:(x.cortes===1?` → ${f1(x.sw)}×${f1(x.sh)}`:` → ${f1(x.sw)}×${f1(x.sh)}`))+(x.larga?' (hoja larga)':'');
+      const lab=x=>x.bobina?`Cortar a ${f1(x.h)} cm${x.bobinaPartes>1?' y partir al medio':''} → ${f1(x.sw)}×${f1(x.sh)}`:(x.cortes===1?`Entero`:`÷${x.cortes} (${x.i}×${x.j})`)+(x.refil?` → ${f1(x.cw)}×${f1(x.ch)} → refilado ${f1(x.sw)}×${f1(x.sh)}`:(x.cortes===1?` → ${f1(x.sw)}×${f1(x.sh)}`:` → ${f1(x.sw)}×${f1(x.sh)}`))+(x.larga?' (hoja larga)':'');
       h+=`<div>${lbl('Corte')}<br><select onchange="const v=this.value.split('|');cotPapSelOpcion(${k},'${cotEsc(o.key)}',v[0],v[1])" title="Cómo se divide el pliego de compra: partes a lo ancho × partes a lo alto" style="${st};${s.cut?'border-color:#7b3fa0;color:#7b3fa0;font-weight:700':''}">${cs.map(x=>`<option value="${x.cutKey}|${cotEsc(x.maq)}" ${(x.cutKey===o.cutKey&&x.maq===o.maq)?'selected':''}>${lab(x)} · ${cotEsc(x.maq)}${x.poses?' · '+x.poses+'p':''}</option>`).join('')}</select></div>`;
     }
     // Precio genérico del catálogo, editable para ESTA cotización (otra papelera / marca)
@@ -3418,18 +3483,20 @@ function cotPapelCatHTML(k,p){
     }
     return h+`<div style="margin-top:5px;font-size:11px;color:#a35b00;font-weight:600"><i class="ti ti-alert-triangle"></i> ${falta}</div>`;
   }
-  const o=r.opcion,best=r.opciones[0];
+  const o=r.opcion,best=r.opciones.find(x=>!x.bobina)||r.opciones[0];
   // % = cuánto más (o menos) cuesta por unidad esa opción, papel + impresión estimada, contra la mejor
   const pct=x=>(x.cuTot!=null&&best.cuTot)?Math.round((x.cuTot/best.cuTot-1)*100):null;
   h+=`<div style="margin-top:6px;font-size:11px;background:#f3f8f1;border:1px solid #cfe3c8;border-radius:8px;padding:6px 9px;color:#1e293b;line-height:1.6">
-    <i class="ti ti-shopping-cart" style="color:#7b3fa0"></i> Compra <b>${f1(o.w)}×${f1(o.h)}</b>${o.cortes>1?` → guillotina ÷${o.cortes} = <b>${f1(o.refil?o.cw:o.sw)}×${f1(o.refil?o.ch:o.sh)}</b>${o.notaCorte?` <span style="color:#a35b00">(${cotEsc(o.notaCorte)})</span>`:''}`:(o.sinCorte||o.refil?'':' (entero, sin corte)')}${o.refil?` → refilado <b>${f1(o.sw)}×${f1(o.sh)}</b>${o.larga?' (hoja larga)':''} <span style="color:#888">(se paga el corte entero)</span>`:''} · <b>${cotEsc(o.maq)}</b>${o.poses?` · ${o.poses} poses x pliego · ${cotFmt(o.uo)} u. por pliego de compra`:''}
+    <i class="ti ti-shopping-cart" style="color:#7b3fa0"></i> ${o.bobina?`Bobina <b>${f1(o.bobina)} cm</b> → cortar a <b>${f1(o.h)} cm</b>${o.bobinaPartes>1?` y partir al medio = <b>${f1(o.sw)}×${f1(o.sh)}</b>`:` = <b>${f1(o.w)}×${f1(o.h)}</b>`} <span style="color:#888">(fibra a lo largo de la bobina)</span>`:`Compra <b>${f1(o.w)}×${f1(o.h)}</b>`}${o.bobina?'':(o.cortes>1?` → guillotina ÷${o.cortes} = <b>${f1(o.refil?o.cw:o.sw)}×${f1(o.refil?o.ch:o.sh)}</b>${o.notaCorte?` <span style="color:#a35b00">(${cotEsc(o.notaCorte)})</span>`:''}`:(o.sinCorte||o.refil?'':' (entero, sin corte)'))}${o.refil?` → refilado <b>${f1(o.sw)}×${f1(o.sh)}</b>${o.larga?' (hoja larga)':''} <span style="color:#888">(se paga el corte entero)</span>`:''} · <b>${cotEsc(o.maq)}</b>${o.poses?` · ${o.poses} poses x pliego · ${cotFmt(o.uo)} u. por pliego de compra`:''}
     · $ ${cotFmt(o.ars)} c/u${o.cu!=null?` · <b>$ ${cotFmtDec(o.cu,2)}</b> de papel x unidad`:''}${o.caja?` · caja x ${cotFmt(o.caja)}`:''}
     ${r.fmtFijo?` <button onclick="cotPapSelEd(${k},'fmt','')" style="font-size:10px;padding:1px 7px;margin-left:4px">Volver a automático</button>`:` <span style="font-size:9px;background:#1a7f37;color:#fff;border-radius:5px;padding:1px 6px;margin-left:4px">AUTOMÁTICO</span>`}
     ${(fam.acabados||[]).length&&!s.acabado?`<div style="color:#a35b00;font-weight:700"><i class="ti ti-alert-triangle"></i> Indicá ${fam.acabados.join(' o ')}: queda en la OT para pedir el papel correcto.</div>`:''}
   </div>`;
   // Otras opciones: solo las que cuestan hasta 20% más por unidad que la mejor (las más caras no se muestran)
-  const alts=r.opciones.filter(x=>!(x.key===o.key&&x.cutKey===o.cutKey&&x.maq===o.maq)).filter(x=>{const pc=pct(x);return pc==null||pc<=20;}).slice(0,6);
-  if(alts.length&&fam.modo!=='millar')h+=`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;align-items:center"><span style="font-size:9px;color:#888;font-weight:700" title="El % es cuánto más cuesta cada opción por unidad (papel + impresión estimada) comparada con la más conveniente">OTRAS OPCIONES (% vs la mejor):</span>${alts.map(x=>{const pc=pct(x);return `<button onclick="cotPapSelOpcion(${k},'${cotEsc(x.key)}','${x.cutKey}','${cotEsc(x.maq)}')" title="Usar esta opción" style="font-size:10px;padding:2px 7px;border-radius:6px;border:1px solid rgba(0,0,0,.15);background:#fff;cursor:pointer">${cotEsc(x.key.replace('x','×'))}${x.cortes>1?' ÷'+x.cortes+' → '+f1(x.sw)+'×'+f1(x.sh):''} · ${cotEsc(x.maq)}${x.poses?' · '+x.poses+'p':''}${pc!=null?` <b style="color:${pc>0?'#a32d2d':'#1a7f37'}">${pc>0?'+':''}${pc}%</b>`:''}</button>`;}).join('')}</div>`;
+  const _alt=r.opciones.filter(x=>!(x.key===o.key&&x.cutKey===o.cutKey&&x.maq===o.maq)).filter(x=>{const pc=pct(x);return pc==null||pc<=20;});
+  // Hasta 6 pliegos + la mejor bobina de cada ancho (si conviene), para que se vea cuánto se ahorra pidiendo bobina
+  const _bv=new Set(),alts=_alt.filter(x=>!x.bobina).slice(0,6).concat(_alt.filter(x=>x.bobina&&!_bv.has(x.key)&&_bv.add(x.key)).slice(0,3));
+  if(alts.length&&fam.modo!=='millar')h+=`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;align-items:center"><span style="font-size:9px;color:#888;font-weight:700" title="El % es cuánto más cuesta cada opción por unidad (papel + impresión estimada) comparada con la más conveniente">OTRAS OPCIONES (% vs la mejor):</span>${alts.map(x=>{const pc=pct(x);return `<button onclick="cotPapSelOpcion(${k},'${cotEsc(x.key)}','${x.cutKey}','${cotEsc(x.maq)}')" title="Usar esta opción" style="font-size:10px;padding:2px 7px;border-radius:6px;border:1px solid rgba(0,0,0,.15);background:#fff;cursor:pointer">${x.bobina?'Bobina '+f1(x.bobina)+' a '+f1(x.h)+(x.bobinaPartes>1?' ÷2':'')+' → '+f1(x.sw)+'×'+f1(x.sh):cotEsc(x.key.replace('x','×'))+(x.cortes>1?' ÷'+x.cortes+' → '+f1(x.sw)+'×'+f1(x.sh):'')} · ${cotEsc(x.maq)}${x.poses?' · '+x.poses+'p':''}${pc!=null?` <b style="color:${pc>0?'#a32d2d':'#1a7f37'}">${pc>0?'+':''}${pc}%</b>`:''}</button>`;}).join('')}</div>`;
   return h;
 }
 function cotPapelCustomEd(k,campo,val){
@@ -3908,7 +3975,6 @@ function cotEmbedRender(){
     ov.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(15,25,35,.6);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:18px';
     document.body.appendChild(ov);
   }
-  const _cants=[cotW.cantidad].concat((cotW.variantes||[]).map(v=>v.cantidad)).filter(q=>+q>0);
   ov.innerHTML=`<div style="background:#f4f6f8;border-radius:12px;max-width:1180px;width:100%;padding:0 16px 16px;box-shadow:0 10px 40px rgba(0,0,0,.4);margin-bottom:30px">
     <div id="cot-embed-hdr" style="position:sticky;top:-18px;z-index:6;background:#f4f6f8;padding:14px 0 8px;margin-bottom:6px;border-bottom:1px solid #dde4ec">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -3917,12 +3983,7 @@ function cotEmbedRender(){
         <button onclick="cotEmbedCerrar()">Cancelar</button>
         <button class="bp" onclick="cotEmbedAplicar()"><i class="ti ti-check"></i> Aplicar a la cotización</button>
       </div></div>
-    <!-- Siempre a la vista al bajar: qué es el trabajo (colores, medidas, terminaciones) -->
-    <div style="display:flex;gap:10px;align-items:baseline;margin-top:6px;font-size:12px;color:#333;min-width:0">
-      <strong style="color:#185fa5;white-space:nowrap">${cotEsc(cotW.nombre||'Trabajo')}</strong>
-      ${_cants.length?`<span style="white-space:nowrap;background:#eef4fb;border-radius:6px;padding:1px 7px;font-weight:700;color:#185fa5">${_cants.map(cotFmt).join(' / ')} u.</span>`:''}
-      <span id="cot-embed-desc" title="${cotEsc(cotW.descripcion||'')}" style="color:#555;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:pre-line;line-height:1.35">${cotEsc(cotW.descripcion||'')}</span>
-    </div></div>
+    </div>
     ${(cotW&&cotW._aiFaltantes&&cotW._aiFaltantes.length)?`<div style="background:#fcebeb;border:1px solid #f7c1c1;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#791f1f"><i class="ti ti-alert-triangle"></i> <b>Revisá antes de aplicar</b> — la IA no pudo completar automáticamente: ${cotW._aiFaltantes.map(f=>'<span style="background:#fff;border:1px solid #f7c1c1;border-radius:5px;padding:1px 6px;margin:1px;display:inline-block">'+f+'</span>').join(' ')}</div>`:''}
     ${(cotW&&cotW._aiFaltantes)?`<div style="font-size:11px;color:#1a7f37;margin-bottom:8px"><i class="ti ti-sparkles"></i> Costeo precargado por IA (máquina más económica elegida automáticamente). Revisá y ajustá.${(cotW._aiPorCant&&cotW._aiPorCant.length)?` <b style="color:#c05600">Para otras cantidades conviene otra máquina: ${cotW._aiPorCant.map(cotEsc).join(' · ')}</b> (pestaña de esa cantidad, arriba).`:''}</div>`:''}
     ${(cotW&&cotW._estrNota)?(n=>`<div style="background:#eef5fc;border:1px solid #b5d4f4;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#0c447c"><i class="ti ti-box"></i> <b>Estructura ${cotEsc(n.familia)}</b> cargada en el costeo.${n.piezas.length?` Piezas: ${n.piezas.map(cotEsc).join(' · ')} — completá medidas, papel e impresión de cada una.`:''}${n.procesos.length?` Procesos de la tabla: ${n.procesos.map(cotEsc).join(' · ')}.`:''}${n.manuales.length?` <b>Poné el costo</b> de: ${n.manuales.map(cotEsc).join(' · ')} (líneas manuales en Procesos y servicios).`:''} Si algo no lleva este trabajo, borralo.</div>`)(cotW._estrNota):''}
@@ -4635,10 +4696,12 @@ function rCotizador(){
   // ---- EDITOR ----
   // Pestañas de cantidad (arriba de todo): ver el desarrollo completo para cada cantidad
   const _cants=_cotCantidades();
+  // Parte de arriba FIJA al bajar: cantidades + datos del trabajo (cliente, nombre, descripción completa, cantidad y pliegos)
+  h+=`<div id="cot-fijo" style="position:sticky;top:var(--cotHdrH,0px);z-index:5;background:#f4f6f8;padding-bottom:2px;margin-bottom:10px;box-shadow:0 6px 8px -6px rgba(0,0,0,.15)">`;
   if(_cants.length>1){
     const act=_cv||(+w.cantidad||0);
     const tab=(c,i)=>{const on=c===act;const pq=i?_cotPorCant(w,c):null;const prop=!!(pq&&((pq.piezas&&pq.piezas.length)||pq.margenPct!=null));return `<button onclick="cotVerCant(${i===0?0:c})" title="${prop?'Tiene configuración propia (margen y/o máquina/papel)':''}" style="padding:6px 14px;border-radius:8px;border:1.5px solid ${on?'#185fa5':(prop?'#c05600':'rgba(0,0,0,.15)')};background:${on?'#185fa5':'#fff'};color:${on?'#fff':'#333'};font-size:13px;font-weight:700;cursor:pointer">${cotFmt(c)}${i===0?' <span style="font-size:10px;font-weight:600;opacity:.8">· base</span>':''}${prop?' <span style="color:'+(on?'#ffd6a8':'#c05600')+'">●</span>':''}</button>`;};
-    h+=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;padding:8px 12px;background:#fff;border:1px solid #cfe0f2;border-radius:10px;position:sticky;top:var(--cotHdrH,0px);z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+    h+=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;padding:8px 12px;background:#fff;border:1px solid #cfe0f2;border-radius:10px">
       <span style="font-size:11px;font-weight:700;color:#185fa5;margin-right:4px"><i class="ti ti-eye"></i> Ver desarrollo para:</span>
       <button onclick="cotCantPaso(-1)" title="Cantidad anterior" style="padding:5px 10px;font-weight:800">‹</button>
       ${_cants.map(tab).join('')}
@@ -4669,7 +4732,7 @@ function rCotizador(){
     <div style="flex:1.5;min-width:220px"><div style="font-size:10px;color:#888;font-weight:600">NOMBRE DEL TRABAJO</div><input value="${cotEsc(w.nombre)}" onchange="cotEd('nombre',this.value)" placeholder="Ej: Revista institucional A4" style="width:100%;padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px;font-weight:600"></div>
   </div>
   <div style="margin-top:10px"><div style="font-size:10px;color:#888;font-weight:600">DESCRIPCIÓN DEL TRABAJO</div>
-    <textarea onchange="cotEd('descripcion',this.value)" rows="3" placeholder="Ej: 2.000 revistas A4 cerradas, tapa 250g laca UV + 16 pág. interior 150g, abrochadas (podés usar varias líneas)" style="width:100%;padding:7px 8px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:13px;line-height:1.5;resize:vertical;min-height:44px">${cotEsc(w.descripcion)}</textarea></div>
+    <textarea onchange="cotEd('descripcion',this.value)" oninput="this.rows=Math.min(8,Math.max(3,this.value.split('\\n').length))" rows="${Math.min(8,Math.max(3,String(w.descripcion||'').split('\n').length))}" placeholder="Ej: 2.000 revistas A4 cerradas, tapa 250g laca UV + 16 pág. interior 150g, abrochadas (podés usar varias líneas)" style="width:100%;padding:7px 8px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:13px;line-height:1.5;resize:vertical;min-height:44px">${cotEsc(w.descripcion)}</textarea></div>
   <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;align-items:flex-end">
     <div><div style="font-size:10px;color:#888;font-weight:600">CANTIDAD REAL</div><input value="${w.cantidad?cotFmt(w.cantidad):''}" oninput="if(typeof moneyFmt==='function')moneyFmt(this)" onchange="cotEd('cantidad',this.value)" style="width:100px;padding:5px 6px;border:1.5px solid #185fa5;border-radius:6px;font-size:13px;font-weight:700;text-align:right;color:#185fa5"></div>
     <div style="padding:6px 12px;background:#eef4fb;border-radius:8px"><div style="font-size:10px;color:#888;font-weight:600">PLIEGOS NETOS (todas las piezas)</div><div id="cz-netos" style="font-size:15px;font-weight:700;color:#185fa5">${cotFmt(r.pliegosNetos)}</div></div>
@@ -4677,7 +4740,8 @@ function rCotizador(){
     <div id="cz-peso-box" style="padding:6px 12px;background:${over?'#fdf1e2':'#eef8ee'};border-radius:8px"><div style="font-size:10px;color:#888;font-weight:600">PESO PAPEL TOTAL</div><div id="cz-peso" style="font-size:15px;font-weight:700;color:${over?'#a35b00':'#1a7f37'}">${cotFmtDec(r.pesoKg,1)} kg</div></div>
   </div>
   <div id="cz-alerta" style="margin-top:8px">${over?`<span style="color:#a35b00;font-weight:700;font-size:12px"><i class="ti ti-alert-triangle"></i> Supera flete propio (${cotFmt(r.cfg.pesoMaxKg)} kg) — considerar flete tercero</span>`:''}</div>
-  </div>`;
+  </div>
+  </div>`; // fin de la parte fija (cot-fijo)
   // ---- TERCERIZADO: presupuesto de un proveedor en lugar de la producción propia ----
   const _tercOn=!!(w.terc&&w.terc.on);
   h+=cotTercHTML(w,r);
@@ -4976,7 +5040,7 @@ let _lastRenderPg=null,_scrollPorPg={};
 function render(){
   if(esUsuarioTaller()&&curPg!=='taller'&&curPg!=='mov')curPg='taller'; // el usuario del taller solo ve su pantalla (y Movimientos)
   document.body.classList.toggle('modo-taller',esUsuarioTaller());
-  const fns={taller:rTaller,mov:rMov,dash:rDash,cli:rCli,prov:rProv,cot:rCot,ot:rOT,seg:rSeg,papel:rPapel,plan:rPlan,entregas:rEntregasView,ficha:rFicha,rem:rRem,gas:rGas,analot:rAnalOT,tiempos:rTiempos,capacidad:rCapacidad,balmes:rBalMes,balaño:rBalAño,costos:rCostos,cotizador:rCotizador,insumos:rInsumos};
+  const fns={taller:rTaller,mov:rMov,reparto:rReparto,dash:rDash,cli:rCli,prov:rProv,cot:rCot,ot:rOT,seg:rSeg,papel:rPapel,plan:rPlan,entregas:rEntregasView,ficha:rFicha,rem:rRem,gas:rGas,analot:rAnalOT,tiempos:rTiempos,capacidad:rCapacidad,balmes:rBalMes,balaño:rBalAño,costos:rCostos,cotizador:rCotizador,insumos:rInsumos};
   const pg=Q('pg');
   // Guardar la posición de scroll de la página que estábamos viendo (para no saltar arriba al re-renderizar)
   if(pg&&_lastRenderPg!==null)_scrollPorPg[_lastRenderPg]=pg.scrollTop;
@@ -6036,6 +6100,8 @@ function _papelPrefillDesdeCosteo(o){
     if(!m.marca&&pap.marca)m.marca=pap.marca;
     if(!m.papelera&&pap.papelera)m.papelera=pap.papelera;
     const _ref=pap.refil?' · REFILAR a '+cotFmtDec(Math.max(pap.ancho,pap.alto),1)+'×'+cotFmtDec(Math.min(pap.ancho,pap.alto),1)+' para la '+((pap.opcion&&pap.opcion.maq)||'máquina'):'';
+    const _bob=pap.opcion&&pap.opcion.bobina?pap.opcion:null;
+    if(!m.aclaracion&&_bob)m.aclaracion='PEDIR EN BOBINA de '+cotFmtDec(_bob.bobina,1)+' cm, cortada a '+cotFmtDec(_bob.h,1)+' cm (hojas de '+cotFmtDec(_bob.w,1)+'×'+cotFmtDec(_bob.h,1)+', fibra a lo largo de la bobina)'+(_bob.bobinaPartes>1?' · después partir al medio en guillotina → '+cotFmtDec(_bob.sw,1)+'×'+cotFmtDec(_bob.sh,1):'')+(pliegosTot?' · aprox. '+cotFmt(Math.ceil(pliegosTot/(_bob.bobinaPartes||1)*_bob.h/100))+' m lineales':'');
     if(!m.aclaracion&&(pap.notaCorte||_ref))m.aclaracion='Guillotina: '+(pap.notaCorte||('cortar a '+cotFmtDec(pap.corteAncho,1)+'×'+cotFmtDec(pap.corteAlto,1)))+' (pliego de '+cotFmtDec(pap.origAncho,1)+'×'+cotFmtDec(pap.origAlto,1)+')'+_ref;
     // Montaje encastrado y sentido de fibra pensados en el costeo: pre-prensa y prensa lo arman igual
     {const B=_pzBloque(pz),extra=[];
@@ -6938,7 +7004,7 @@ function oePDF(otId,i){
 
 // Vista independiente: Entregas y fletes (antes era una pestaña de Planificación)
 function rEntregasView(){
-  let h=`<div class="ph"><div><div class="pt">Entregas y fletes</div><div class="ps">Planificación de entregas y fletes</div></div><button onclick="om('recursos')" style="font-size:11px"><i class="ti ti-settings"></i>Gestionar recursos</button></div>`;
+  let h=`<div class="ph"><div><div class="pt">Entregas y fletes</div><div class="ps">Planificación de entregas y fletes</div></div><div style="display:flex;gap:6px"><button onclick="nav('reparto')" style="font-size:11px;color:#1a7f37;border-color:#9fd3a8"><i class="ti ti-device-mobile"></i>Reparto (confirmar desde el celu)</button><button onclick="om('recursos')" style="font-size:11px"><i class="ti ti-settings"></i>Gestionar recursos</button></div></div>`;
   h+=rEntregas();
   return h;
 }
@@ -8512,7 +8578,7 @@ function tallerAvisosHTML(){
   if(!l.length)return '';
   l.sort((x,y)=>String(y.a.fecha).localeCompare(String(x.a.fecha)));
   return `<div style="border:1.5px solid #e8a0a0;background:#fdf3f3;border-radius:10px;padding:10px 12px;margin-bottom:12px">
-    <div style="font-weight:800;color:#a32d2d;margin-bottom:6px"><i class="ti ti-message-report"></i> Avisos del taller (${l.length})</div>
+    <div style="font-weight:800;color:#a32d2d;margin-bottom:6px"><i class="ti ti-message-report"></i> Avisos del taller y reparto (${l.length})</div>
     ${l.slice(0,15).map(({o,a})=>`<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-top:0.5px solid #f2c0c0;font-size:12px">
       <div style="flex:1"><b style="cursor:pointer;color:#185fa5" onclick="om('vot',${o.id})">${cotEsc(o.num)}</b> · ${cotEsc(a.paso||'')} · <span style="color:#888">${cotEsc(a.puesto||'')}${a.op?' · '+cotEsc(a.op):''} · ${fmtHora(a.fecha)}</span><br>${cotEsc(a.texto)}</div>
       <button onclick="tallerAvisoVisto(${o.id},${a.id})" style="font-size:11px;padding:3px 8px">Visto</button></div>`).join('')}</div>`;
@@ -8522,6 +8588,146 @@ function tallerAvisoVisto(otId,id){
   const a=(o.avisosTaller||[]).find(x=>x.id===id);if(!a)return;
   a.visto=true;a.vistoPor=(currentUser&&currentUser.email)||'';a.vistoFecha=new Date().toISOString();
   sk('ordenes');render();
+}
+// ===================== REPARTO (confirmar entregas desde el celular) =====================
+// El que reparte ve las entregas de hoy, las atrasadas y las parciales; marca Entregado / Parcial / No se entregó.
+// La foto del remito firmado se manda por mail a administración (función remito de Netlify) y NO se guarda en el sistema:
+// en la OT queda solo el registro (o.entregasReg) y, si fue total, el paso Entrega terminado.
+const REPARTO_MOTIVOS=['Cerrado','No había quien reciba','Dirección incorrecta','El cliente pidió otro día','Faltó mercadería','Otro'];
+function _repCantOT(o){return (o.itemsOT||[]).reduce((s,x)=>s+(+x.qty||0),0);}
+function _repEntregado(o){return (o.entregasReg||[]).filter(x=>x.tipo==='parcial').reduce((s,x)=>s+(+x.cant||0),0);}
+function _repDir(o){const fi=(S.fichas||[]).find(f=>f.otId===o.id);return (o.material&&o.material.dir)||o.fichaDir||(fi?fi.ent1Dir:'')||'';}
+function repartoLista(){
+  const hoy=fmtD(new Date()),man=fmtD(new Date(Date.now()+864e5)),fl=_tLS('gp_repartoFlete');
+  const l=(S.ordenes||[]).filter(o=>o&&!o.archivada&&o.estado!=='entregada'&&o.estado!=='cancelada'&&(o.entrega||_repEntregado(o)>0))
+    .filter(o=>!fl||o.fleteAsignado===fl)
+    .map(o=>{const parcial=_repEntregado(o)>0,f=o.entrega||'';
+      const grupo=f&&f<hoy?'atr':(f===hoy?'hoy':(f===man?'man':(parcial?'par':'')));
+      return {o,grupo,parcial};})
+    .filter(x=>x.grupo);
+  const rk={atr:0,hoy:1,par:2,man:3};
+  return l.sort((a,b)=>rk[a.grupo]-rk[b.grupo]||String(a.o.entrega).localeCompare(String(b.o.entrega)));
+}
+function rReparto(){
+  const fl=_tLS('gp_repartoFlete'),quien=_tLS('gp_repartoNom'),l=repartoLista();
+  const fmtF=f=>f?f.split('-').reverse().slice(0,2).join('/'):'';
+  let h=`<div style="max-width:720px;margin:0 auto">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+    <div><div style="font-size:22px;font-weight:800;color:#185fa5"><i class="ti ti-truck-delivery"></i> Reparto</div>
+      <div style="font-size:13px;color:#666">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div></div>
+    <button onclick="nav('entregas')" style="font-size:13px;padding:9px 12px"><i class="ti ti-calendar"></i> Planilla de entregas</button></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#eef4fb;border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:14px">
+    <label>Flete: <select onchange="_tLS('gp_repartoFlete',this.value||null);render()" style="font-size:15px;padding:7px 8px;border-radius:8px">
+      <option value="">Todos</option>${(S.fletes||[]).map(f=>`<option value="${cotEsc(f)}" ${f===fl?'selected':''}>${cotEsc(f)}</option>`).join('')}</select></label>
+    <label>Quién reparte: <input value="${cotEsc(quien)}" onchange="_tLS('gp_repartoNom',String(this.value).replace(/[<>]/g,'').trim().slice(0,60)||null)" placeholder="Tu nombre" style="font-size:15px;padding:7px 8px;border-radius:8px;border:1px solid #9ec3e8;width:160px"></label></div>`;
+  if(!l.length)return h+`<div style="text-align:center;padding:40px 10px;color:#888;font-size:16px"><i class="ti ti-mood-smile" style="font-size:32px"></i><br>No hay entregas pendientes${fl?' para '+cotEsc(fl):''}.</div></div>`;
+  const tit={atr:['Atrasadas','#a32d2d'],hoy:['Hoy','#1a7f37'],par:['Con entrega parcial','#c47d16'],man:['Mañana','#185fa5']};
+  let g0='';
+  l.forEach(({o,grupo,parcial})=>{
+    if(grupo!==g0){g0=grupo;h+=`<div style="font-size:15px;font-weight:800;color:${tit[grupo][1]};margin:14px 0 6px">${tit[grupo][0]} (${l.filter(x=>x.grupo===grupo).length})</div>`;}
+    const tot=_repCantOT(o),ent=_repEntregado(o),dir=_repDir(o),noLista=o.estado!=='lista';
+    const ult=(o.entregasReg||[]).slice(-1)[0];
+    h+=`<div style="border:2px solid ${tit[grupo][1]};border-radius:14px;padding:12px 14px;margin-bottom:10px;background:#fff">
+      <div style="font-size:19px;font-weight:800">${cotEsc(o.num)} <span style="font-size:14px;font-weight:600;color:#555">· ${cotEsc(cNom(o.clienteId)||'')}</span></div>
+      <div style="font-size:15px;color:#333;margin-top:2px">${cotEsc(o.nombreCorto||o.descripcion||'')}</div>
+      <div style="font-size:13px;color:#555;margin-top:4px">${tot?`Cantidad: <b>${tot.toLocaleString('es-AR')}</b>`:''}${ent?` · <b style="color:#c47d16">ya entregado ${ent.toLocaleString('es-AR')}</b>`:''}${o.entrega?` · Fecha: <b>${fmtF(o.entrega)}</b>`:''}${o.fleteAsignado?` · ${cotEsc(o.fleteAsignado)}`:''}</div>
+      ${dir?`<div style="font-size:14px;margin-top:4px"><i class="ti ti-map-pin" style="color:#185fa5"></i> ${cotEsc(dir)}</div>`:''}
+      ${o.fleteObs?`<div style="font-size:13px;color:#666;font-style:italic;margin-top:2px">${cotEsc(o.fleteObs)}</div>`:''}
+      ${noLista?`<div style="font-size:13px;color:#a35b00;margin-top:4px"><i class="ti ti-alert-triangle"></i> Todavía figura ${cotEsc(String(o.estado||'').replace(/_/g,' '))} (no está marcada como lista)</div>`:''}
+      ${ult&&ult.tipo==='no'?`<div style="font-size:13px;color:#a32d2d;margin-top:4px">Último intento ${fmtHora(ult.fecha)}: no se entregó (${cotEsc(ult.motivo||'')})</div>`:''}
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-top:10px">
+        <button onclick="repartoAbrir(${o.id},'total')" style="font-size:16px;font-weight:800;padding:13px 8px;border:none;border-radius:11px;background:#1a7f37;color:#fff"><i class="ti ti-check"></i> Entregado</button>
+        <button onclick="repartoAbrir(${o.id},'parcial')" style="font-size:14px;font-weight:700;padding:13px 6px;border:none;border-radius:11px;background:#f3d3a8;color:#7a4a00">Parcial</button>
+        <button onclick="repartoAbrir(${o.id},'no')" style="font-size:14px;font-weight:700;padding:13px 6px;border-radius:11px;border:1.5px solid #e8a0a0;background:#fff;color:#a32d2d">No se entregó</button></div></div>`;
+  });
+  return h+`</div>`;
+}
+function repartoAbrir(otId,tipo){
+  const o=(S.ordenes||[]).find(x=>x.id===otId);if(!o)return;
+  const tot=_repCantOT(o),ent=_repEntregado(o);
+  const tit={total:['Entregado','#1a7f37'],parcial:['Entrega parcial','#c47d16'],no:['No se entregó','#a32d2d']}[tipo];
+  const inp='width:100%;font-size:17px;padding:11px;border-radius:10px;border:1px solid #bbb;margin-top:4px';
+  let h=`<div style="font-size:19px;font-weight:800;color:${tit[1]};margin-bottom:2px">${tit[0]} · ${cotEsc(o.num)}</div>
+    <div style="font-size:14px;color:#666;margin-bottom:12px">${cotEsc(cNom(o.clienteId)||'')} — ${cotEsc(o.nombreCorto||o.descripcion||'')}</div>`;
+  if(tipo==='parcial')h+=`<label style="display:block;font-size:14px;font-weight:700;margin-bottom:10px">¿Cuántas se entregaron ahora?${tot?` <span style="font-weight:400;color:#888">(total ${tot.toLocaleString('es-AR')}${ent?', ya entregadas '+ent.toLocaleString('es-AR'):''})</span>`:''}
+      <input id="rp-cant" inputmode="numeric" placeholder="0" style="${inp};font-size:22px;text-align:center"></label>`;
+  if(tipo==='no')h+=`<div style="font-size:14px;font-weight:700;margin-bottom:6px">¿Por qué?</div>
+    <div id="rp-motivos" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">${REPARTO_MOTIVOS.map(m=>`<button onclick="document.querySelectorAll('#rp-motivos button').forEach(b=>{b.dataset.on='';b.style.background='#fff'});this.dataset.on='1';this.style.background='#fde2e2'" data-m="${cotEsc(m)}" style="font-size:15px;font-weight:700;padding:12px 8px;border-radius:10px;border:1px solid #e8a0a0;background:#fff;color:#a32d2d">${cotEsc(m)}</button>`).join('')}</div>`;
+  if(tipo!=='no')h+=`<label style="display:block;margin-bottom:10px;cursor:pointer">
+      <input id="rp-foto" type="file" accept="image/*" capture="environment" style="display:none" onchange="const b=document.getElementById('rp-foto-btn');if(this.files&&this.files[0]){b.innerHTML='<i class=&quot;ti ti-circle-check&quot;></i> Foto lista · tocá para sacar otra';b.style.background='#eaf6ec';b.style.color='#1a7f37';b.style.borderColor='#9fd3a8';}">
+      <span id="rp-foto-btn" style="display:block;text-align:center;font-size:17px;font-weight:800;padding:14px;border-radius:11px;border:2px dashed #7db3e8;background:#f2f7fd;color:#185fa5"><i class="ti ti-camera"></i> Sacar foto del remito firmado</span>
+      <span style="display:block;font-size:12px;color:#888;margin-top:3px">Se manda por mail a administración. No queda guardada en el sistema.</span></label>
+    <label style="display:block;font-size:14px;font-weight:700;margin-bottom:10px">Recibió (nombre)<input id="rp-recibio" placeholder="Opcional" style="${inp}"></label>`;
+  h+=`<label style="display:block;font-size:14px;font-weight:700">Observaciones${tipo==='no'?'':' (opcional)'}<textarea id="rp-obs" rows="2" style="${inp};font-size:15px"></textarea></label>
+    <div id="rp-estado" style="font-size:14px;margin-top:8px;min-height:18px"></div>
+    <div style="display:flex;gap:8px;margin-top:8px"><button onclick="tallerModalCerrar()" style="flex:1;font-size:15px;padding:12px">Cancelar</button>
+      <button id="rp-ok" onclick="repartoConfirmar(${o.id},'${tipo}')" style="flex:2;font-size:17px;font-weight:800;padding:12px;border:none;border-radius:10px;background:${tit[1]};color:#fff"><i class="ti ti-send"></i> Confirmar y avisar</button></div>`;
+  _tallerModal(h);
+}
+// Achica la foto (lado mayor 1600 px, JPEG) para que el mail salga rápido aun con poca señal
+function _repFotoComprimir(file){
+  // Se lee como data: (la política de seguridad de la página no deja mostrar imágenes blob:)
+  return new Promise((res,rej)=>{
+    const fr=new FileReader(),img=new Image();
+    img.onload=()=>{try{
+      const k=Math.min(1,1600/Math.max(img.width,img.height)),c=document.createElement('canvas');
+      c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      res({data:c.toDataURL('image/jpeg',0.72).split(',')[1],mediaType:'image/jpeg'});
+    }catch(e){rej(e);}};
+    img.onerror=()=>rej(new Error('No se pudo leer la foto'));
+    fr.onload=()=>{img.src=fr.result;};fr.onerror=()=>rej(new Error('No se pudo leer la foto'));
+    fr.readAsDataURL(file);
+  });
+}
+async function repartoConfirmar(otId,tipo){
+  const o=(S.ordenes||[]).find(x=>x.id===otId);if(!o)return;
+  const $=id=>document.getElementById(id),est=$('rp-estado'),btn=$('rp-ok');
+  const tot=_repCantOT(o),entAntes=_repEntregado(o);
+  const obs=String(($('rp-obs')||{}).value||'').replace(/[<>]/g,'').trim().slice(0,500);
+  const recibio=String(($('rp-recibio')||{}).value||'').replace(/[<>]/g,'').trim().slice(0,80);
+  let cant=0,motivo='';
+  if(tipo==='parcial'){cant=parseInt(String(($('rp-cant')||{}).value||'').replace(/\./g,''))||0;if(cant<=0){alert('Poné cuántas se entregaron.');return;}}
+  if(tipo==='no'){const b=document.querySelector('#rp-motivos button[data-on="1"]');motivo=b?b.dataset.m:'';if(!motivo){alert('Elegí el motivo.');return;}
+    if(motivo==='Otro'&&!obs){alert('Contá en Observaciones qué pasó.');return;}}
+  const file=$('rp-foto')&&$('rp-foto').files&&$('rp-foto').files[0];
+  if(tipo!=='no'&&!file&&!confirm('No sacaste la foto del remito. ¿Confirmar igual sin foto?'))return;
+  if(btn){btn.disabled=true;btn.style.opacity='.6';}
+  const quien=_tLS('gp_repartoNom'),ahora=new Date();
+  let foto=null,mailOk=false,mailErr='';
+  try{
+    if(file){est.innerHTML='<i class="ti ti-loader"></i> Preparando la foto…';foto=await _repFotoComprimir(file);}
+    est.innerHTML='<i class="ti ti-loader"></i> Enviando el mail a administración…';
+    let tok='';try{if(currentUser&&typeof currentUser.getIdToken==='function')tok=await currentUser.getIdToken();}catch(e){}
+    const r=await fetch('/.netlify/functions/remito',{method:'POST',headers:{'content-type':'application/json','authorization':'Bearer '+tok},
+      body:JSON.stringify({tipo,ot:o.num,cliente:cNom(o.clienteId)||'',descripcion:o.nombreCorto||o.descripcion||'',cant:cant?cant.toLocaleString('es-AR'):'',
+        cantTotal:tot?tot.toLocaleString('es-AR'):'',acumulado:tipo==='parcial'&&entAntes?(entAntes+cant).toLocaleString('es-AR'):'',
+        motivo,recibio,direccion:_repDir(o),flete:o.fleteAsignado||'',quien,obs,fechaHora:ahora.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}),foto})});
+    let j={};try{j=await r.json();}catch(e){}
+    if(r.ok&&j.ok)mailOk=true;else mailErr=j.error||('error '+r.status);
+  }catch(e){mailErr=e.message||'sin conexión';}
+  foto=null; // la foto no se guarda
+  if(!mailOk&&!confirm('No se pudo mandar el mail a administración:\n'+mailErr+'\n\n¿Registrar la entrega igual? (después mandá la foto del remito por otro medio)')){
+    if(btn){btn.disabled=false;btn.style.opacity='';}est.innerHTML='';return;}
+  // Registro en la OT (sin la foto)
+  if(!Array.isArray(o.entregasReg))o.entregasReg=[];
+  const por=(currentUser&&currentUser.email)||'';
+  o.entregasReg.push({fecha:ahora.toISOString(),tipo,cant:cant||0,motivo,recibio,obs,quien,por,conFoto:!!file,mail:mailOk});
+  const pEnt=(o.pasos||[]).find(p=>pasoCol(p)==='ent'&&!p.na&&p.estado!=='na');
+  let completa=tipo==='total';
+  if(tipo==='parcial'&&tot&&entAntes+cant>=tot)completa=confirm(`Con esta van ${(entAntes+cant).toLocaleString('es-AR')} de ${tot.toLocaleString('es-AR')}. ¿Queda la OT ENTREGADA completa?`);
+  if(completa){
+    if(pEnt){pEnt.estado='done';pEnt.fechaFin=ahora.toISOString();pEnt.fecha=fmtD(ahora);if(!pEnt.fechaInicio)pEnt.fechaInicio=pEnt.fechaFin;pEnt.operario=quien||por;}
+    recomputeEstadoOT(o);if(!pEnt)o.estado='entregada';
+  }else if(pEnt&&tipo==='parcial'&&pEnt.estado!=='done'){pEnt.estado='active';if(!pEnt.fechaInicio)pEnt.fechaInicio=ahora.toISOString();recomputeEstadoOT(o);}
+  // Al coordinador: aviso en el Panel de control si no se entregó, fue parcial o no salió el mail
+  if(tipo!=='total'||!mailOk){
+    if(!Array.isArray(o.avisosTaller))o.avisosTaller=[];
+    const txt=tipo==='no'?`No se entregó: ${motivo}${obs?' — '+obs:''}`:(tipo==='parcial'?`Entrega parcial: ${cant.toLocaleString('es-AR')}${tot?' de '+tot.toLocaleString('es-AR'):''}${obs?' — '+obs:''}`:'Entregada')+(mailOk?'':' · ⚠ NO salió el mail con la foto del remito');
+    o.avisosTaller.push({id:Date.now(),fecha:ahora.toISOString(),puesto:'Reparto',op:quien,paso:'Entrega',texto:txt,visto:false});
+  }
+  tallerModalCerrar();sk('ordenes');render();
+  setTimeout(()=>alert(mailOk?'✓ Listo: quedó registrado y se avisó por mail a administración.':'Quedó registrado en la OT, pero SIN mail. Avisá a administración.'),60);
 }
 // ===================== MOVIMIENTOS (entre pisos y con externos) =====================
 // La lista se arma sola desde el estado de cada OT:
@@ -10528,6 +10734,12 @@ function mVOT(id){
     h+=sec2('Empaque','package');
     h+=`<div class="kv-grid">${kv2('Paquetes de',o.empaque.paq)}${kv2('Cajas de',o.empaque.caja)}</div>`;
     if(o.empaque.obs)h+=`<div style="margin-top:5px;font-size:11px;color:#888">${o.empaque.obs}</div>`;
+  }
+  // Entregas confirmadas desde el reparto (la foto del remito está en el mail de administración, no acá)
+  if(Array.isArray(o.entregasReg)&&o.entregasReg.length){
+    h+=sec2('Entregas registradas','truck-delivery');
+    const tl={total:['Entregado','#1a7f37'],parcial:['Parcial','#c47d16'],no:['No se entregó','#a32d2d']};
+    h+=o.entregasReg.map(e=>{const t=tl[e.tipo]||['—','#555'];return `<div style="font-size:12px;padding:4px 0;border-bottom:0.5px solid rgba(0,0,0,.06)"><b style="color:${t[1]}">${t[0]}</b>${e.tipo==='parcial'?' '+Number(e.cant||0).toLocaleString('es-AR'):''}${e.motivo?' · '+escHtml(e.motivo):''} · ${fmtHora(e.fecha)}${e.quien?' · '+escHtml(e.quien):''}${e.recibio?' · recibió '+escHtml(e.recibio):''}${e.obs?'<br><span style="color:#666">'+escHtml(e.obs)+'</span>':''} <span style="font-size:10px;color:${e.mail?'#1a7f37':'#a32d2d'}">${e.mail?(e.conFoto?'✓ mail con foto':'✓ mail sin foto'):'⚠ sin mail'}</span></div>`;}).join('');
   }
 
   // Seguimiento de pasos
