@@ -2,138 +2,229 @@
 
 **Scope:** Architecture / maintainability ONLY (security, performance, UX, DB covered in sibling reports).
 **Perspective:** Acquisition due-diligence. Buyer is looking for reasons NOT to buy. Brutally honest.
-**Date:** 2026-09-16
-**Reviewer:** Independent code audit (no production code modified).
+**Date:** 2026-10-02 (supersedes the 2026-09-16 version of this file)
+**Reviewer:** Independent code audit (read-only; no production code modified).
+**Snapshot audited:** `index.html` last modified 2026-10-02 12:40, `netlify/functions/interpretar.js` 2026-10-01, `tests/pruebas.js` 2026-07-12, `styles.css` 2026-07-12.
 
 ---
 
 ## 0. What was measured (hard numbers)
 
-All evidence below was gathered directly from the source tree.
+All numbers below were gathered with read-only `node`/PowerShell counts over the working copy. "Function length" = distance from a top-level declaration to the next top-level declaration (same method for every function, so the ranking is reliable even if absolute numbers differ slightly from the 09-16 method).
 
-| Metric | Value | Evidence |
-|---|---|---|
-| `index.html` total lines | **8,621** | full-file line count |
-| Single app `<script>` block | **lines 122–8619 (~8,498 lines)** | `<script>` L122, `</script>` L8619 |
-| Function-like definitions in `index.html` | **555 matches** | regex count of `function`/arrow decls |
-| Named top-level render functions | **~28** (`rDash`, `rCot`, `rOT`, `rFichaVer`, …) | grep of `function r[A-Z]` |
-| `.innerHTML =` assignments | **68** | grep count |
-| Inline `onclick=` handlers | **328** | grep count |
-| `window.*` global stashing / access | **125** | grep count |
-| `try`/`catch` keyword occurrences | **103 (~50 blocks)** | grep count |
-| `innerHTML+=` / incremental injection | **8** | grep count |
-| Largest function `rFichaVer` | **~447 lines (L4721–5168)** | function boundaries |
-| `package.json` / lockfile / eslint config | **0 (none exist anywhere)** | glob returned no files |
-| `tests/pruebas.js` | 204 lines, standalone, **re-implements** prod logic | L14, L26, L33, L46 |
-| CSS extracted to `styles.css` | 169 lines, **but 3 `<style>` blocks remain inline** | L23, L4106, L4134, L8472 |
-
-**Note on stated premises:** two premises in the brief are now partly outdated and were verified against code: CSS has largely been extracted to `styles.css` (L21), and a test file *does* exist (`tests/pruebas.js`). Both are noted as mitigations below — but neither materially changes the maintainability picture, for reasons given.
+| Metric | 2026-09-16 | **2026-10-02** | Δ | Evidence |
+|---|---|---|---|---|
+| `index.html` lines | 8,621 | **10,572** | **+1,951 (+22.6%)** | line count |
+| `index.html` size | — | **1,015,267 chars** | — | `ReadAllText().Length` |
+| Main app `<script>` | L122–8619 (~8,498) | **L122–10569 (~10,447 lines)** | +1,949 | `<script>` L122, `</script>` L10569 |
+| `function` declarations (named) | 555 (all fn-like) | **665 named + 64 arrow consts**; 748 `function` keywords; 1,426 `=>` | ↑ | regex counts |
+| Top-level declarations | — | **662** in one global scope | — | node scan |
+| `.innerHTML =` / `+=` | 68 / 8 | **79 / 6** | ↑ | grep |
+| Inline `onclick=` | 328 | **462 (+41%)** | ↑ | grep |
+| All inline `on*="…"` handlers | — | **638** | — | grep `\son[a-z]+="` |
+| Inline `style="…"` attributes | — | **2,303** | — | grep |
+| `window.*` references | 125 | **251 (×2)**; **58 distinct `window.` globals** | ↑↑ | grep + distinct set |
+| Top-level mutable `let` lines | ~30 names | **30 `let` lines** (≈55 names) outside `S` | ↑ | node scan |
+| Distinct `S.<key>` fields used | — | **35** (incl. 2 dead) | — | grep |
+| `try` blocks / **empty `catch(e){}`** | 103 kw (~50 blocks) | **99 try / 99 catch / 49 empty catches** | ≈ / worse | grep |
+| `typeof X==='function'` defensive self-checks | — | **49** | — | grep |
+| Script lines > 300 chars | — | **374** | — | node scan |
+| Longest code line | — | **L906: 19,459 chars** (`COT_SEED`), **L9847: 2,490 chars** (entire undo subsystem) | — | node scan |
+| Base64 images inlined | — | **3 (138,509 chars ≈ 13.6% of the file)**; L81 and L147 are the **same logo twice**, L10457 a 124 KB logo inside the PDF template | — | regex |
+| Hard-coded machine literals | — | `'SM52'` ×35, `'SM74'` ×40, `'Xerox'` ×37 | — | grep |
+| `alert(` / `confirm(` / `prompt(` | — | **83 / 47 / 25** | — | grep |
+| `package.json` / lockfile / linter / CI | 0 | **0** | = | glob |
+| Tests | 204 lines, copies of prod code | **same file, unchanged since 2026-07-12; 59 assertions, all on copies** | = (relatively worse) | `node tests/pruebas.js` → 59 ✓ |
+| Git history (local `.git`) | — | **1 commit ("Initial commit", 2026-07-11)**; last fetch 2026-07-17 | — | `.git/logs/HEAD` (1 entry) |
 
 ---
 
 ## 1. Rubric & Scores
 
-| # | Criterion | Score /10 | One-line justification |
-|---|---|---|---|
-| 1 | Module boundaries / separation of concerns | **2** | One 8.5k-line script in global scope; zero modules/bundler. |
-| 2 | Function size & complexity | **3** | 447-line render functions; dense multi-statement one-liners. |
-| 3 | Global state coupling | **3** | Single mutable `S` + ~30 module-level `let`s + `window.*` stash. |
-| 4 | HTML generation (safety & maintainability) | **3** | 68 `innerHTML`, 328 inline `onclick`, string concat, unescaped interpolation. |
-| 5 | Duplication & dead code | **4** | 4 near-identical escapers; dead `facturas`/`cobranzas`; "TEMPORAL" code. |
-| 6 | Error handling | **4** | ~50 `try/catch`, mostly swallow-and-`console.warn`; no telemetry. |
-| 7 | Testability | **3** | Tests re-implement logic (can't import); no DOM/integration coverage. |
-| 8 | Build / deploy / dependency management | **3** | No build, no `package.json`/lockfile, CDN deps w/o SRI (but pinned). |
+| # | Criterion | 09-16 | **Now** | One-line justification |
+|---|---|---|---|---|
+| 1 | Modularity / separation of concerns | 2 | **2** | 10.4k-line single global script; the pricing engine now has hidden write side-effects. |
+| 2 | Code size, complexity & duplication | 3.5 | **3** | +22.6% in 16 days; `rCotizador` 346 lines / 50 KB; verbatim-duplicated blocks keep multiplying. |
+| 3 | Global state coupling & state integrity | 3 | **2** | `window.*` doubled; `sv`/`sk`/`render` monkey-patched at runtime; pointer-swap invariants maintained by hand. |
+| 4 | UI/markup coupling (HTML generation) | 3 | **2** | 462 inline `onclick`, 2,303 inline styles; nav state read back from `onclick` attribute text. |
+| 5 | Error handling & persistence integrity | 4 | **4** | Blob saves fixed (`updateDoc` per field) but 49 empty catches and non-atomic two-key saves remain. |
+| 6 | Testability & test coverage | 3 | **2** | Zero tests for any feature added since July; tests still exercise copies, not production code. |
+| 7 | Build / dependency / deploy hygiene | 3 | **3** | No manifest, no SRI, no CI; two live hosting targets deployed from a Google Drive folder. |
+| 8 | Documentation, version control & bus factor | n/a | **2** | ~2.5 months of changes are not in git; only roadmap doc is 3 months stale. |
 
-### **OVERALL: 3 / 10** — Maintainability risk: **HIGH**
+### **OVERALL: 2.5 / 10** (09-16: 3 / 10) — Maintainability risk: **HIGH** · Technical debt: **CRITICAL**
 
-The application is functionally coherent and shows genuine engineering thought (incremental Firestore writes, input sanitization, pinned deps, a CSP, an escape helper, a test file). But **as an asset to be acquired and maintained by a new team, its architecture is a liability.** The entire business logic — CRM, quoting engine, work orders, production planning, capacity, costing, PDF generation — lives in one 8,600-line file with hundreds of global symbols and no module boundaries. Onboarding, safe change, and parallel work are all severely constrained. This is textbook **key-person risk**: whoever wrote it holds the mental model, and the code does little to externalize it.
+The app keeps gaining real, domain-rich features (per-quantity costing, a paper catalog with cut/machine optimisation, stock reservation, an OT state machine), and several individual fixes are well reasoned. But all of it went into the same global namespace at roughly **120 lines/day**, with no tests, no version control and an increasing number of *implicit* invariants ("call `_cotUnswap()` before saving", "`cotMaqExtra()` may write config", "snapshots within 2 s are ignored"). The codebase is getting harder to hand over, not easier. For a buyer, the asset is the **domain knowledge encoded in it**, not the code as a maintainable product.
 
 ---
 
 ## 2. Detailed findings & evidence
 
-### Criterion 1 — Module boundaries / separation of concerns — **2/10**
+### Criterion 1 — Modularity / separation of concerns — **2/10** (unchanged)
 
-- The whole SPA is a single `<script>` running **L122–8619** (~8,498 lines). There is **no module system, no bundler, no imports** between app units. Firebase is the only thing loaded as ES modules, via runtime `import()` inside `initFirebase()` (L182–197), and its SDK objects are then **re-exported onto `window`** (`window._fsOnSnapshot`, `window._fsDoc`, `window._fsSet`, … L189–196) so the rest of the flat script can reach them. That is the opposite of encapsulation.
-- Concerns are fully interleaved in one namespace: persistence (`ld`/`sv`/`sk` L205–300), domain state (`S` L302), 28 view renderers, ~25 modal builders, PDF generation (`generarPDFCotizacion` L8425, `_descargarComoPDF` L8530), and a costing engine all sit side by side with no layering.
-- **Impact for a buyer:** you cannot lift out or replace one subsystem (e.g. swap Firestore, or reuse the quoting engine) without touching the monolith. There is no seam.
+- Still one classic `<script>` **L122–L10569**, 662 top-level declarations in one scope, no `import`/`export`. Firebase SDK functions are still re-exported to `window` in `initFirebase()` (**L189–198**: `window._fsOnSnapshot`, `_fsDoc`, `_fsGet`, `_fsSet`, `_fsUpdate`, `_fsCol`, `_fsGetDocs`, `_fsDelDoc`, `_fsRunTxn`, `_fsAuth`).
+- **The pricing engine is not a pure function.** Call chain: `cotCalc()` (L2047) → `cotPapelDePieza()` (L1047/L2065) → `cotPapelSelResolver()` (L1028) → `cotPapelOpciones()` (L989) → `cotPliegoEnMaq()` (L2491) → `cotMaqMax()` (L2486) → **`cotMaqExtra()` (L2469)**, which mutates `S.cotConfig.maqExtra` (`l.push(...)` L2479), calls `asegurarExterno(n)` (mutates `S.externos`) and schedules a Firestore write: `window._maqExtraT=setTimeout(()=>{try{sk('cotConfig');}catch(e){}},300)` (L2480). A "calculate a price" call can therefore persist configuration. `cotMaqExtra()` is reached from 10 call sites, including render paths (`cotMaqLista` ×8, `cotEsMaqExtra` ×11).
+- **UI state leaks into the domain engine:** `cotCalc` reads the editor's transient swap field: `...:(w._piezasBase||cotPiezasDe(w))` (L2053). The calculator has to know about a UI tab-switching trick.
+- **Side-effecting "check" functions:** `papelChequearStock(o)` (L5207) — the name says *check*, the body rewrites the OT's material (`m.material=s.material; m.marca=...` L5216), flips `o.papel.enStock` (L5218), mutates the stock item's reservation string and calls `sk('stockPapel')` (L5219).
+- **Business rules duplicated across the client/server boundary:** machine-selection heuristics and the "2 hojas A3 per SM74 sheet" rule are written in prose in the AI prompt (`interpretar.js` L29, L39) and in code in `_cotPagAplicar1` (L3495, L3504). The prompt's "exact JSON shape" (L25) does not match the tool `input_schema` (L45–76; e.g. `laminado`, `revista`, `familia` exist only in the schema/rules). No shared contract.
+- Business price data lives in source: `COT_SEED` (L906, 19 KB on one line) and `COT_PAPEL_CAT_SEED` (L925–942, USD/kg and ARS box prices). A price update is a code deploy unless the user has already overridden it in `S.cotPapelCat` (`cotPapelCat()` L943).
 
-### Criterion 2 — Function size & complexity — **3/10**
+### Criterion 2 — Code size, complexity & duplication — **3/10** (was ~3.5)
 
-- `rFichaVer(id)` spans **L4721–~5168 (~447 lines)** — a single function that renders an entire job-sheet view.
-- Other oversized units: `rCotizador()` **L2572–2880 (~308)**, `rAnalOT()` **L5254–5491 (~237)**, `rCostos()` **L989–1190 (~201)**, `rInsumos()` **L1454–1636 (~182)**.
-- Density compounds length: many "functions" are one physical line containing 5–15 statements, e.g. `savProv()` (L8104) and `savRem()` (L8420) are each a single line performing read-from-DOM, validation, `S` mutation, save, and re-render. `updateCliTable()` (L2902–2919) builds table rows with nested ternaries inside template literals inside a `for` loop on one line (L2915–2916). Cyclomatic complexity is high and invisible to tooling (no linter).
-- **Impact:** diffs are noisy, code review is hard, and a one-character change in a 447-line template literal can silently break layout with no test to catch it.
+- **Growth:** +1,951 lines in 16 days with zero structural extraction. `index.html` is now ~1 MB, 13.6% of which is base64 images (logo duplicated at **L81** and **L147**; 124 KB logo at **L10457** inside `generarPDFCotizacion`, making that 105-line function 133 KB).
+- **Largest functions (lines / chars):**
 
-### Criterion 3 — Global state coupling — **3/10**
+  | Function | Lines | Size | Location |
+  |---|---|---|---|
+  | `rCotizador` | **346** (09-16: ~308) | 50.2 KB | L3766–4111 |
+  | `rCostos` | **281** (09-16: ~201) | 31.7 KB | L1282–1562 |
+  | `rAnalOT` | 237 | 18.2 KB | L6995–7231 |
+  | `rCalSemanal` | 194 | 17.7 KB | L6162–6355 |
+  | `rFichaVer` | 185 (09-16 reported ~447) | 21.0 KB | L6462–6644 |
+  | `rInsumos` | 182 | 16.6 KB | L1827–2008 |
+  | `cotDesdeItem` | 143 | 9.4 KB | L3090–3232 |
+  | `cotCalc` | 127 | 9.1 KB | L2047–2173 |
+  | `_cotPagAplicar1` (new) | **117** | 7.5 KB | L3466–3582 |
+  | `updateDashResults` | 109 | 10.6 KB | L4309–4417 |
+  | `cotPagCalc` (new) | 106 | 8.0 KB | L3338–3443 |
 
-- A single mutable object `S` (L302–317) holds *all* domain data. Every mutation is a direct in-place write (`S.proveedores.push(...)`, `S.gastos=S.gastos.filter(...)`) followed by a manual `sk('key')` call. There is **no change-detection, no single source of dispatch** — persistence correctness depends on the author remembering to call `sk()` after every mutation (e.g. L8104, L8422, L8423). Miss one and data silently fails to persist.
-- Beyond `S`, ~30 free-floating module-level `let`s hold UI state: `curPg, bCli, bProv, pCli, pProv, fCot, fOT, bOT, bDash, bCot, fichaTab, fichaVerID, bFicha, pCot, pOT, pFicha, bSeg, fSeg, fichaEditMode, planMaq, planOffset, tallerOff` (L124–142). More state is stashed ad-hoc on `window` (`window._editandoCotId`, `window._knownIds`, `window._docJson`, `window.capPeriodo`, `window.capOffset`, `window._pendingSave` — 125 `window.*` references total).
-- Inline handlers **mutate globals directly from markup strings**, e.g. `onclick="bCli='';Q('sci').value='';updateCliTable();return false"` (L2911). Business state is being reassigned from inside HTML attribute strings.
-- **Impact:** state flow is untraceable; there is no way to reason about "what can change this value" without reading the whole file. This is the single biggest barrier to a new maintainer.
+  `rFichaVer`'s drop in line count is accompanied by ~114 chars/line; it is denser, not decomposed.
+- **`_cotPagAplicar1` (L3466)** — 117 lines with 5 nested closures (`tomar`, `matchImp`, `setPz`, `tienePapel`, `copiarPapel`), mutating `cotW.piezas`, `cotW.otros`, `cotW.manuales` and `cotW.paginado._term`. It is driven by a **fixed-point loop capped at 3 iterations** in `cotPagAplicar` (L3460–3463) that compares a `JSON.stringify` "signature". If it doesn't converge in 3 passes it **silently stops**, with no warning. The loop exists because paper format ↔ machine ↔ sheets-per-pliego are circularly dependent, and the code doesn't model that dependency explicitly.
+- **Verbatim duplicates (sample):**
+  - Cost snapshot block `cotW.calc={total:Math.round(r.total),venta:...}` + `cotW.calcVariantes=...map(...)`: **L2978–2982 ≡ L3260–3264** (`cotGuardar` vs `cotEmbedAplicar`).
+  - Step transition `pending→active→done` with `fechaInicio/fechaFin`: **5 copies** (L4817, L4975, L5372, L10368 `avP`, L10369 `avPN`).
+  - `(Array.isArray(o.itemsOT)&&o.itemsOT[0]&&o.itemsOT[0].desc)||String(o.descripcion||'').split(' + ')[0]`: **L5049, L8819, L8872**.
+  - `S.ordenes.find(x=>x.id===…)`: **54 lines** — no `getOT(id)` accessor.
+  - "save with indicator" wrapper re-implemented instead of using `sk()`: `costosSave` (L1055), `cotGuardar` (L2988–2989), and **8 inline copies** for insumos (L1635, 1672, 1716, 1720, 1729, 1750, 1775, 1802).
+  - **Four HTML escapers still exist:** `escHtml` (L875), `cotEsc` (L909), `insEsc` (L1621, which doesn't escape `&`), local `escH` (L8406, which doesn't escape `"`). Unchanged since 09-16.
+- **Magic constants:** machine names hard-coded >110 times; chapas codes `cc=(p.maquina==='SM52')?2:(p.maquina==='SM74')?3:0` (L3512); machine limits `COT_MAQ_MAX` (L2466); IVA `0.21` ×8.
 
-### Criterion 4 — HTML generation (safety & maintainability) — **3/10**
+### Criterion 3 — Global state coupling & state integrity — **2/10** (was 3)
 
-- Rendering is **string concatenation of template literals** assigned to `innerHTML` (68 `.innerHTML=` sites) — `render()` (L2880) does `pg.innerHTML=fns[curPg]()`, and renderers build markup with `let h=...; h+=...` (see `rDash` L3056–3062).
-- **328 inline `onclick` handlers** are embedded in those strings, tying every DOM node to a specific global function name and specific argument serialization (e.g. `onclick="om('vc',${c.id})"` L2915). This couples markup to the global namespace and defeats any static analysis.
-- **Interpolation is frequently unescaped.** `rDash` injects the live search term straight into an attribute: `value="${bDash}"` (L3058); `updateDashResults` injects it into markup at L3075. The `hl()` highlighter (L846) deliberately returns **raw** text wrapped in `<mark>` with no escaping. The app leans on save-time stripping of `<>` (`_sanitizeColeccion` L279–289, `sanTxt`) as its safety net rather than escaping at render — a fragile, easy-to-bypass strategy (fields not in the `_SAN_FIELDS` map at L269–278 are never stripped). *(Security detail is in `security.md`; here it counts as a maintainability smell: correctness depends on two lists staying in sync forever.)*
-- **Impact:** every new field is a potential breakage/injection unless the author remembers the sanitization map. There is no template engine enforcing escaping.
+- **Runtime monkey-patching of core functions (3 layers):**
+  1. `sv` is reassigned in an IIFE: `const _svOriginal=sv; ... sv=async function(k,v){...}` (**L486–497**) to track `window._saveEnCurso` / `_ultimoGuardadoLocal`.
+  2. `sk` and `render` are reassigned for the undo feature: `var __origSk=sk;sk=function(k){...}` and `var __origRender=render;render=function(){...}` — all on **one 2,490-char line, L9847**, appended after a closing `}` of an unrelated function.
+  3. So a call to `sk('ordenes')` runs: undo wrapper (deep-clones the **entire** collection, `__undoClone(S[k])`) → original `sk` → sanitizer → patched `sv` → original `sv`. You can't see this from any of the call sites. A maintainer who "fixes" `sk` at L306 edits the innermost layer only.
+- **Undo is collection-level and blind to other users:** `doUndo` does `S[e.k]=e.prev; ... sk(e.k)` (L9847), restoring a *whole* array snapshot (up to 20 deep). If another user changed an OT in between, undo silently reverts their change too.
+- **Concurrency is resolved by timers:** snapshot listener (L506–549) replaces the whole collection `S[k]=dcs` (L522) and suppresses remote snapshots for **2,000 ms** after a local save, re-checking after **2,200 ms** (L533, L545). Correctness depends on network latency staying under those numbers.
+- **Per-quantity costing (`porCant`) uses pointer swapping on global state:** `_cotSwapA(c)` (L2260) stores the base pieces in `cotW._piezasBase` and points `cotW.piezas` at `cotW.porCant[c].piezas`; `_cotUnswap()` (L2259) reverses it. The invariant "never persist or compute while swapped" is enforced **by hand at 7 call sites** (L2261, 2284, 2967, 2975, 3257, 3283, plus `cotCalc` reading `_piezasBase` at L2053). `nav()` (L4112) and `render()` (L4123) don't enforce it. `cotVerDesglose` (L3291) writes `cotW.piezas=cotPiezasDe(cotW)` without unswapping. The design works only as long as every future code path remembers the rule.
+- **`cotW` (L1971)** — the cotizador working object — is referenced **307 times**. **58 distinct `window.*` globals** carry state (e.g. `_cotVistaCant`, `_cotEmbed`, `_cotVariantes`, `_cotVarActiva`, `_cotItems`, `_papelModo`, `_papelTab`, `_papelFiltroPapelera`, `_procCol`, `_extraCtx`, `_estrAprEi`, `capPeriodo`, `capOffset`, eight `__undo*` symbols), on top of ≈55 module-level `let` names in 30 declarations (L124–141, L484, L697–714, L908, L1577, L1971, L4122, L4511, L5956–5958, L6923, L6989–6993, L7650, L7679, L9426, L9512).
+- **The global `S` is shadowed** inside `cotPliegoEnMaq`: `const L=Math.max(...), S=Math.min(dims[0],dims[1]);` (**L2493**). It's harmless today, but it's a trap the next time someone needs app state in that function.
+- **Stock reservations are a comma-joined string of OT numbers** (`s.reservaOT=lst.join(', ')` L5219; parsed by `_resLista` L5173, 6 call sites). They're keyed by human-visible `num` instead of `id`, aren't referentially checked, and are kept consistent across **two separately-saved stores**: `ordenes` (per-doc collection) and `stockPapel` (a field in the single `_config` blob, `BLOB_KEYS` L205). `stockLibrePara` (L5186) recomputes availability by scanning all OTs for every stock item (`papelStockCandidatos` L5196 → O(stock × OTs)), with liveness rules (`sigueVigente` L5189) defined inline.
+- **The OT state machine is only partly centralised.** `recomputeEstadoOT(o)` (L4913) is a real improvement (12 call sites). But it's bypassed by direct writes (`if(o.estado==='lista')o.estado='en_produccion';` L4806), and two callers guard it with `typeof recomputeEstadoOT==='function'` (L5883, L5895). That guard is one of **49** such existence checks in the file, which shows the authors can't rely on declaration order or a dependency graph.
 
-### Criterion 5 — Duplication & dead code — **4/10**
+### Criterion 4 — UI/markup coupling — **2/10** (was 3)
 
-- **Four near-identical HTML-escape helpers** exist instead of one: `escHtml` (L832), `cotEsc` (L866), `insEsc` (L1248), and a *local* `escH` re-declared inside a function (L6545). They do the same `&<>"` replacement with minor variations — a maintenance trap (fix a bug in one, the other three stay broken).
-- **Dead / abandoned state:** `S.facturas` and `S.cobranzas` are declared in the initial state (L303) but appear in **neither** `COL_KEYS` (L201) nor `BLOB_KEYS` (L203) — they are never persisted and never read back. Vestige of an invoicing/collections feature that was cut but not removed.
-- **Self-flagged throwaway code left in production:** comment at L2939 — *"TEMPORAL — borra TODOS los datos salvo clientes y proveedores… Borrar cuando no se use"* — a destructive data-wipe path shipped with a note to remove it later.
-- The two client-table renderers `updateCliTable` (L2902) and `updateProvTable` (L2920) are ~95% copy-paste of each other (same pagination, same alphabetical-separator logic, same row template) — classic un-abstracted duplication.
-- **Impact:** moderate. The duplication is contained, but it signals no refactoring discipline and multiplies the change surface.
+- **462 inline `onclick`** (+134 since 09-16), **638 inline `on*` handlers**, **2,303 inline `style=` attributes**, `#185fa5` hard-coded **233** times despite `styles.css` existing (169 lines, untouched since 2026-07-12). A `<style>` block still sits in `<head>` (**L23–76**).
+- **Navigation state is derived from markup text:** `n.classList.toggle('on',n.getAttribute('onclick')===\`nav('${p}')\`)` (**L4119**). If you rename a handler or add an argument, the menu highlight breaks.
+- Inline handlers force `script-src 'unsafe-inline'` in the CSP (L8–10; the comment there says so).
+- Unescaped interpolation is unchanged: `value="${bDash}"` (**L4302**, was L3058), and `hl()` (**L889**) still returns raw text wrapped in `<mark>`. Modals are built with raw `document.createElement('div')`+`innerHTML` side systems (e.g. `papelElegirParcial` L5236–5239, `__undoBtnRender` L9847) in parallel with the `om()`/`cm()` system (L7696/L7748).
+- **UX primitives as architecture:** 83 `alert`, 47 `confirm`, 25 `prompt` calls. Business input such as user creation (`crearUsuario` L434–435) and machine sheet size (`_cotMaqFmtPrompt` L2498) is collected with `prompt()`, so you can't test or validate it.
 
-### Criterion 6 — Error handling — **4/10**
+### Criterion 5 — Error handling & persistence integrity — **4/10** (unchanged)
 
-- ~50 `try/catch` blocks exist, but the dominant pattern is **swallow-and-continue**: `catch(e){}` (empty, e.g. L231, L7910) or `catch(e){console.warn(...)}` (L216, L261). Errors vanish into the browser console; there is no error reporting, no telemetry, no user-facing surfacing beyond the save indicator.
-- The **one** good pattern is the save path: `sk()` → `sv()` throws → `showSaveError()` exposes a "Reintentar" retry (L169–180). This is genuinely well done and should be the template for the rest of the app — but it is the exception, not the rule.
-- **Impact:** in production, a swallowed error during (say) a partial Firestore write leaves the in-memory `S` and the persisted state silently divergent, with no signal. For a data-of-record ERP, silent failure is the worst failure mode.
+- **Improved:** blob saves now update a single field instead of read-modify-write of the whole `_config` document: `await window._fsUpdate(ref,{[k]:cleanV})` with a `not-found` fallback to `setDoc(...,{merge:true})` (**L259–267**). This removes the cross-key lost-update race that 09-16 implied. It is still last-writer-wins *within* a key (two users editing `stockPapel` concurrently: one loses).
+- **Unchanged/worse:**
+  - **49 empty `catch(e){}`** blocks (e.g. L233 deleting a Firestore doc during save; L1678 insumos save; L2479–2480 inside `cotMaqExtra`; L3069 `sv('cotTrabajos')`; L4132 `actualizarBadgeExt`).
+  - **Non-atomic two-key saves with partial retry:** `await sv('insumosItems',…);await sv('insumosMovs',…)` then on failure `showSaveError('insumosItems',…)` (**L1716, 1720, 1750, 1775, 1802**). If the second write fails, the retry button (`retrySave` L176, single slot `window._pendingSave` L174) retries only `insumosItems`, and the movements log is silently not persisted. L1729 swallows it entirely.
+  - **Paths that bypass `sk()` also bypass sanitisation and undo:** `cotGuardar` calls `sv('cotTrabajos',…)` directly (**L2989**, also L3069), although `cotTrabajos` is listed in `_SAN_FIELDS` (L285). So the "single place" sanitizer claim in the comment at L281–283 is false for this collection. There are 18 direct `sv(` call sites outside `sk`.
+  - `sv()` for collections still awaits writes **sequentially per document** (L242–251), with no batch and no transaction (`runTransaction` used only 3×).
+  - **Unbounded logs stored inside a single document:** `stockMovs` and `insumosMovs` are `BLOB_KEYS` (L205), i.e. arrays inside `gp/_config`, which has Firestore's 1 MiB per-document ceiling shared by 23 config keys. This is an architectural time bomb: when the movement logs grow, **every** config save will start failing.
 
-### Criterion 7 — Testability — **3/10**
+### Criterion 6 — Testability & coverage — **2/10** (was 3)
 
-- A test file exists (`tests/pruebas.js`, 204 lines, run via `node tests/pruebas.js`) and is a good instinct. **But because the code is a non-modular single file, the tests cannot import the real functions** — they **re-implement** them inline and test the copies: `uid` (L14), `sanTxt` (L26), `_pagina` (L33), incremental-save logic (L46). The production `uid`/`sanTxt`/`_pagina` in `index.html` could drift from these copies and the tests would still pass. This is testing a parallel universe.
-- No DOM, integration, or end-to-end coverage of the 28 renderers, the quoting engine, or the Firestore layer — i.e. none of the actual risk surface is tested.
-- **Impact:** effectively untested where it matters. The single-file architecture is the *direct cause* — you cannot unit-test what you cannot import.
+- `tests/pruebas.js` has not changed since **2026-07-12**. It runs (59 ✓) but still tests **re-declared copies** (`uid` L14, `sanTxt` L26, `_pagina` L33, `puedeVerFinanzas` L65, `capNom` L94, `posesAuto` L151, …). Drift has already started: the test's `puedeVerFinanzas(email)` takes an argument, while production `puedeVerFinanzas()` (index.html **L689**) reads `rolUsuario()`.
+- **None of the new logic has a single test:** `cotCalc` per-quantity (`_cotPorCant` L2250), `cotPapelOpciones`/`_catCortes` (L953, L989), `cotPagCalc`/`_cotPagAplicar1` (L3338, L3466), `recomputeEstadoOT` (L4913), `stockLibrePara`/`papelChequearStock` (L5186, L5207). These are exactly the pure-ish money/stock calculations that are *easiest* to test and *most expensive* to get wrong. The structure prevents it: every one reads the global `S`/`cotW`, and some write it.
+- Test-to-code ratio has fallen from 204 test lines per 8,621 lines of code to 204 per 10,572, and the tests still cover none of the production code.
 
-### Criterion 8 — Build / deploy / dependency management — **3/10**
+### Criterion 7 — Build / dependency / deploy hygiene — **3/10** (unchanged)
 
-- **No build system, no `package.json`, no lockfile, no linter config anywhere** in the repo (verified: glob for `package.json`/`package-lock.json`/`*.config.js`/`.eslintrc*` returns nothing). The Netlify function (`interpretar.js`) relies on the platform's global `fetch` with **zero declared dependencies and no version pinning of the runtime** — reproducibility depends entirely on whatever Node version Netlify defaults to.
-- Front-end third-party code is loaded from CDNs: Tabler icons `@2.44.0` (L20) and Firebase `10.12.0` (L183–185). Versions *are* pinned (good), but there are **no Subresource Integrity (SRI) hashes** — a CDN compromise executes in the app.
-- Deploy is GitHub→Netlify static hosting; `netlify.toml` is minimal (publish `.`, functions dir, esbuild). Simple, which is a plus for a 4-user tool — but there is no CI, no test gate, no lint gate: `tests/pruebas.js` is run manually "antes de subir" (per its own header comment L5).
-- `firebase-config.js` commits the Firebase web config into the repo (L1–8). Firebase web keys are not strictly secret, but combined with the client-only architecture the security boundary rests entirely on Firestore rules (`firestore.rules`) — see `security.md`.
-- **Impact:** dependency drift and supply-chain exposure are unmanaged; there is no automated safety net between a commit and production.
+- Still **no `package.json`, lockfile, linter, formatter or CI** (glob: nothing outside `audit/`). `netlify.toml` (9 lines) has no build command, no test gate, no Node version.
+- CDN dependencies still have **no SRI**: Tabler icons `@2.44.0` (L20), Firebase `10.12.0` dynamic imports (L183–185, again at L439–440).
+- `interpretar.js` defaults to model `'claude-sonnet-5'` via env fallback (L11) and pins `anthropic-version: 2023-06-01` (L83); no declared runtime.
+- **Two live hosting targets:** `.firebase/hosting..cache` shows `index.html` deployed to Firebase Hosting on 2026-10-01, while `index.html` L6–7 redirects `graficapro-coma.web.app` to Netlify at runtime. There are two deploy pipelines, both fed from a Google Drive folder.
+- `firebase-config.js` is in `.gitignore` (L2) but is a hard runtime dependency (`<script src="firebase-config.js">` L121). A clean clone of the repo **cannot run**. Either Netlify isn't deploying from git, or production differs from git. I couldn't verify which; the buyer must ask.
+
+### Criterion 8 — Documentation, version control & bus factor — **2/10** (new criterion)
+
+- **Version control isn't being used.** `.git/logs/HEAD` has exactly one entry ("Initial commit", 2026-07-11); `refs/remotes/origin/main` dates from 2026-07-11, `FETCH_HEAD` from 2026-07-17. Since then `index.html` has changed continuously (last write 2026-10-02) in a **Google Drive** folder. `PENDIENTES.md` itself says "Google Drive guarda historial de versiones del archivo". There are no commits, branches, diffs or blame for ~2.5 months of changes, including every feature this audit was asked to verify.
+- **Documentation:** `PENDIENTES.md` is "Última actualización: 9/7/2026" and describes none of the September features (paper catalog, porCant, stock reservations, maq extra). There's no README, data-model doc or architecture doc. The only systematic documentation is this `audit/` folder.
+- **Positive:** inline comments are frequent, written in plain Spanish, and usually explain *why* (e.g. L236–238, L260–262, L2248–2258, L5179–5181). For a Spanish-speaking successor this is the main onboarding asset.
+- **Identity hard-coding** ties the system to named people: `puedeVerFinanzas` regex `/gerencia|admin|contab|direccion|esteban|juanpablo/` (L689); `crearUsuario` gated on `'esteban-gerencia'` (L431); dead `ADMIN_EMAIL='esteban@graficapro.com'` (L429, 1 occurrence, never read).
 
 ---
 
-## 3. Top risks that would BLOCK acquisition approval
+## 3. Verification of the changes claimed since 09-16
 
-1. **Single-file monolith → severe key-person risk.** 8,621-line `index.html`, ~8,500 lines of JS in one global-scope script (L122–8619), no modules. A new team cannot safely change or extend this without a lengthy, high-risk reverse-engineering effort. *This alone justifies a valuation haircut or an escrow/knowledge-transfer clause.*
-2. **No meaningful test coverage of the real code.** `tests/pruebas.js` re-implements logic (L14/26/33/46) rather than importing it; the 28 renderers, quoting engine, and persistence layer are untested. Any acquirer inherits a codebase where regressions cannot be caught automatically.
-3. **Silent-failure error handling on a system of record.** Empty/`console.warn`-only catches (L216, L231, L261, L7910) mean data-write failures can leave persisted and in-memory state divergent with no signal — unacceptable for an ERP holding the shop's quotes, orders, and costs.
-4. **State correctness depends on manual discipline.** Persistence requires the author to remember `sk()` after every one of hundreds of direct `S` mutations; sanitization depends on the `_SAN_FIELDS` map (L269–278) being kept in sync with every new field. Both are unenforced conventions, not guarantees.
-5. **No dependency management or supply-chain controls.** No `package.json`/lockfile; CDN scripts without SRI (L20, L183). Not reproducible, not auditable.
-
-## 4. Quick wins (fast score improvements — low effort, real gain)
-
-1. **Delete confirmed dead code:** remove `facturas`/`cobranzas` from `S` (L303) and the "TEMPORAL" data-wipe path (L2939). Immediate clarity, removes a destructive footgun. *(Crit 5)*
-2. **Collapse the 4 escapers into one** (`escHtml`, L832) and call it everywhere; delete `cotEsc`/`insEsc`/`escH`. *(Crit 4/5)*
-3. **Add SRI hashes** to the Tabler and Firebase `<link>`/import tags (L20, L183). *(Crit 8)*
-4. **Add a `package.json`** (even minimal) declaring the Node engine and any function deps, plus an `npm test` script wiring `tests/pruebas.js`, and a Netlify build step that fails the deploy if tests fail. Cheap CI gate. *(Crit 7/8)*
-5. **Stop swallowing errors:** change bare `catch(e){}` blocks to at least `console.error` + route critical ones (writes) through the existing `showSaveError` pattern (L169). *(Crit 6)*
-6. **Escape at render:** wrap live-search interpolations (`value="${bDash}"` L3058, `hl()` output L846) in `escHtml`, so correctness no longer depends on the save-time strip list. *(Crit 4)*
-
-## 5. Deeper architectural issues (require real refactoring investment)
-
-1. **Break the monolith into modules.** Even without a bundler, split into ES modules by domain (persistence, state, each feature's render+handlers, PDF, quoting engine) and load with `<script type="module">`. This is the prerequisite for everything else — real tests, parallel work, subsystem replacement. Largest single investment; largest payoff.
-2. **Introduce a state layer with dispatched mutations.** Replace direct `S.*` writes + manual `sk()` with a thin store that auto-persists on change (the `_docJson`/`_knownIds` diffing at L237–252 already hints at this). Eliminates the "forgot to call `sk()`" class of bugs and the ~30 loose UI `let`s.
-3. **Adopt a rendering approach that escapes by default.** Move from `innerHTML` string concatenation + 328 inline `onclick`s to either a tiny template helper that escapes interpolations and uses event delegation, or a lightweight view library. Removes the entire unescaped-interpolation and global-handler-coupling class of problems.
-4. **Decompose the 200–450-line functions** (`rFichaVer` L4721, `rCotizador` L2572, `rAnalOT` L5254) into composable sub-renderers, and de-duplicate `updateCliTable`/`updateProvTable` into one parameterized table renderer.
-5. **Build a real test suite against the (now importable) modules** — unit tests for the quoting/costing engine, and DOM/integration tests for the critical renderers and the Firestore layer — wired into CI as a merge gate.
+| Claimed change | Verified? | Architectural assessment |
+|---|---|---|
+| Per-quantity configs (`porCant`, `_cotSwapA`/`_cotUnswap`) | **Yes** — L2248–2307, `cotCalc` L2052–2053, 28 `porCant` refs | Works through mutable pointer swapping on global `cotW`, with a hand-maintained invariant at 7 sites. Its UI-only field `_piezasBase` leaks into `cotCalc`. **Fragile.** |
+| Paper catalog (`COT_PAPEL_CAT_SEED`, `cotPapelOpciones`, `cotPapelSelResolver`) | **Yes** — L925–1045 | The cleanest new code in the file: small, well-commented helpers (`_catCortes`, `_catOrigenes`). But prices are hard-coded in source, and the resolver chain ends in side-effecting `cotMaqExtra()`. It also recomputes all options (≤ formats × 16 cuts × 2 machines) on every resolve, with no memoisation. |
+| Extra machines (`cotMaqExtra` auto-repair) | **Yes** — L2469–2483 | **A getter that writes**: it mutates `S.cotConfig`, `S.externos` and debounces `sk('cotConfig')`, and it's invoked from render and pricing paths. "Auto-repair" means the data model can lose entries and the code compensates silently. |
+| Blob saves use `updateDoc` per field in `sv()` | **Yes** — L255–273 | Genuine improvement (removes the whole-document read-modify-write). Within-key last-writer-wins remains, as does the 1 MiB single-document ceiling. |
+| OT state machine `recomputeEstadoOT` | **Yes** — L4913–4922, 12 callers | Good direction. Still bypassed by a direct write (L4806), and the step-transition logic it depends on is duplicated 5×. |
+| Stock reservation (`papelChequearStock`, `stockLibrePara`, `reservaOT` comma lists) | **Yes** — L5173–5228 | Denormalised string FK keyed on OT number, spread across two independently-saved stores, with no transaction. "Check" function with write side-effects. |
+| Paginado loop `_cotPagAplicar1` | **Yes** — L3455–3581 | 117-line mutating function inside a 3-iteration fixed-point loop with silent non-convergence. |
+| (Not claimed) Undo subsystem | Found — L9847 | Monkey-patches `sk` and `render` on a single 2,490-char line; whole-collection deep clones on every save of 4 collections. |
 
 ---
 
-*Prepared for internal due-diligence. Scores reflect an acquisition lens (production-readiness for a new owning team), not whether the tool currently works for its 4 internal users — it evidently does.*
+## 4. Top risks that would BLOCK acquisition approval
+
+1. **No version control of the product for ~2.5 months.** One local commit (2026-07-11); all later work exists only as a Google Drive file. You can't audit, diff, bisect, roll back or attribute anything after July, and git can't reproduce production (it also lacks `firebase-config.js`).
+2. **Single 10.4k-line global script growing at ~120 lines/day, now with runtime monkey-patching of `sv`/`sk`/`render`** (L486–497, L9847). Behaviour is no longer visible at call sites; key-person risk is increasing.
+3. **The money and stock logic is untested and untestable as written.** `cotCalc`, the paper optimiser, paginado, OT state and stock reservation all read and write globals. The only tests (unchanged since July) exercise copies of 10 utilities.
+4. **Data-integrity design relies on conventions and timers.** That covers the manual `_cotUnswap` invariant (7 sites), the 2,000/2,200 ms snapshot suppression (L533/L545), collection-wide undo that can revert other users' edits, non-atomic `insumosItems`+`insumosMovs` saves with single-key retry (L1716 etc.), and `sk()` bypasses that skip sanitisation (L2989).
+5. **Single-document storage for growing logs.** `stockMovs` and `insumosMovs` live in `gp/_config` with 21 other keys (L205), so the 1 MiB Firestore document limit is a hard, unmonitored ceiling. When it's hit, every configuration save fails.
+
+## 5. Quick wins (low effort, measurable score gain)
+
+1. **Commit the current working copy to git today and make every deploy go through git** (and add `firebase-config.js` to the deploy via an env-injected file, or commit it; it isn't secret). Biggest risk reduction per minute of effort. *(Crit 7, 8)*
+2. **Route every save through one function:** replace the 18 direct `sv(` calls (L1055, L1635–1802, L2989, L3069) with `sk()`, and give `sk` a multi-key form `sk(['insumosItems','insumosMovs'])` whose retry covers all keys. *(Crit 3, 5)*
+3. **Make `cotMaqExtra()` read-only:** move the auto-repair (L2476–2481) into `cargarDatos()` (L449) as a one-time migration. The pricing chain then becomes pure. *(Crit 1, 3)*
+4. **Collapse duplicates:** one `escHtml` (delete `cotEsc` L909, `insEsc` L1621, `escH` L8406); one `snapshotCalc(cotW)` for L2978/L3260; one `avanzarPaso(o,p)` for the 5 transition copies; a `getOT(id)` for the 54 `find` calls. *(Crit 2)*
+5. **Point the tests at real code:** move ~15 pure helpers (`_catCortes`, `cotPosesSug`, `_cotPorCant`, `recomputeEstadoOT`, `stockLibrePara` with injected `S`) into a `lib.js` loaded by both `index.html` and `tests/pruebas.js`. Add a `package.json` with `"test"` and a Netlify build command that runs it. *(Crit 6, 7)*
+6. **Delete dead code and footguns:** `facturas`/`cobranzas` (L318), `ADMIN_EMAIL` (L429), the stale "TEMPORAL" comment above `wipeDatos` (L4183). Remove the duplicated base64 logo (L81 vs L147) and serve logos as files (−138 KB). *(Crit 2)*
+7. **Rename side-effecting functions** to say what they do (`papelChequearStock` → `papelReservarSiAlcanza`) and log a warning when `cotPagAplicar`'s loop doesn't converge (L3460). *(Crit 2, 5)*
+
+## 6. Deeper architectural issues (require refactoring investment)
+
+1. **Split into ES modules by domain** (persistence, state/store, cotizador engine, paper catalog, paginado, OT workflow, stock, views, PDF). The engine modules should take inputs and return outputs: no `S`, no `cotW`, no `window`. This is the prerequisite for everything below.
+2. **Replace the three monkey-patch layers with an explicit store:** `dispatch(action)` → mutate → persist (batched/transactional per action) → notify views, with undo implemented as inverse actions per *document*, not whole-collection snapshots. Replace timer-based snapshot suppression with per-document versioning (`updatedAt` / `rev`) and merge.
+3. **Model the per-quantity configuration explicitly** (`cotizacion.configs[cantidad] = {piezas, margen}` with a resolver), instead of swapping `cotW.piezas` pointers.
+4. **Normalise stock reservations** into their own collection (`reservas/{id}: {stockItemId, otId, pliegos, estado}`), written in a transaction with the OT change. Move `stockMovs`/`insumosMovs` out of `_config` into per-document collections.
+5. **Rendering:** move to event delegation (`data-action` attributes; currently **0** in the code) and a small escaping template helper, so the 462 inline `onclick`s, `unsafe-inline` CSP and `onclick`-string introspection (L4119) can be removed. Move the 2,303 inline styles into `styles.css` classes.
+6. **Move business reference data out of source:** `COT_SEED`, `COT_PAPEL_CAT_SEED` and machine limits `COT_MAQ_MAX` should live in Firestore with an admin UI (partly exists). Define the AI contract (`interpretar.js` schema) in one shared JSON Schema file used by both the function and the client mapper.
+
+---
+
+## 7. Changes vs 2026-09-16 audit
+
+**Improved**
+- Blob persistence: per-field `updateDoc` with create-fallback (L259–267) replaces whole-document read-modify-write.
+- OT status derivation centralised in `recomputeEstadoOT` (L4913, 12 callers).
+- The destructive data wipe is no longer a casual path: `wipeDatos` requires the console code `'CONFIRMAR-BORRAR-TODO'` plus two confirms (L4274–4278).
+- Paper catalog helpers (L943–1045) are the best-factored new code in the file.
+
+**Got worse**
+- Size: 8,621 → **10,572** lines (+22.6%); `rCotizador` 308 → **346**, `rCostos` 201 → **281**.
+- Inline `onclick` 328 → **462**; `window.*` refs 125 → **251** (58 distinct globals); `innerHTML=` 68 → **79**.
+- **New hidden control flow:** `sv`, `sk` and `render` monkey-patched at runtime (L486–497, L9847).
+- **New impure engine path:** `cotCalc` → … → `cotMaqExtra()` writes config (L2469–2481).
+- **New manual invariants:** `porCant` pointer swap (7 sites), paginado fixed-point loop (L3460).
+- Test coverage is relatively lower: no tests added for any September feature.
+- Version-control gap is now ~2.5 months (single commit 2026-07-11).
+
+**Unchanged (all 09-16 quick wins still open)**
+- Single global script, no modules, Firebase re-exported to `window` (L189–198).
+- Four escapers (L875, L909, L1621, L8406); `value="${bDash}"` unescaped (L4302); raw `hl()` (L889).
+- Dead `facturas`/`cobranzas` in `S` (L318); `updateCliTable`/`updateProvTable` duplication (L4146/L4164).
+- No `package.json`, lockfile, linter, CI or SRI (L20, L183–185).
+- Tests still re-implement production functions (`tests/pruebas.js` unchanged since 2026-07-12).
+- Inline `<style>` in `<head>` (L23–76) despite `styles.css`.
+
+**Net:** of the 6 quick wins from 09-16, only one is partly done (the wipe path is now gated, but the code still ships). The other five are untouched. Score **3 → 2.5**.
+
+---
+
+*Prepared for internal due-diligence. Scores reflect an acquisition lens (production-readiness for a new owning team), not whether the tool works for its internal users. It evidently does, and its domain modelling of a print shop is the asset of value.*

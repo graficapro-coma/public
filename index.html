@@ -24,6 +24,11 @@
 /* Solo estilos mínimos que conviene tener siempre embebidos */
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 
+/* Modo taller (usuario "taller"): solo la pantalla del maquinista, a todo el ancho */
+body.modo-taller .sb,body.modo-taller .menu-btn,body.modo-taller .sb-backdrop,body.modo-taller #undo-fab,body.modo-taller #backup-reminder{display:none !important}
+body.modo-taller .app{display:block}
+body.modo-taller .main{margin-left:0 !important;padding:12px !important}
+
 /* ============ RESPONSIVE: PC / tablet / celular ============ */
 .menu-btn{display:none;position:fixed;top:10px;left:10px;z-index:9001;width:42px;height:42px;border-radius:10px;border:1px solid rgba(0,0,0,.15);background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:20px;color:#185fa5;cursor:pointer;align-items:center;justify-content:center}
 .sb-backdrop{display:none;position:fixed;inset:0;background:rgba(10,20,30,.4);z-index:8999}
@@ -94,6 +99,8 @@
   <div class="ni" onclick="nav('plan')"><i class="ti ti-calendar-event"></i>Planificación <span id="badge-plan" style="display:none;margin-left:auto;background:#c0392b;color:#fff;border-radius:10px;padding:0 7px;font-size:10px;font-weight:700;line-height:17px"></span></div>
   <div class="ni" onclick="nav('entregas')"><i class="ti ti-truck-delivery"></i>Entregas y fletes</div>
   <div class="ni" onclick="nav('rem')"><i class="ti ti-clipboard-list"></i>Remitos internos</div>
+  <div class="ni" onclick="nav('mov')" title="Qué hay que subir, bajar, llevar a externos o traer"><i class="ti ti-arrows-up-down"></i>Movimientos <span id="badge-mov" style="display:none;margin-left:auto;background:#7b3fa0;color:#fff;border-radius:10px;padding:0 7px;font-size:10px;font-weight:700;line-height:17px"></span></div>
+  <div class="ni" onclick="nav('taller')" title="Pantalla del maquinista: iniciar, pausar y terminar trabajos (para tablet o celular)"><i class="ti ti-tool"></i>Modo taller</div>
   <div class="ns">Análisis</div>
   <div class="ni fin-only" onclick="nav('analot')"><i class="ti ti-chart-bar"></i>Análisis OT x OT</div>
   <div class="ni" onclick="nav('tiempos')"><i class="ti ti-clock-hour-4"></i>Tiempos de producción</div>
@@ -617,7 +624,7 @@ async function iniciarSinMigrar(){
   migrarPasos9();
   migrarAprobarExistentes();
   limpiarOTsDemo();
-  nav('dash');
+  nav(esUsuarioTaller()?'taller':'dash');
   try{dolarAutoIniciar();}catch(e){console.warn('dólar automático',e);}
 }
 // ===== Dólar BNA automático (dolarapi.com) =====
@@ -1736,12 +1743,21 @@ function rCostos(){
     ${fila('Peso máx. flete propio','pesoMaxKg',c.pesoMaxKg,'kg — si la cotización supera este peso, se muestra alerta de flete')}
     ${fila('Pinza (offset)','pinzaCm',c.pinzaCm,'cm libres arriba del pliego (por donde lo toma la máquina) — se descuenta al calcular poses')}
     ${fila('Cola / colorímetro (offset)','colaCm',cotPinzaCola('SM52').c,'cm libres abajo del pliego (tira de control de color) — en trabajos simples se puede achicar')}
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><label style="width:200px;font-size:12px;color:#555">Redondear precio de venta</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" ${c.redondeoVenta===false?'':'checked'} onchange="if(!S.cotConfig)S.cotConfig={};S.cotConfig.redondeoVenta=this.checked;costosSave('cotConfig')" style="width:auto">
+      <span style="color:#888">siempre para arriba: hasta $ 50.000 a múltiplos de 500 · hasta $ 200.000 de 1.000 · hasta $ 1.000.000 de 5.000 · más, de 10.000 (ej. 360.838 → 365.000)</span></label></div>
     ${fila('Calle horizontal ↔','calleCm',cotCalleHV({}).h,'cm libres entre columnas de piezas (a lo largo del pliego). En cada trabajo se puede cambiar; corte seco = 0')}
     ${fila('Calle vertical ↕','calleVCm',cotCalleHV({}).v,'cm libres entre filas de piezas. Estuches: mínimo entre cortes en cada sentido')}
     ${fila('Kilos por caja','kgPorCaja',c.kgPorCaja,'kg — en el costeo, CAJAS en modo "cajas por peso" suma 1 caja cada estos kilos del trabajo')}
     ${fila('Ancho de guillotina','guillotinaCm',c.guillotinaCm,'cm — largo máximo de corte (decide si un pliego se puede cortar cruzado)')}
     <div style="font-size:11px;color:#888;margin-top:10px"><i class="ti ti-info-circle"></i> El dólar BNA venta se <b>actualiza solo</b> (dolarapi.com) de lunes a viernes a las 10, 11, 12, 13, 14 y 15 h${c.dolarAuto&&c.dolarAuto.cuando?` — última: <b style="color:#1a7f37">${cotEsc(c.dolarAuto.cuando)}</b> ($ ${cotFmtDec(+c.dolarAuto.valor,2)}${+c.dolarAuto.anterior&&+c.dolarAuto.anterior!==+c.dolarAuto.valor?`, antes $ ${cotFmtDec(+c.dolarAuto.anterior,2)}`:''})`:''}. Lo usan todos los costeos y la cláusula dólar del presupuesto. Si lo escribís a mano o usás "Traer BNA", vale hasta el próximo horario.</div>
     </div>`;
+    // Puestos del Modo Taller con su operario habitual (se precarga; en el taller se puede cambiar)
+    h+=`<div class="card" style="padding:18px;max-width:620px;margin-top:12px">
+      <div style="font-weight:700;margin-bottom:4px"><i class="ti ti-tool"></i> Puestos del taller</div>
+      <div style="font-size:11px;color:#888;margin-bottom:10px">El operario que aparece precargado en cada puesto del Modo Taller. Si ese día trabaja otro, lo cambia el mismo maquinista en la pantalla del taller.</div>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">${tallerPuestos().map((x,i)=>`<tr style="border-top:0.5px solid rgba(0,0,0,.06)"><td style="padding:5px 6px;font-weight:700;color:#185fa5;width:170px">${cotEsc(x.n)}</td>
+        <td style="padding:5px 6px"><input value="${cotEsc(x.op||'')}" onchange="tallerPuestoOpEd(${i},this.value)" style="width:100%;padding:5px 7px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px"></td></tr>`).join('')}</table></div>`;
   }
   if(costosTab==='numeracion'){
     if(!S.ids)S.ids={};
@@ -2247,6 +2263,14 @@ function _tercCosto(w,cant){
   const base=+w.cantidad||0,vb=val(base);
   if(vb!=null&&base>0)return t.pu?vb*cant:vb*(cant/base);
   return 0;
+}
+// Precio de venta redondeado SIEMPRE para arriba, con escalón según el monto (Configuración → "Redondear precio de venta"):
+// hasta $50.000 → múltiplo de 500 · hasta $200.000 → 1.000 · hasta $1.000.000 → 5.000 · más → 10.000. Ej. 360.838 → 365.000
+function cotRedondearVenta(v){
+  v=+v||0;if(v<=0)return Math.round(v);
+  if(cotCfg().redondeoVenta===false)return Math.round(v);
+  const paso=v<=50000?500:(v<=200000?1000:(v<=1000000?5000:10000));
+  return Math.ceil(v/paso-1e-9)*paso;
 }
 // Costo de un proceso de la tabla (cotOtros) para c millares.
 // Normal: el 1er millar es el mínimo + adicionales × millar sig. "Por pliego" (proporcional): sin mínimo,
@@ -2922,6 +2946,7 @@ function cotAutoPoses(k){
     p.posturas=sug;
     const i=document.getElementById('cz-p'+k+'-posturas');if(i)i.value=String(sug);
   }
+  try{_impCorregirRetiracion(p);}catch(e){}
 }
 // Lupa: el dibujo del pliego de una pieza, grande (para revisar el armado o mostrarle a pre-prensa)
 function cotZoomPliego(k){
@@ -3192,6 +3217,7 @@ function cotPzEd(k,campo,val){
     if(campo==='impDescPct'){p.impDescPct=Math.min(100,Math.max(-200,p.impDescPct||0));cotSync();cotRerender();return;}
     if(campo==='posturas'&&!p._pag){ // poses a mano = FIJAS (ej. troquel del cliente): el papel se elige para esas poses
       if(p.posturas>0)p.posFijas=true;else delete p.posFijas;
+      try{_impCorregirRetiracion(p);}catch(e){} // poses impares → sin retiración
       if(!p.papelCod&&p.papelSel&&p.papelSel.fam)_cotPapPost(k);else cotRerender();
       try{cotSync();}catch(e){} // aviso "fijas" al lado de Posturas
       return;
@@ -3927,7 +3953,8 @@ function cotEmbedAplicar(){
     if(old&&old.manual){ // el usuario fijó el precio a mano → se respeta, solo se actualiza el costo real de referencia
       return {qty:q,subtotal:old.subtotal,precio:old.precio,manual:true,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};
     }
-    return {qty:q,subtotal:Math.round(venta),precio:unit,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};
+    const sub=cotRedondearVenta(venta);
+    return {qty:q,subtotal:sub,precio:q?sub/q:unit,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};
   };
   const filas=[mkFila(cotW.cantidad,cotW.calc.venta,cotW.calc.unitario,cotW.calc.total)];
   (cotW.calcVariantes||[]).forEach(v=>filas.push(mkFila(v.cantidad,v.venta,v.unitario,v.total)));
@@ -3988,7 +4015,7 @@ function cotActualizarItem(it){
       const sub=Math.round((+old.subtotal||0)*k);
       f={qty:q,subtotal:sub,precio:q?sub/q:0,manual:true,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};
       notas.add(k!==1?'Precio fijado a mano: se ajustó en la misma proporción que el costo':'Precio fijado a mano: queda igual');
-    }else f={qty:q,subtotal:Math.round(venta),precio:unit,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};
+    }else{const sub=cotRedondearVenta(venta);f={qty:q,subtotal:sub,precio:q?sub/q:unit,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};}
     res.filas.push({qty:q,antes:old?(+old.subtotal||0):0,despues:f.subtotal});
     return f;
   };
@@ -4947,7 +4974,9 @@ function nav(p){
 }
 let _lastRenderPg=null,_scrollPorPg={};
 function render(){
-  const fns={dash:rDash,cli:rCli,prov:rProv,cot:rCot,ot:rOT,seg:rSeg,papel:rPapel,plan:rPlan,entregas:rEntregasView,ficha:rFicha,rem:rRem,gas:rGas,analot:rAnalOT,tiempos:rTiempos,capacidad:rCapacidad,balmes:rBalMes,balaño:rBalAño,costos:rCostos,cotizador:rCotizador,insumos:rInsumos};
+  if(esUsuarioTaller()&&curPg!=='taller'&&curPg!=='mov')curPg='taller'; // el usuario del taller solo ve su pantalla (y Movimientos)
+  document.body.classList.toggle('modo-taller',esUsuarioTaller());
+  const fns={taller:rTaller,mov:rMov,dash:rDash,cli:rCli,prov:rProv,cot:rCot,ot:rOT,seg:rSeg,papel:rPapel,plan:rPlan,entregas:rEntregasView,ficha:rFicha,rem:rRem,gas:rGas,analot:rAnalOT,tiempos:rTiempos,capacidad:rCapacidad,balmes:rBalMes,balaño:rBalAño,costos:rCostos,cotizador:rCotizador,insumos:rInsumos};
   const pg=Q('pg');
   // Guardar la posición de scroll de la página que estábamos viendo (para no saltar arriba al re-renderizar)
   if(pg&&_lastRenderPg!==null)_scrollPorPg[_lastRenderPg]=pg.scrollTop;
@@ -4956,6 +4985,7 @@ function render(){
   if(curPg==='cli'){updateCliTable();}
   if(curPg==='prov'){updateProvTable();}
   try{actualizarBadgeExt();}catch(e){} // contador de envíos a externos en el menú
+  try{const m=movPendientes(),n=m.subir.length+m.bajar.length+m.llevar.length+m.traer.length,b=document.getElementById('badge-mov');if(b){b.textContent=n;b.style.display=n?'':'none';}}catch(e){}
   // Restaurar scroll si seguimos en la misma página; si cambiamos de página, arriba
   if(pg){
     const y=mismaPg?(_scrollPorPg[curPg]||0):0;
@@ -5123,8 +5153,120 @@ async function wipeDatos(codigo){
     curPg='dash';render();
   }catch(e){alert('Hubo un error al borrar: '+(e&&e.message||e));}
 }
+// ===================== PANEL DE CONTROL VISUAL =====================
+// Indicadores de colores, estado de cada máquina / proceso, trabajos con fecha límite y dos gráficos.
+const DASH_COL={azul:'#256abf',verde:'#178a5e',naranja:'#d95926',violeta:'#6250d6',rojo:'#d03b3b',gris:'#6b6a66'};
+function _dashDias(iso){if(!iso)return null;const h=new Date();h.setHours(0,0,0,0);return Math.round((new Date(String(iso).slice(0,10)+'T00:00:00')-h)/864e5);}
+function _dashEtapa(o){const p=(o.pasos||[]).find(q=>q&&!q.na&&q.estado!=='na'&&q.estado!=='done');return p?p:null;}
+function _dashProgreso(o){const ps=(o.pasos||[]).filter(q=>q&&!q.na&&q.estado!=='na');if(!ps.length)return 0;return Math.round(ps.filter(q=>q.estado==='done').length/ps.length*100);}
+function dashVisualHTML(){
+  const fin=puedeVerFinanzas();
+  const activas=(S.ordenes||[]).filter(o=>o&&!o.archivada&&o.estado!=='entregada'&&o.estado!=='cancelada');
+  const atrasadas=activas.filter(o=>o.entrega&&_dashDias(o.entrega)<0);
+  const prox7=activas.filter(o=>o.entrega&&_dashDias(o.entrega)>=0&&_dashDias(o.entrega)<=7);
+  const enProd=activas.filter(o=>o.estado==='en_produccion');
+  const enCurso=activas.reduce((n,o)=>n+(o.pasos||[]).filter(p=>p&&p.estado==='active').length,0);
+  const sinAprobar=activas.filter(o=>!otAprobada(o));
+  const listas=activas.filter(o=>o.estado==='lista');
+  const mesIni=new Date();mesIni.setDate(1);const mesIso=fmtD(mesIni);
+  const cotAbiertas=(S.cotizaciones||[]).filter(c=>c&&(c.estado==='enviada'||c.estado==='borrador'));
+  const cotAprobMes=(S.cotizaciones||[]).filter(c=>c&&c.estado==='aprobada'&&String(c.fecha||'')>=mesIso);
+  const $k=v=>'$ '+(v>=1e6?(v/1e6).toLocaleString('es-AR',{maximumFractionDigits:1})+' M':Math.round(v/1000).toLocaleString('es-AR')+' k');
+  const tile=(col,ico,titulo,valor,sub,click)=>`<div onclick="${click||''}" style="cursor:${click?'pointer':'default'};background:${col};color:#fff;border-radius:14px;padding:14px 16px;min-width:0;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="font-size:12px;font-weight:600;opacity:.92">${titulo}</div><i class="ti ti-${ico}" style="font-size:22px;opacity:.85"></i></div>
+      <div style="font-size:28px;font-weight:800;line-height:1.15;margin-top:4px">${valor}</div>
+      <div style="font-size:11px;opacity:.9;margin-top:2px">${sub}</div></div>`;
+  let h=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:16px">`;
+  h+=tile(DASH_COL.azul,'player-play','En producción',enProd.length,`${enCurso} paso${enCurso!==1?'s':''} en curso ahora`,"nav('seg')");
+  h+=tile(atrasadas.length?DASH_COL.rojo:DASH_COL.gris,'alert-triangle','Atrasadas',atrasadas.length,atrasadas.length?'pasó la fecha de entrega':'nada atrasado',"fSeg='atr';nav('seg')");
+  h+=tile(DASH_COL.naranja,'calendar-due','Entregas 7 días',prox7.length,`${listas.length} lista${listas.length!==1?'s':''} para entregar`,"nav('entregas')");
+  h+=tile(DASH_COL.violeta,'clipboard-check','OT por aprobar',sinAprobar.length,'esperan recursos / aprobación',"nav('ot')");
+  h+=tile(DASH_COL.verde,'file-invoice','Cotizaciones abiertas',cotAbiertas.length,fin?$k(cotAbiertas.reduce((s,c)=>s+(+c.subtotal||0),0))+' en juego':'borradores y enviadas',"nav('cot')");
+  if(fin)h+=tile('#184f95','cash','Aprobado este mes',$k(cotAprobMes.reduce((s,c)=>s+(+c.subtotal||0),0)),`${cotAprobMes.length} cotizaci${cotAprobMes.length!==1?'ones':'ón'} · sin IVA`,"nav('cot')");
+  h+=`</div>`;
+  // ---- Máquinas y procesos ----
+  const sem=(()=>{const d=new Date();const dow=(d.getDay()+6)%7;d.setDate(d.getDate()-dow);const f=new Date(d);f.setDate(f.getDate()+5);return {ini:fmtD(d),fin:fmtD(f)};})();
+  const puestos=tallerPuestos();
+  const tarjetaMaq=(nombre,ico,activo,pend,proximo,cargaPct,extra)=>{
+    const est=activo?(activo.p.pausa?{t:'EN PAUSA',c:'#c47d16',bg:'#fff4e2'}:{t:'TRABAJANDO',c:'#178a5e',bg:'#e7f6ee'}):{t:'LIBRE',c:'#6b6a66',bg:'#f1f0ec'};
+    const barCol=cargaPct==null?'#ccc':(cargaPct>95?DASH_COL.rojo:(cargaPct>75?'#e08a00':'#178a5e'));
+    return `<div style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:12px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><div style="font-weight:800;font-size:14px;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><i class="ti ti-${ico}" style="color:#256abf"></i> ${cotEsc(nombre)}</div>
+        <span style="font-size:10px;font-weight:800;color:${est.c};background:${est.bg};border-radius:20px;padding:2px 8px;white-space:nowrap">${est.t}</span></div>
+      <div style="font-size:12px;color:#333;margin-top:6px;min-height:32px;line-height:1.35">${activo?`<b style="cursor:pointer;color:#185fa5" onclick="om('vot',${activo.o.id})">${cotEsc(activo.o.num)}</b> · ${cotEsc(activo.o.nombreCorto||activo.o.descripcion||'')}${activo.p.operario?`<div style="color:#888;font-size:11px">${cotEsc(activo.p.operario)}${activo.p.pausa?' · '+cotEsc(activo.p.pausa.motivo):''}</div>`:''}`:(proximo?`<span style="color:#888">Próximo:</span> <b style="cursor:pointer;color:#185fa5" onclick="om('vot',${proximo.o.id})">${cotEsc(proximo.o.num)}</b> · ${cotEsc(proximo.o.nombreCorto||proximo.o.descripcion||'')}`:'<span style="color:#aaa">Sin trabajos en espera</span>')}</div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#666;margin-top:6px"><span><b style="color:#1e293b;font-size:13px">${pend}</b> en espera</span>${extra||(cargaPct!=null?`<span>carga semana <b style="color:${barCol}">${cargaPct}%</b></span>`:'')}</div>
+      ${cargaPct!=null?`<div style="height:6px;background:#eceae4;border-radius:4px;margin-top:4px;overflow:hidden" title="Horas planificadas esta semana sobre la capacidad (11 h por día hábil)"><div style="height:100%;width:${Math.min(100,cargaPct)}%;background:${barCol};border-radius:4px"></div></div>`:''}
+    </div>`;
+  };
+  let maqs='';
+  // Pre-prensa
+  {const items=[];activas.filter(otAprobada).forEach(o=>(o.pasos||[]).forEach((p,i)=>{if(p&&['ppd','ctp'].includes(pasoCol(p))&&!p.na&&p.estado!=='na'&&p.estado!=='done')items.push({o,p,i});}));
+   const act=items.find(x=>x.p.estado==='active');const mm=(S.planificacion&&S.planificacion['Pre-prensa'])?capMetricas('Pre-prensa',sem.ini,sem.fin):null;
+   maqs+=tarjetaMaq('Pre-prensa','palette',act,items.filter(x=>x.p.estado!=='active').length,items.find(x=>x.p.estado!=='active'),mm&&mm.cap?Math.round(mm.prodH/mm.cap*100):null);}
+  puestos.forEach(pu=>{
+    let items=[];try{items=tallerTrabajos(pu);}catch(e){}
+    const act=items.find(x=>x.p.estado==='active');const resto=items.filter(x=>x.p.estado!=='active');
+    const mm=(S.planificacion&&S.planificacion[pu.n])?capMetricas(pu.n,sem.ini,sem.fin):null;
+    const ico=pu.tipo==='imp'?'printer':(pu.tipo==='corte'?'cut':'tool');
+    maqs+=tarjetaMaq(pu.n,ico,act,resto.length,resto[0],mm&&mm.cap?Math.round(mm.prodH/mm.cap*100):null);
+  });
+  // Externos
+  {let ex=[];try{ex=extItems();}catch(e){}
+   const afuera=ex.filter(x=>x.est==='enviado'),atr=afuera.filter(x=>x.atraso>0),enviar=ex.filter(x=>x.est==='enviar');
+   maqs+=`<div onclick="planMaq='__ENVIOS__';nav('plan')" style="cursor:pointer;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:12px">
+     <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:14px;color:#1e293b"><i class="ti ti-truck-delivery" style="color:#256abf"></i> Externos</div>
+     ${atr.length?`<span style="font-size:10px;font-weight:800;color:#fff;background:${DASH_COL.rojo};border-radius:20px;padding:2px 8px"><i class="ti ti-alert-triangle"></i> ${atr.length} ATRASADO${atr.length>1?'S':''}</span>`:''}</div>
+     <div style="display:flex;gap:14px;margin-top:10px;font-size:11px;color:#666"><div><b style="font-size:20px;color:#1e293b">${afuera.length}</b><br>afuera</div><div><b style="font-size:20px;color:#c05600">${enviar.length}</b><br>para enviar</div><div><b style="font-size:20px;color:${atr.length?DASH_COL.rojo:'#1e293b'}">${atr.length}</b><br>atrasados</div></div></div>`;}
+  h+=`<div style="display:flex;justify-content:space-between;align-items:baseline;margin:4px 0 8px"><div style="font-size:15px;font-weight:800;color:#1e293b"><i class="ti ti-building-factory-2"></i> Máquinas y procesos</div><a href="#" onclick="nav('plan');return false" style="font-size:12px;color:#185fa5">Ver planificación →</a></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:16px">${maqs}</div>`;
+  // ---- Trabajos con fecha límite + gráficos ----
+  const orden=activas.filter(o=>o.entrega).sort((a,b)=>String(a.entrega).localeCompare(String(b.entrega))).slice(0,10);
+  const chip=d=>{if(d==null)return '';const [t,c,bg]=d<0?[`${-d} d atrasada`,'#fff',DASH_COL.rojo]:(d===0?['Hoy','#fff','#d95926']:(d===1?['Mañana','#7a3a00','#ffd9b8']:(d<=7?[`en ${d} días`,'#6b4a00','#ffeab0']:[`en ${d} días`,'#3d3c38','#ecebe6'])));return `<span style="font-size:11px;font-weight:800;color:${c};background:${bg};border-radius:20px;padding:3px 9px;white-space:nowrap">${t}</span>`;};
+  let tabla=`<div style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:12px;min-width:0">
+    <div style="font-size:15px;font-weight:800;color:#1e293b;margin-bottom:8px"><i class="ti ti-calendar-time"></i> Trabajos por fecha de entrega</div>`;
+  if(!orden.length)tabla+=`<div style="color:#999;font-size:13px;padding:8px 0">No hay trabajos con fecha de entrega.</div>`;
+  orden.forEach(o=>{const et=_dashEtapa(o),pg=_dashProgreso(o),d=_dashDias(o.entrega);
+    tabla+=`<div onclick="om('vot',${o.id})" style="cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:8px 0;border-top:0.5px solid rgba(0,0,0,.07)">
+      <div style="min-width:0"><b style="color:#185fa5">${cotEsc(o.num)}</b> <span style="color:#555;font-size:12px">· ${cotEsc(cNom(o.clienteId))}</span><div style="font-size:12px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${cotEsc(o.nombreCorto||o.descripcion||'')}</div></div>
+      <div style="text-align:right">${chip(d)}<div style="font-size:10px;color:#888;margin-top:3px">${_fDMY(o.entrega)}</div></div>
+      <div style="grid-column:1/-1;display:flex;align-items:center;gap:8px"><div style="flex:1;height:6px;background:#eceae4;border-radius:4px;overflow:hidden"><div style="height:100%;width:${pg}%;background:${DASH_COL.azul};border-radius:4px"></div></div>
+        <span style="font-size:11px;color:#666;white-space:nowrap">${pg}% · ${et?cotEsc(_movNom(et))+(et.estado==='active'?' (en curso)':''):'listo'}${!otAprobada(o)?' · <b style="color:#6250d6">sin aprobar</b>':''}</span></div></div>`;});
+  tabla+=`</div>`;
+  // Gráfico: OT activas por etapa (una sola serie → un solo color)
+  const etapas=[['ppd','Pre-prensa'],['ctp','CTP'],['papel','Papel'],['corte','Corte'],['imp','Impresión'],['term','Terminación'],['ext','Externos'],['cc','Control'],['ent','Entrega']];
+  const cnt={};activas.forEach(o=>{const et=_dashEtapa(o);if(et){const k=pasoCol(et);cnt[k]=(cnt[k]||0)+1;}});
+  const maxE=Math.max(1,...etapas.map(([k])=>cnt[k]||0));
+  let graf=`<div style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:12px;min-width:0">
+    <div style="font-size:15px;font-weight:800;color:#1e293b;margin-bottom:2px"><i class="ti ti-chart-bar"></i> Dónde están los trabajos</div><div style="font-size:11px;color:#888;margin-bottom:8px">OT activas según la etapa en la que están ahora</div>`;
+  etapas.forEach(([k,l])=>{const n=cnt[k]||0;graf+=`<div title="${l}: ${n} OT" style="display:grid;grid-template-columns:82px 1fr 26px;align-items:center;gap:8px;margin:5px 0;font-size:12px"><span style="color:#52514e">${l}</span>
+      <div style="height:14px;background:#f1f0ec;border-radius:4px"><div style="height:100%;width:${n/maxE*100}%;background:${DASH_COL.azul};border-radius:0 4px 4px 0;min-width:${n?3:0}px"></div></div><b style="text-align:right;color:#1e293b">${n}</b></div>`;});
+  graf+=`</div>`;
+  // Gráfico: aprobado por semana (últimas 8, por fecha de la cotización) — solo quien ve finanzas
+  let graf2='';
+  if(fin){
+    const semanas=[];const base=new Date();base.setHours(0,0,0,0);const dow=(base.getDay()+6)%7;base.setDate(base.getDate()-dow);
+    for(let i=7;i>=0;i--){const d=new Date(base);d.setDate(d.getDate()-i*7);const f=new Date(d);f.setDate(f.getDate()+6);semanas.push({ini:fmtD(d),fin:fmtD(f),lbl:d.getDate()+'/'+(d.getMonth()+1),v:0});}
+    (S.cotizaciones||[]).forEach(c=>{if(!c||c.estado!=='aprobada')return;const f=String(c.fecha||'');const s=semanas.find(x=>f>=x.ini&&f<=x.fin);if(s)s.v+=+c.subtotal||0;});
+    const mx=Math.max(1,...semanas.map(s=>s.v)),iMax=semanas.findIndex(s=>s.v===mx);
+    graf2=`<div style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:12px;min-width:0">
+      <div style="font-size:15px;font-weight:800;color:#1e293b;margin-bottom:2px"><i class="ti ti-chart-histogram"></i> Aprobado por semana</div><div style="font-size:11px;color:#888;margin-bottom:8px">Cotizaciones aprobadas sin IVA, por semana de la cotización · últimas 8 semanas</div>
+      <div style="display:flex;align-items:flex-end;gap:6px;height:130px;border-bottom:1px solid #c3c2b7;padding-top:16px">${semanas.map((s,i)=>`<div title="Semana del ${s.lbl}: $ ${Math.round(s.v).toLocaleString('es-AR')}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%">
+        ${i===iMax&&s.v>0?`<div style="font-size:10px;font-weight:700;color:#1e293b;margin-bottom:2px;white-space:nowrap">${$k(s.v)}</div>`:''}<div style="width:100%;max-width:34px;height:${s.v/mx*100}%;min-height:${s.v?2:0}px;background:${i===semanas.length-1?DASH_COL.azul:'#86b6ef'};border-radius:4px 4px 0 0"></div></div>`).join('')}</div>
+      <div style="display:flex;gap:6px;margin-top:4px">${semanas.map((s,i)=>`<div style="flex:1;text-align:center;font-size:10px;color:#898781">${s.lbl}</div>`).join('')}</div></div>`;
+  }
+  h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-bottom:16px">${tabla}<div style="display:grid;gap:12px;align-content:start">${graf}${graf2}</div></div>`;
+  // Movimientos pendientes (acceso rápido)
+  try{const m=movPendientes(),n=m.subir.length+m.bajar.length+m.llevar.length+m.traer.length;
+    if(n)h+=`<div onclick="nav('mov')" style="cursor:pointer;display:flex;align-items:center;gap:10px;background:#f3eefb;border:1px solid #c9a7e0;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px"><i class="ti ti-arrows-up-down" style="color:#6250d6;font-size:18px"></i><b style="color:#6250d6">${n} movimiento${n>1?'s':''} pendiente${n>1?'s':''}</b><span style="color:#555">${[m.subir.length?m.subir.length+' para subir':'',m.bajar.length?m.bajar.length+' para bajar':'',m.llevar.length?m.llevar.length+' para llevar':'',m.traer.length?m.traer.length+' para traer':''].filter(Boolean).join(' · ')}</span></div>`;}catch(e){}
+  return h;
+}
 function rDash(){
-  let h=`<div class="ph"><div><div class="pt">Panel de control</div><div class="ps">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div></div><div style="display:flex;gap:6px"><button class="bp" onclick="nav('seg')"><i class="ti ti-traffic-lights"></i>Tablero de seguimiento</button></div></div>`;
+  const u=(currentUser&&currentUser.email||'').split('@')[0].replace(/[-_.]/g,' ');const hr=new Date().getHours();
+  const saludo=hr<12?'Buen día':(hr<20?'Buenas tardes':'Buenas noches');
+  let h=`<div class="ph"><div><div class="pt">${saludo}${u?', '+cotEsc(u.charAt(0).toUpperCase()+u.slice(1)):''}</div><div class="ps">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})} · Panel de control</div></div><div style="display:flex;gap:6px"><button class="bp" onclick="nav('seg')"><i class="ti ti-traffic-lights"></i>Tablero de seguimiento</button></div></div>`;
+  try{h+=tallerAvisosHTML();}catch(e){} // avisos que mandaron los maquinistas desde el Modo Taller
+  try{h+=dashVisualHTML();}catch(e){console.warn('panel',e);}
+  h+=`<div style="font-size:15px;font-weight:800;color:#1e293b;margin:6px 0 8px"><i class="ti ti-search"></i> Buscar y detalle</div>`;
   h+=`<div class="sw"><input id="sdb" type="text" placeholder="Buscar por OT o cliente..." autocomplete="off" spellcheck="false" oninput="searchDash(this.value)" value="${bDash}"><i class="ti ti-search si"></i></div>`;
   h+=`<div id="dash-hint" class="sh"></div>`;
   h+=`<div id="dash-results"></div>`;
@@ -5270,8 +5412,10 @@ function updateCotResults(){
   const f=bCot.trim().toLowerCase();
   let rows=fCot?S.cotizaciones.filter(c=>c.estado===fCot):S.cotizaciones;
   if(f){
-    const norm=s=>String(s||'').toLowerCase().replace(/×/g,'x').replace(/\s+/g,'');
-    const q=norm(f);
+    // Búsqueda combinada: cada palabra es un filtro (todas tienen que aparecer, en cualquier orden). Sin tildes ni mayúsculas.
+    const sinT=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/×/g,'x');
+    const norm=s=>sinT(s).replace(/\s+/g,'');
+    const qs=sinT(f).replace(/(\d)\s*x\s*(?=\d)/g,'$1x').split(/\s+/).filter(Boolean); // "20 x 20" sigue siendo una medida
     rows=rows.filter(c=>{
       const hay=[c.num,cNom(c.clienteId),c.tipoTrabajo,c.vendedor,c.notas];
       (c.itemsVariantes||[]).forEach(it=>{
@@ -5290,7 +5434,7 @@ function updateCotResults(){
         }
       });
       const ot=S.ordenes.find(o=>o.cotId==c.id);if(ot)hay.push(ot.num,ot.descripcion);
-      return norm(hay.join(' ')).includes(q);
+      const txt=norm(hay.join(' '));return qs.every(q=>txt.includes(q));
     });
   }
   rows=rows.slice().sort((a,b)=>(b.id||0)-(a.id||0)); // más nuevas arriba
@@ -8152,6 +8296,321 @@ function analAddRecurso(otId){
   sk('recursosAnal');inp.value='';render();
 }
 
+// ===================== MODO TALLER =====================
+// Pantalla simple para el usuario compartido "taller" (compu, tablet o celular): el maquinista elige su puesto,
+// ve los trabajos que le tocan y marca Iniciar / Pausa (con motivo) / Reanudar / Terminar (pliegos buenos y fallados)
+// y avisa problemas. Todo actualiza el Seguimiento, los Tiempos (sin pausas) y la Capacidad (pausas = improductivas).
+const TALLER_PUESTOS_DEF=[
+  {n:'SM74',op:'Sergio De Olivera',tipo:'imp'},
+  {n:'SM52',op:'Sergio Gorosito',tipo:'imp'},
+  {n:'Xerox',op:'Leandro Joaquin',tipo:'imp'},
+  {n:'Guillotina',op:'Leonardo Berlanga',tipo:'corte'},
+  {n:'Laca UV',op:'Guillermo Col',tipo:'term',kw:'laca|barniz|\\buv\\b'},
+  {n:'Troquelados chicos',op:'Guillermo Col',tipo:'term',kw:'troquel|sacabocado'},
+  {n:'Doblados',op:'Emiliano Aguilera',tipo:'term',kw:'dobl|plegad'},
+  {n:'Abrochados',op:'Emiliano Aguilera',tipo:'term',kw:'abroch|grapa|encuadern'},
+  {n:'Laminado interno',op:'Emiliano Aguilera',tipo:'term',kw:'lamin|plastif'}
+];
+const TALLER_MOTIVOS=['Falta papel','Cambio de chapas','Puesta a punto / registro','Espera aprobación de color','Mantenimiento','Limpieza','Almuerzo','Otro'];
+function tallerPuestos(){
+  const l=S.cotConfig&&Array.isArray(S.cotConfig.tallerPuestos)&&S.cotConfig.tallerPuestos.length?S.cotConfig.tallerPuestos:TALLER_PUESTOS_DEF;
+  return l.filter(x=>x&&x.n);
+}
+function esUsuarioTaller(){try{return /taller/.test(rolUsuario());}catch(e){return false;}}
+const _tLS=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k)||'';if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v);}catch(e){}return '';};
+function tallerPuestoAct(){const n=_tLS('gp_tallerPuesto');return tallerPuestos().find(x=>x.n===n)||null;}
+function tallerOperario(){const pu=tallerPuestoAct();return _tLS('gp_tallerOp_'+(pu?pu.n:''))||(pu?pu.op:'')||'';}
+// ¿Este paso de la OT le toca a este puesto?
+function _tallerEsDelPuesto(o,p,pu){
+  if(!p||p.na||p.estado==='na'||p.estado==='done')return false;
+  const col=pasoCol(p),a=o.asignaciones&&o.asignaciones[p.nombre];
+  if(a&&a.tipo==='maq'&&a.nombre===pu.n&&col!=='ppd'&&col!=='ctp')return true;
+  if(pu.tipo==='imp')return col==='imp'&&(maqDePaso(o,p)===pu.n||p.nombre.indexOf('('+pu.n+')')>=0);
+  if(pu.tipo==='corte')return col==='corte';
+  if(pu.tipo==='term')return col==='term'&&!p.esExterno&&!!pu.kw&&new RegExp(pu.kw,'i').test(p.nombre);
+  return false;
+}
+// Primer bloque planificado de la OT en esa máquina / sector (para ordenar y mostrar "hoy 9:30")
+function _tallerPlan(o,maq){
+  const dias=(S.planificacion&&S.planificacion[maq])||{};let best=null;
+  for(const f in dias){const d=dias[f];for(const s in d){const b=d[s];if(b&&!b.cont&&!b.bloqueo&&b.otId===o.id){const k=f+' '+s;if(!best||k<best.k)best={k,fecha:f,slot:s};}}}
+  return best;
+}
+function tallerTrabajos(pu){
+  const hoy=fmtD(new Date()),out=[];
+  (S.ordenes||[]).forEach(o=>{
+    if(!o||o.archivada||o.estado==='entregada'||o.estado==='cancelada'||!otAprobada(o))return;
+    (o.pasos||[]).forEach((p,idx)=>{
+      if(!_tallerEsDelPuesto(o,p,pu))return;
+      const plan=_tallerPlan(o,pu.n);
+      // pasos anteriores sin terminar (papel, corte, impresión…): se avisa, pero se puede arrancar igual
+      const previos=(o.pasos||[]).slice(0,idx).filter(q=>q&&!q.na&&q.estado!=='na'&&q.estado!=='done'&&!['cc','ent'].includes(pasoCol(q))).map(q=>q.nombre.replace(/\s*\(.*\)$/,''));
+      out.push({o,p,idx,plan,hoy:plan&&plan.fecha===hoy,previos});
+    });
+  });
+  const rk=x=>(x.p.estado==='active'?0:1);
+  out.sort((a,b)=>rk(a)-rk(b)||((b.hoy?1:0)-(a.hoy?1:0))||String(a.plan?a.plan.k:'9999').localeCompare(String(b.plan?b.plan.k:'9999'))||String(a.o.fechaEntrega||a.o.entrega||'9999').localeCompare(String(b.o.fechaEntrega||b.o.entrega||'9999')));
+  return out;
+}
+function rTaller(){
+  const pus=tallerPuestos(),pu=tallerPuestoAct(),op=tallerOperario();
+  const btnBig='font-size:17px;font-weight:700;padding:14px 18px;border-radius:12px;border:none;cursor:pointer;min-width:120px';
+  let h=`<div style="max-width:900px;margin:0 auto">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+    <div><div style="font-size:22px;font-weight:800;color:#185fa5"><i class="ti ti-tool"></i> Taller</div>
+      <div style="font-size:13px;color:#666">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${(()=>{const m=movPendientes(),n=m.subir.length+m.bajar.length+m.llevar.length+m.traer.length;return `<button onclick="nav('mov')" style="font-size:14px;padding:10px 14px;color:#7b3fa0;border-color:#c9a7e0"><i class="ti ti-arrows-up-down"></i> Movimientos${n?` (${n})`:''}</button>`;})()}${pu?`<button onclick="tallerElegir('')" style="font-size:14px;padding:10px 14px">Cambiar puesto</button>`:''}${esUsuarioTaller()?`<button onclick="doLogout()" style="font-size:14px;padding:10px 14px;color:#a32d2d">Salir</button>`:''}</div>
+  </div>`;
+  if(!pu){
+    h+=`<div style="font-size:16px;font-weight:700;margin:6px 0 10px">¿En qué puesto estás?</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">`;
+    pus.forEach(x=>{const n=tallerTrabajos(x).length;
+      h+=`<button onclick="tallerElegir('${cotEsc(x.n)}')" style="text-align:left;padding:16px;border-radius:12px;border:1.5px solid #7db3e8;background:#fff;cursor:pointer">
+        <div style="font-size:19px;font-weight:800;color:#185fa5">${cotEsc(x.n)}</div>
+        <div style="font-size:13px;color:#555;margin-top:3px">${cotEsc(x.op||'')}</div>
+        <div style="font-size:12px;color:${n?'#1a7f37':'#999'};margin-top:6px;font-weight:700">${n?n+' trabajo'+(n>1?'s':''):'sin trabajos'}</div></button>`;});
+    return h+`</div></div>`;
+  }
+  const todos=[...new Set(tallerPuestos().map(x=>x.op).filter(Boolean))];
+  h+=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#eef4fb;border-radius:12px;padding:12px 14px;margin-bottom:12px">
+    <div style="font-size:22px;font-weight:800;color:#185fa5">${cotEsc(pu.n)}</div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:14px">Operario:
+      <input list="dl-taller-op" value="${cotEsc(op)}" onchange="tallerSetOp(this.value)" style="font-size:16px;padding:8px 10px;border-radius:8px;border:1px solid #9ec3e8;width:220px">
+      <datalist id="dl-taller-op">${todos.map(x=>`<option value="${cotEsc(x)}">`).join('')}</datalist></div></div>`;
+  const items=tallerTrabajos(pu);
+  if(!items.length)return h+`<div style="text-align:center;padding:40px 10px;color:#888;font-size:16px"><i class="ti ti-mood-smile" style="font-size:32px"></i><br>No hay trabajos pendientes para ${cotEsc(pu.n)}.</div></div>`;
+  items.forEach(it=>{
+    const o=it.o,p=it.p,act=p.estado==='active',pau=act&&p.pausa;
+    const a=o.analisisTec||{},m=o.material||{};
+    const enPliegos=['imp','corte'].includes(pasoCol(p)); // en terminaciones importa la cantidad, no los pliegos
+    const pl=enPliegos?(+a.pliegosTot||+m.pliegos||0):0,cant=(o.itemsOT||[]).reduce((s,x)=>s+(+x.qty||0),0);
+    const color=pau?'#c47d16':(act?'#1a7f37':'#185fa5');
+    h+=`<div style="border:2px solid ${color};border-radius:14px;padding:14px;margin-bottom:12px;background:${pau?'#fff8ec':(act?'#f0faf2':'#fff')}">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div style="min-width:0;flex:1"><div style="font-size:20px;font-weight:800">${cotEsc(o.num)} <span style="font-size:14px;font-weight:600;color:#555">· ${cotEsc(cNom(o.clienteId)||'')}</span></div>
+          <div style="font-size:15px;color:#333;margin-top:2px">${cotEsc(o.nombreCorto||o.descripcion||'')}</div>
+          <div style="font-size:14px;color:${color};font-weight:700;margin-top:4px">${cotEsc(p.nombre)}${pau?` · EN PAUSA: ${cotEsc(p.pausa.motivo)} desde ${fmtHora(p.pausa.desde)}`:(act?` · EN CURSO desde ${fmtHora(p.fechaInicio)}${p.operario?' ('+cotEsc(p.operario)+')':''}`:'')}</div>
+          <div style="font-size:13px;color:#666;margin-top:4px">${pl?`Pliegos: <b>${Number(pl).toLocaleString('es-AR')}</b> (c/demasía) · `:''}${cant?`Cantidad: <b>${cant.toLocaleString('es-AR')}</b> · `:''}${it.plan?(it.hoy?`<b style="color:#1a7f37">Planificado HOY ${it.plan.slot}</b>`:`Planificado ${it.plan.fecha.split('-').reverse().join('/')} ${it.plan.slot}`):'Sin planificar'}</div>
+          ${it.previos.length&&!act?`<div style="font-size:13px;color:#a35b00;margin-top:4px"><i class="ti ti-alert-triangle"></i> Todavía falta: ${it.previos.map(cotEsc).join(', ')}</div>`:''}
+          ${(o.avisosTaller||[]).filter(x=>!x.visto).length?`<div style="font-size:12px;color:#a32d2d;margin-top:4px"><i class="ti ti-message-report"></i> Hay avisos sin ver por el coordinador</div>`:''}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch">
+          ${!act?`<button onclick="tallerIniciar(${o.id},${it.idx})" style="${btnBig};background:#1a7f37;color:#fff"><i class="ti ti-player-play"></i> Iniciar</button>`:''}
+          ${act&&!pau?`<button onclick="tallerTerminarAbrir(${o.id},${it.idx})" style="${btnBig};background:#185fa5;color:#fff"><i class="ti ti-check"></i> Terminar</button>
+            <button onclick="tallerPausaAbrir(${o.id},${it.idx})" style="${btnBig};background:#f3d3a8;color:#7a4a00"><i class="ti ti-player-pause"></i> Pausa</button>`:''}
+          ${pau?`<button onclick="tallerReanudar(${o.id},${it.idx})" style="${btnBig};background:#1a7f37;color:#fff"><i class="ti ti-player-play"></i> Reanudar</button>`:''}
+          <button onclick="tallerAvisoAbrir(${o.id},${it.idx})" style="font-size:14px;padding:9px 12px;border-radius:10px;border:1px solid #e8a0a0;background:#fff;color:#a32d2d;cursor:pointer"><i class="ti ti-message-report"></i> Avisar problema</button>
+        </div></div></div>`;
+  });
+  return h+`</div>`;
+}
+function tallerElegir(n){_tLS('gp_tallerPuesto',n||null);render();}
+function tallerSetOp(v){const pu=tallerPuestoAct();if(!pu)return;_tLS('gp_tallerOp_'+pu.n,String(v||'').replace(/[<>]/g,'').trim().slice(0,60)||null);}
+function _tallerPaso(otId,idx){const o=(S.ordenes||[]).find(x=>x.id===otId);const p=o&&o.pasos&&o.pasos[idx];return {o,p};}
+function tallerIniciar(otId,idx){
+  const {o,p}=_tallerPaso(otId,idx),pu=tallerPuestoAct();if(!o||!p||!pu)return;
+  if(!otAprobada(o)){alert('La OT '+o.num+' no está aprobada. Avisale al coordinador.');return;}
+  const op=tallerOperario();if(!op){alert('Poné tu nombre en "Operario".');return;}
+  p.estado='active';if(!p.fechaInicio)p.fechaInicio=new Date().toISOString();
+  p.operario=op;p.tallerPuesto=pu.n;delete p.pausa;
+  recomputeEstadoOT(o);sk('ordenes');render();
+}
+// Ventanita táctil del taller (pausa / terminar / aviso)
+function _tallerModal(html){
+  let ov=document.getElementById('taller-modal');
+  if(!ov){ov=document.createElement('div');ov.id='taller-modal';ov.style.cssText='position:fixed;inset:0;z-index:100020;background:rgba(15,25,35,.6);display:flex;align-items:center;justify-content:center;padding:14px';document.body.appendChild(ov);}
+  ov.innerHTML=`<div style="background:#fff;border-radius:16px;padding:18px;width:100%;max-width:520px;max-height:92vh;overflow:auto">${html}</div>`;
+}
+function tallerModalCerrar(){const ov=document.getElementById('taller-modal');if(ov)ov.remove();}
+function tallerPausaAbrir(otId,idx){
+  const {o,p}=_tallerPaso(otId,idx);if(!o||!p)return;
+  _tallerModal(`<div style="font-size:18px;font-weight:800;margin-bottom:4px">Pausa · ${cotEsc(o.num)}</div><div style="font-size:14px;color:#666;margin-bottom:12px">${cotEsc(p.nombre)} — ¿por qué se para?</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${TALLER_MOTIVOS.map(m=>`<button onclick="tallerPausar(${otId},${idx},'${cotEsc(m)}')" style="font-size:15px;font-weight:700;padding:14px 10px;border-radius:10px;border:1px solid #f3d3a8;background:#fff8ec;color:#7a4a00;cursor:pointer">${cotEsc(m)}</button>`).join('')}</div>
+    <button onclick="tallerModalCerrar()" style="width:100%;margin-top:12px;font-size:15px;padding:12px">Cancelar</button>`);
+}
+function tallerPausar(otId,idx,motivo){
+  const {o,p}=_tallerPaso(otId,idx);if(!o||!p)return;
+  if(motivo==='Otro'){const t=prompt('¿Cuál es el motivo?','');if(t===null)return;motivo='Otro: '+String(t).replace(/[<>]/g,'').trim().slice(0,80);}
+  p.pausa={desde:new Date().toISOString(),motivo,op:tallerOperario()};
+  tallerModalCerrar();sk('ordenes');render();
+}
+// Cierra la pausa en curso: queda en la lista de pausas del paso y como tiempo improductivo en el plan de la máquina
+function _tallerCerrarPausa(o,p){
+  if(!p.pausa)return;
+  const pa=Object.assign({},p.pausa,{hasta:new Date().toISOString()});
+  if(!Array.isArray(p.pausas))p.pausas=[];p.pausas.push(pa);delete p.pausa;
+  try{_tallerBloqueImprod(p.tallerPuesto||maqDePaso(o,p),pa);}catch(e){console.warn('pausa en plan',e);}
+}
+function _tallerBloqueImprod(maq,pa){
+  if(!maq)return;
+  const ini=new Date(pa.desde),fin=new Date(pa.hasta);if(fin-ini<10*60000)return; // menos de 10 minutos no se marca
+  if(fmtD(ini)!==fmtD(fin))return; // pausa de un día para otro: no se pinta
+  const slotMin=s=>{const[hh,mm]=s.split(':').map(Number);return hh*60+mm;};
+  const mIni=ini.getHours()*60+ini.getMinutes(),mFin=fin.getHours()*60+fin.getMinutes();
+  if(!S.planificacion)S.planificacion={};if(!S.planificacion[maq])S.planificacion[maq]={};
+  const fecha=fmtD(ini);if(!S.planificacion[maq][fecha])S.planificacion[maq][fecha]={};
+  const pm=S.planificacion[maq][fecha];
+  const idxs=[];ALL_SLOTS.forEach((s,i)=>{const m=slotMin(s);if(m+30>mIni&&m<mFin&&!pm[s])idxs.push(i);});
+  const runs=[];let cur=[];idxs.forEach(i=>{if(cur.length&&i!==cur[cur.length-1]+1){runs.push(cur);cur=[];}cur.push(i);});if(cur.length)runs.push(cur);
+  const cat=String(pa.motivo||'Otro').split(':')[0];
+  runs.forEach(run=>{pm[ALL_SLOTS[run[0]]]={bloqueo:true,cat,dur:run.length,nota:(pa.motivo||'')+(pa.op?' · '+pa.op:''),auto:true};
+    for(let j=1;j<run.length;j++)pm[ALL_SLOTS[run[j]]]={cont:true};});
+  sk('planificacion');
+}
+function tallerReanudar(otId,idx){
+  const {o,p}=_tallerPaso(otId,idx);if(!o||!p)return;
+  _tallerCerrarPausa(o,p);sk('ordenes');render();
+}
+function tallerTerminarAbrir(otId,idx){
+  const {o,p}=_tallerPaso(otId,idx);if(!o||!p)return;
+  const a=o.analisisTec||{},m=o.material||{},col=pasoCol(p);
+  const sug=col==='imp'?(+a.pliegosTot||+m.pliegos||''):'';
+  const inp=(id,v,ph)=>`<input id="${id}" inputmode="numeric" value="${v}" placeholder="${ph}" style="width:100%;font-size:20px;padding:12px;border-radius:10px;border:1px solid #bbb;text-align:center">`;
+  _tallerModal(`<div style="font-size:18px;font-weight:800;margin-bottom:4px">Terminar · ${cotEsc(o.num)}</div><div style="font-size:14px;color:#666;margin-bottom:12px">${cotEsc(p.nombre)}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <label style="font-size:14px;font-weight:700;color:#1a7f37">${col==='term'?'Unidades':'Pliegos'} buenos${inp('tl-buenos',sug,'0')}</label>
+      <label style="font-size:14px;font-weight:700;color:#a32d2d">Fallados${inp('tl-malos','','0')}</label></div>
+    <label style="display:block;font-size:14px;font-weight:700;margin-top:10px">Observaciones (opcional)
+      <textarea id="tl-obs" rows="3" placeholder="Ej: el papel venía con humedad, se cambió la tinta…" style="width:100%;font-size:15px;padding:10px;border-radius:10px;border:1px solid #bbb;margin-top:4px"></textarea></label>
+    <div style="display:flex;gap:8px;margin-top:12px"><button onclick="tallerModalCerrar()" style="flex:1;font-size:15px;padding:12px">Cancelar</button>
+      <button onclick="tallerTerminar(${otId},${idx})" style="flex:2;font-size:17px;font-weight:800;padding:12px;border:none;border-radius:10px;background:#185fa5;color:#fff"><i class="ti ti-check"></i> Terminado</button></div>`);
+}
+function tallerTerminar(otId,idx){
+  const {o,p}=_tallerPaso(otId,idx);if(!o||!p)return;
+  const n=id=>{const v=String((document.getElementById(id)||{}).value||'').replace(/\./g,'').trim();return v===''?null:Math.max(0,parseInt(v)||0);};
+  const buenos=n('tl-buenos'),malos=n('tl-malos'),obs=String((document.getElementById('tl-obs')||{}).value||'').replace(/[<>]/g,'').trim().slice(0,500);
+  _tallerCerrarPausa(o,p);
+  const now=new Date();
+  p.estado='done';p.fechaFin=now.toISOString();p.fecha=fmtD(now);if(!p.fechaInicio)p.fechaInicio=p.fechaFin;
+  p.operario=p.operario||tallerOperario();
+  if(buenos!=null)p.pliegosBuenos=buenos;if(malos!=null)p.pliegosMalos=malos;
+  if(pasoCol(p)==='imp'){if(!o.impresion)o.impresion={};if(buenos!=null)o.impresion.pliegosBuenos=buenos;if(malos!=null)o.impresion.pliegosMalos=malos;}
+  if(obs)_tallerAgregarAviso(o,p,obs);
+  try{autoPlanReal(o,p);}catch(e){}
+  recomputeEstadoOT(o);tallerModalCerrar();sk('ordenes');render();
+}
+function tallerAvisoAbrir(otId,idx){
+  const {o,p}=_tallerPaso(otId,idx);if(!o||!p)return;
+  _tallerModal(`<div style="font-size:18px;font-weight:800;margin-bottom:4px">Avisar problema · ${cotEsc(o.num)}</div><div style="font-size:14px;color:#666;margin-bottom:10px">${cotEsc(p.nombre)} — le llega al coordinador en el Panel de control</div>
+    <textarea id="tl-aviso" rows="4" placeholder="Ej: falta la chapa del negro, el papel vino cortado mal…" style="width:100%;font-size:16px;padding:10px;border-radius:10px;border:1px solid #bbb"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px"><button onclick="tallerModalCerrar()" style="flex:1;font-size:15px;padding:12px">Cancelar</button>
+      <button onclick="tallerAvisar(${otId},${idx})" style="flex:2;font-size:17px;font-weight:800;padding:12px;border:none;border-radius:10px;background:#a32d2d;color:#fff"><i class="ti ti-send"></i> Enviar aviso</button></div>`);
+}
+function _tallerAgregarAviso(o,p,texto){
+  if(!Array.isArray(o.avisosTaller))o.avisosTaller=[];
+  o.avisosTaller.push({id:Date.now(),fecha:new Date().toISOString(),puesto:(tallerPuestoAct()||{}).n||p.tallerPuesto||'',op:tallerOperario(),paso:p.nombre,texto,visto:false});
+}
+function tallerAvisar(otId,idx){
+  const {o,p}=_tallerPaso(otId,idx);if(!o||!p)return;
+  const t=String((document.getElementById('tl-aviso')||{}).value||'').replace(/[<>]/g,'').trim().slice(0,500);
+  if(!t){alert('Escribí qué pasa.');return;}
+  _tallerAgregarAviso(o,p,t);tallerModalCerrar();sk('ordenes');render();
+}
+// Panel de control: avisos del taller sin ver
+function tallerAvisosHTML(){
+  const l=[];(S.ordenes||[]).forEach(o=>(o.avisosTaller||[]).forEach(a=>{if(a&&!a.visto)l.push({o,a});}));
+  if(!l.length)return '';
+  l.sort((x,y)=>String(y.a.fecha).localeCompare(String(x.a.fecha)));
+  return `<div style="border:1.5px solid #e8a0a0;background:#fdf3f3;border-radius:10px;padding:10px 12px;margin-bottom:12px">
+    <div style="font-weight:800;color:#a32d2d;margin-bottom:6px"><i class="ti ti-message-report"></i> Avisos del taller (${l.length})</div>
+    ${l.slice(0,15).map(({o,a})=>`<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-top:0.5px solid #f2c0c0;font-size:12px">
+      <div style="flex:1"><b style="cursor:pointer;color:#185fa5" onclick="om('vot',${o.id})">${cotEsc(o.num)}</b> · ${cotEsc(a.paso||'')} · <span style="color:#888">${cotEsc(a.puesto||'')}${a.op?' · '+cotEsc(a.op):''} · ${fmtHora(a.fecha)}</span><br>${cotEsc(a.texto)}</div>
+      <button onclick="tallerAvisoVisto(${o.id},${a.id})" style="font-size:11px;padding:3px 8px">Visto</button></div>`).join('')}</div>`;
+}
+function tallerAvisoVisto(otId,id){
+  const o=(S.ordenes||[]).find(x=>x.id===otId);if(!o)return;
+  const a=(o.avisosTaller||[]).find(x=>x.id===id);if(!a)return;
+  a.visto=true;a.vistoPor=(currentUser&&currentUser.email)||'';a.vistoFecha=new Date().toISOString();
+  sk('ordenes');render();
+}
+// ===================== MOVIMIENTOS (entre pisos y con externos) =====================
+// La lista se arma sola desde el estado de cada OT:
+//  · SUBIR: ya está impresa/cortada y tiene terminaciones del piso de arriba (laca, troquelado chico, doblado, abrochado, laminado)
+//  · BAJAR: está arriba y ya terminó todo lo de arriba
+//  · LLEVAR a externo: tiene orden externa generada y todavía no salió
+//  · TRAER de externo: salió y no volvió (con la fecha de retorno y el atraso)
+// Se marca desde la compu o el celular; queda el historial en la OT (o.movs) y dónde está (o.ubic).
+function _pasoArriba(p){
+  if(!p||p.na||p.estado==='na'||pasoCol(p)!=='term'||p.esExterno)return false;
+  return tallerPuestos().some(pu=>pu.tipo==='term'&&pu.kw&&new RegExp(pu.kw,'i').test(p.nombre));
+}
+const _movNom=p=>String((p&&p.nombre)||'').replace(/\s*\(.*\)\s*$/,''); // nombre del proceso sin el proveedor entre paréntesis
+function movPendientes(){
+  const subir=[],bajar=[],llevar=[],traer=[];const hoy=new Date();hoy.setHours(0,0,0,0);
+  (S.ordenes||[]).forEach(o=>{
+    if(!o||o.archivada||o.estado==='entregada'||o.estado==='cancelada'||!otAprobada(o))return;
+    const ps=o.pasos||[];
+    // externos
+    ps.forEach((p,i)=>{
+      if(!p||pasoCol(p)!=='ext'||p.na||p.estado==='na'||p.estado==='done')return;
+      const env=p.envio;if(!env||!env.num)return;
+      if(!env.llevado)llevar.push({o,i,p,env});
+      else{const atraso=p.retorno?Math.round((hoy-new Date(p.retorno+'T00:00:00'))/864e5):0;traer.push({o,i,p,env,atraso});}
+    });
+    // pisos
+    const idxArr=ps.map((p,i)=>_pasoArriba(p)?i:-1).filter(i=>i>=0);
+    if(!idxArr.length)return;
+    const pendArr=idxArr.filter(i=>ps[i].estado!=='done');
+    const afuera=ps.some(p=>p&&pasoCol(p)==='ext'&&p.envio&&p.envio.llevado&&p.estado!=='done');
+    if(o.ubic==='arriba'){if(!pendArr.length)bajar.push({o,hechos:idxArr.map(i=>_movNom(ps[i]))});return;}
+    if(pendArr.length&&!afuera){
+      const primero=pendArr[0];
+      // listo para subir: todo lo anterior (que no sea de arriba) está terminado
+      const falta=ps.slice(0,primero).filter(q=>q&&!q.na&&q.estado!=='na'&&q.estado!=='done'&&!_pasoArriba(q)&&!['cc','ent'].includes(pasoCol(q)));
+      subir.push({o,para:pendArr.map(i=>_movNom(ps[i])),falta:falta.map(q=>_movNom(q))});
+    }
+  });
+  return {subir,bajar,llevar,traer};
+}
+function _movReg(o,tipo,extra){
+  if(!Array.isArray(o.movs))o.movs=[];
+  o.movs.push(Object.assign({id:Date.now(),fecha:new Date().toISOString(),tipo,por:(currentUser&&currentUser.email||'').split('@')[0]},extra||{}));
+}
+function movSubir(otId){const o=(S.ordenes||[]).find(x=>x.id===otId);if(!o)return;o.ubic='arriba';_movReg(o,'subir');sk('ordenes');render();}
+function movBajar(otId){const o=(S.ordenes||[]).find(x=>x.id===otId);if(!o)return;o.ubic='planta';_movReg(o,'bajar');sk('ordenes');render();}
+function movLlevar(otId,i){
+  const o=(S.ordenes||[]).find(x=>x.id===otId);const p=o&&o.pasos&&o.pasos[i];if(!p||!p.envio)return;
+  p.envio.llevado={fecha:new Date().toISOString(),por:(currentUser&&currentUser.email||'').split('@')[0]};
+  o.ubic='externo';_movReg(o,'llevar',{prov:p.envio.prov,paso:_movNom(p),oe:p.envio.num});sk('ordenes');render();
+}
+function movTraer(otId,i){
+  const o=(S.ordenes||[]).find(x=>x.id===otId);const p=o&&o.pasos&&o.pasos[i];if(!p)return;
+  const antes=p.estado;oeRecibido(otId,i); // pregunta los pliegos que volvieron y completa el paso
+  if(p.estado==='done'&&antes!=='done'){o.ubic='planta';_movReg(o,'traer',{prov:(p.envio&&p.envio.prov)||p.extDestino||'',paso:_movNom(p),oe:p.envio&&p.envio.num});sk('ordenes');render();}
+}
+function rMov(){
+  const {subir,bajar,llevar,traer}=movPendientes();
+  const B='font-size:15px;font-weight:800;padding:12px 16px;border:none;border-radius:10px;cursor:pointer;color:#fff;min-width:110px';
+  const tarj=(color,izq,btn)=>`<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1.5px solid ${color};border-radius:12px;padding:12px;margin-bottom:8px;background:#fff"><div style="min-width:0;flex:1">${izq}</div>${btn}</div>`;
+  const cab=o=>`<div style="font-size:17px;font-weight:800">${cotEsc(o.num)} <span style="font-size:13px;font-weight:600;color:#555">· ${cotEsc(cNomCorto?cNomCorto(o.clienteId):cNom(o.clienteId))}</span></div><div style="font-size:14px;color:#333">${cotEsc(o.nombreCorto||o.descripcion||'')}</div>`;
+  const sec=(t,ico,color,items,fn)=>`<div style="margin:14px 0 6px;font-size:16px;font-weight:800;color:${color}"><i class="ti ti-${ico}"></i> ${t} (${items.length})</div>`+(items.length?items.map(fn).join(''):`<div style="color:#999;font-size:13px;padding:4px 2px">Nada pendiente.</div>`);
+  let h=`<div style="max-width:900px;margin:0 auto">
+    <div class="ph"><div><div class="pt">Movimientos</div><div class="ps">Qué hay que subir, bajar, llevar o traer · se arma solo según cómo va cada OT</div></div>${esUsuarioTaller()?`<button onclick="nav('taller')" style="font-size:14px;padding:10px 14px"><i class="ti ti-arrow-left"></i> Volver al taller</button>`:''}</div>`;
+  h+=sec('Subir al piso de arriba','arrow-big-up-lines','#7b3fa0',subir,x=>tarj('#c9a7e0',cab(x.o)+`<div style="font-size:13px;color:#7b3fa0;font-weight:700;margin-top:3px">Para: ${x.para.map(cotEsc).join(', ')}</div>${x.falta.length?`<div style="font-size:12px;color:#a35b00"><i class="ti ti-alert-triangle"></i> Todavía falta: ${x.falta.map(cotEsc).join(', ')}</div>`:''}`,
+    `<button onclick="movSubir(${x.o.id})" style="${B};background:#7b3fa0"><i class="ti ti-arrow-up"></i> Subido</button>`));
+  h+=sec('Bajar del piso de arriba','arrow-big-down-lines','#185fa5',bajar,x=>tarj('#9ec3e8',cab(x.o)+`<div style="font-size:13px;color:#185fa5;margin-top:3px">Terminado arriba: ${x.hechos.map(cotEsc).join(', ')}</div>`,
+    `<button onclick="movBajar(${x.o.id})" style="${B};background:#185fa5"><i class="ti ti-arrow-down"></i> Bajado</button>`));
+  h+=sec('Llevar a externos','truck-delivery','#c05600',llevar,x=>tarj('#f3d3a8',cab(x.o)+`<div style="font-size:13px;color:#c05600;font-weight:700;margin-top:3px">${cotEsc(x.env.prov||'')} · ${cotEsc(_movNom(x.p))} · ${cotEsc(x.env.num)}${x.env.pliegos?` · ${cotFmt(x.env.pliegos)} pliegos`:''}</div>${x.p.retorno?`<div style="font-size:12px;color:#666">Tiene que volver el ${_fDMY(x.p.retorno)}</div>`:''}`,
+    `<button onclick="movLlevar(${x.o.id},${x.i})" style="${B};background:#c05600"><i class="ti ti-check"></i> Llevado</button>`));
+  traer.sort((a,b)=>b.atraso-a.atraso);
+  h+=sec('Traer de externos','package-import','#1a7f37',traer,x=>tarj(x.atraso>0?'#e8a0a0':'#a8d5b3',cab(x.o)+`<div style="font-size:13px;color:#1a7f37;font-weight:700;margin-top:3px">${cotEsc(x.env.prov||'')} · ${cotEsc(_movNom(x.p))} · ${cotEsc(x.env.num)}</div><div style="font-size:12px;color:${x.atraso>0?'#a32d2d':'#666'};font-weight:${x.atraso>0?'700':'400'}">${x.p.retorno?`Vuelve el ${_fDMY(x.p.retorno)}${x.atraso>0?` · ${x.atraso} día${x.atraso>1?'s':''} de atraso`:''}`:'Sin fecha de retorno'}</div>`,
+    `<button onclick="movTraer(${x.o.id},${x.i})" style="${B};background:#1a7f37"><i class="ti ti-package-import"></i> Traído</button>`));
+  // Hechos hoy
+  const hoy=fmtD(new Date()),hechos=[];
+  (S.ordenes||[]).forEach(o=>(o.movs||[]).forEach(m=>{if(String(m.fecha).slice(0,10)===hoy)hechos.push({o,m});}));
+  hechos.sort((a,b)=>String(b.m.fecha).localeCompare(String(a.m.fecha)));
+  const tl={subir:'Subido',bajar:'Bajado',llevar:'Llevado',traer:'Traído'};
+  if(hechos.length)h+=`<div style="margin:16px 0 6px;font-size:14px;font-weight:800;color:#555"><i class="ti ti-history"></i> Hechos hoy</div><div class="card" style="padding:6px 10px">${hechos.map(({o,m})=>`<div style="font-size:12px;padding:4px 0;border-top:0.5px solid rgba(0,0,0,.06)"><b>${new Date(m.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</b> · ${tl[m.tipo]||m.tipo} · ${cotEsc(o.num)}${m.prov?' · '+cotEsc(m.prov):''}${m.paso?' · '+cotEsc(m.paso):''} <span style="color:#999">(${cotEsc(m.por||'')})</span></div>`).join('')}</div>`;
+  return h+`</div>`;
+}
+// Configuración: operarios de cada puesto (se precargan en el taller)
+function tallerPuestoOpEd(i,val){
+  if(!S.cotConfig)S.cotConfig=Object.assign({},COT_CONFIG_DEFAULT);
+  if(!Array.isArray(S.cotConfig.tallerPuestos)||!S.cotConfig.tallerPuestos.length)S.cotConfig.tallerPuestos=JSON.parse(JSON.stringify(TALLER_PUESTOS_DEF));
+  const x=S.cotConfig.tallerPuestos[i];if(!x)return;
+  x.op=String(val||'').replace(/[<>"'`\\]/g,'').trim().slice(0,60);
+  costosSave('cotConfig');
+}
 function rTiempos(){
   let h=`<div class="ph"><div><div class="pt">Tiempos de producción</div><div class="ps">Duración real por etapa, calculada desde Iniciar → Completar</div></div></div>`;
   // Recolectar todos los pasos completados con datos de tiempo válidos
@@ -8159,12 +8618,14 @@ function rTiempos(){
   S.ordenes.forEach(o=>{
     (o.pasos||[]).forEach(p=>{
       if(p.estado==='done'&&p.fechaInicio&&p.fechaFin){
-        const dur=new Date(p.fechaFin)-new Date(p.fechaInicio);
+        // tiempo neto: sin las pausas que cargó el maquinista desde el Modo Taller
+        const pausas=(p.pausas||[]).reduce((a,x)=>a+Math.max(0,new Date(x.hasta)-new Date(x.desde)||0),0);
+        const dur=new Date(p.fechaFin)-new Date(p.fechaInicio)-pausas;
         if(dur<0)return;
         if(!stats[p.nombre])stats[p.nombre]={durs:[],items:[]};
         stats[p.nombre].durs.push(dur);
         const a=o.asignaciones&&o.asignaciones[p.nombre];
-        stats[p.nombre].items.push({ot:o.num,dur,maq:a&&a.nombre?a.nombre:'—',fechaFin:p.fechaFin});
+        stats[p.nombre].items.push({ot:o.num,dur,maq:a&&a.nombre?a.nombre:(p.tallerPuesto||'—'),fechaFin:p.fechaFin,op:p.operario||''});
       }
     });
   });
@@ -8209,9 +8670,9 @@ function rTiempos(){
   todos.sort((a,b)=>new Date(b.fechaFin)-new Date(a.fechaFin));
   h+=`<div class="card" style="padding:0;overflow:hidden;margin-top:14px">
 <div style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,.08);font-weight:500">Detalle (más reciente primero)</div>
-<table><thead><tr><th>OT</th><th>Etapa</th><th>Recurso</th><th>Duración</th><th>Completado</th></tr></thead><tbody>`;
+<table><thead><tr><th>OT</th><th>Etapa</th><th>Recurso</th><th>Operario</th><th>Duración</th><th>Completado</th></tr></thead><tbody>`;
   todos.slice(0,100).forEach(it=>{
-    h+=`<tr><td><strong>${it.ot}</strong></td><td>${it.etapa}</td><td style="font-size:11px">${it.maq}</td><td>${durStr(it.dur)}</td><td style="font-size:11px;color:#888">${fmtHora(it.fechaFin)}</td></tr>`;
+    h+=`<tr><td><strong>${it.ot}</strong></td><td>${it.etapa}</td><td style="font-size:11px">${it.maq}</td><td style="font-size:11px">${escHtml(it.op||'—')}</td><td>${durStr(it.dur)}</td><td style="font-size:11px;color:#888">${fmtHora(it.fechaFin)}</td></tr>`;
   });
   h+=`</tbody></table></div>`;
   return h;
@@ -8562,29 +9023,18 @@ function om(t,id){
   const ov=document.createElement('div');ov.className='ov';ov.id='ov';
   const inner=document.createElement('div');
   inner.className='mod'+(t==='nc2'?' wide':'');
-  // Modales con formularios importantes: no cerrar al hacer clic afuera ni con Escape sin confirmación
+  // Cotización nueva / en edición: SOLO se cierra con la X o con el botón Cancelar de abajo, sin preguntar.
+  // Un clic afuera o la tecla Escape no hacen nada (así no se pierde lo cargado por un clic de más).
   const MODALES_PROTEGIDOS=['nc2','ec2'];
   const esProtegido=MODALES_PROTEGIDOS.includes(t);
   // X de cierre siempre visible arriba a la derecha (sticky: acompaña el scroll del modal)
-  const xClose=esProtegido
-    ?`<div class="mod-xwrap"><button class="mod-x" title="Cerrar" onclick="if(confirm('¿Cerrar sin guardar? Los datos ingresados se perderán.'))cm()">×</button></div>`
-    :`<div class="mod-xwrap"><button class="mod-x" title="Cerrar" onclick="cm()">×</button></div>`;
+  const xClose=`<div class="mod-xwrap"><button class="mod-x" title="Cerrar" onclick="cm()">×</button></div>`;
   inner.innerHTML=xClose+h;
   ov.appendChild(inner);
   if(esProtegido){
-    // Solo cerrar con los botones internos del formulario
-    ov.addEventListener('click',e=>{
-      if(e.target===ov){
-        if(confirm('¿Cerrar sin guardar? Los datos ingresados se perderán.'))cm();
-      }
-    });
-    // Escape con confirmación
+    // Escape: no cierra (y no deja que otro manejador lo cierre)
     const escHandler=e=>{
-      if(e.key==='Escape'){
-        e.preventDefault();
-        if(confirm('¿Cerrar sin guardar? Los datos ingresados se perderán.'))cm();
-        document.removeEventListener('keydown',escHandler);
-      }
+      if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();}
     };
     document.addEventListener('keydown',escHandler);
     ov._escHandler=escHandler; // guardar referencia para limpiar al cerrar
@@ -8896,6 +9346,25 @@ function aiMatchCat(material,gramaje,texto){
   return s;
 }
 // Matchear los colores sugeridos (ej. "4/4") a un código de impresión
+// Retiración (tira y retira con la mitad de chapas) solo sirve con poses PARES.
+// Con poses impares se usa la variante del mismo código con todas las chapas (ej. 4/4 4 CH → 4/4 8 CH), y al revés.
+function _impVariante(imp,poses){
+  if(!imp||!imp.maquina||imp.maquina==='Xerox'||imp.digital)return imp?imp.codigo:0;
+  const m=String(imp.descripcion||'').match(/(\d+)\s*\/\s*(\d+)/);if(!m)return imp.codigo;
+  const f=+m[1],d=+m[2];if(!(d>0))return imp.codigo;const colTot=f+d;
+  const key=s=>String(s||'').replace(/\d+\s*CH/i,'').replace(/\s+/g,' ').trim().toLowerCase();
+  const cands=(S.cotImpresion||[]).filter(x=>x&&x.codigo&&x.activo!==false&&x.maquina===imp.maquina&&key(x.descripcion)===key(imp.descripcion));
+  const ret=x=>+x.chapas>0&&+x.chapas<colTot;
+  if(Math.round(+poses||1)%2!==0){if(ret(imp)){const a=cands.find(x=>!ret(x)&&+x.chapas>=colTot);return a?a.codigo:imp.codigo;}}
+  else if(!ret(imp)){const a=cands.find(ret);return a?a.codigo:imp.codigo;}
+  return imp.codigo;
+}
+function _impCorregirRetiracion(p){
+  if(!p||p._pag||p._impManual)return;
+  const imp=(S.cotImpresion||[]).find(x=>x.codigo===p.impCod);if(!imp)return;
+  const c=_impVariante(imp,+p.posturas||1);
+  if(c&&c!==p.impCod){p.impCod=c;const n=(S.cotImpresion||[]).find(x=>x.codigo===c);if(n&&+n.chapas>0)p.chapasCant=+n.chapas;}
+}
 function aiMatchImp(colores,maquina){
   const imps=(S.cotImpresion||[]).filter(x=>x&&x.codigo);if(!imps.length)return 0;
   const norm=s=>String(s||'').replace(/\s/g,'').toLowerCase();
@@ -8977,9 +9446,10 @@ function aiCostearOptimo(cotW,colores,material,gramaje){
       const pr=cotPapelSelResolver(p);if(!pr)return; // ningún formato entra en esta máquina
       const sug=(+p.piezaW>0&&+p.piezaH>0)?cotPosesSug(p.piezaW,p.piezaH,pr.ancho,pr.alto,cotPinza(m),null,cotCalle(p)):0;
       if(sug>0)p.posturas=sug;
+      _impCorregirRetiracion(p); // poses impares → sin retiración (todas las chapas)
       let r;try{r=cotCalc(clone);}catch(e){return;}
       const tot=(r&&r.total)||0;
-      if(tot>0&&(!best||tot<best.total))best={maquina:m,impCod:ic,total:tot,papelCod:0,posturas:p.posturas,extra};
+      if(tot>0&&(!best||tot<best.total))best={maquina:m,impCod:p.impCod,total:tot,papelCod:0,posturas:p.posturas,extra};
       return;
     }
     if(extra&&(material||gramaje)){
@@ -8998,9 +9468,10 @@ function aiCostearOptimo(cotW,colores,material,gramaje){
     const p=clone.piezas[0];
     _aiAplicarMaq(p,{maquina:m,impCod:ic},colores); // chapas y demasía de esa máquina (para comparar bien)
     p.papelCod=papelCod;p.posturas=posturas;
+    _impCorregirRetiracion(p); // poses impares → sin retiración (todas las chapas)
     let r;try{r=cotCalc(clone);}catch(e){return;}
     const tot=(r&&r.total)||0;
-    if(tot>0&&(!best||tot<best.total))best={maquina:m,impCod:ic,total:tot,papelCod,posturas,extra};
+    if(tot>0&&(!best||tot<best.total))best={maquina:m,impCod:p.impCod,total:tot,papelCod,posturas,extra};
   });
   return best;
 }
@@ -9055,7 +9526,7 @@ function _renderItems(){
     h+=`<button onclick="removeItem(${ii})" style="font-size:10px;padding:2px 5px;color:#a32d2d;border-color:#a32d2d"><i class="ti ti-trash"></i></button>`;
     h+=`</div></div>`;
     h+=`<textarea placeholder="Descripción completa del trabajo (medidas, papel, colores, terminaciones...)" class="id2" data-ii="${ii}" rows="2" oninput="onItemDesc(${ii},this.value)" style="width:100%;font-size:12px;margin-top:5px;padding:6px 9px;line-height:1.5;resize:vertical;min-height:46px;border:1px solid rgba(0,0,0,.14);border-radius:6px">${(item.desc||'').replace(/</g,'&lt;')}</textarea>`;
-    h+=(()=>{const ref=(item.filas||[]).filter(f=>f.costo||f.ventaCalc);if(!ref.length)return '';return `<div style="font-size:10px;color:#888;margin-top:4px;line-height:1.5">${ref.map(f=>`<span style="white-space:nowrap">${$n(f.qty)}u · costo $${$n(f.costo||0)} · sug. $${$n(f.ventaCalc||0)}${f.manual?` · <span style="color:#1a7f37;font-weight:700">definitivo $${$n(f.subtotal||0)}</span>`:''}</span>`).join(' &nbsp;|&nbsp; ')}</div>`;})();
+    h+=(()=>{const ref=(item.filas||[]).filter(f=>f.costo||f.ventaCalc);if(!ref.length)return '';return `<div style="font-size:10px;color:#888;margin-top:4px;line-height:1.5">${ref.map(f=>`<span style="white-space:nowrap">${$n(f.qty)}u · costo $${$n(f.costo||0)} · sug. $${$n(cotRedondearVenta(f.ventaCalc||0))}${f.manual?` · <span style="color:#1a7f37;font-weight:700">definitivo $${$n(f.subtotal||0)}</span>`:''}</span>`).join(' &nbsp;|&nbsp; ')}</div>`;})();
     if(item.aiSug){const s=item.aiSug;const parts=[s.maquina?'Máq '+s.maquina:'',s.material?s.material+(s.gramaje?' '+s.gramaje+'g':''):'',(s.medidaAbierta&&(s.medidaAbierta.ancho||s.medidaAbierta.alto))?'abierto '+(s.medidaAbierta.ancho||'?')+'x'+(s.medidaAbierta.alto||'?'):'',s.medidaCerrada?'cerrado '+s.medidaCerrada:'',s.colores||'',(s.procesos&&s.procesos.length)?s.procesos.join(', '):''].filter(Boolean);if(parts.length)h+=`<div style="font-size:10px;color:#6b28b6;margin-top:3px"><i class="ti ti-lock" style="font-size:9px"></i> Interno IA (no sale en PDF): ${parts.join(' · ')} <span style="color:#aaa">· se usa al costear</span></div>`;}
     h+=`</div>`;
     // Filas de variantes (fila 1, 2, 3...)
@@ -9331,8 +9802,8 @@ function mVC2(id){
       const filasVisibles=(it.filas||[]).filter((f,fi)=>fi===0||f.qty>0||f.subtotal>0);
       const tieneVariantes=filasVisibles.length>1;
       h+=`<div style="border:0.5px solid rgba(0,0,0,.12);border-radius:8px;overflow:hidden;margin-bottom:8px">`;
-      h+=`<div style="background:#f0f4f8;padding:7px 10px;font-size:12px;font-weight:600;border-bottom:0.5px solid rgba(0,0,0,.08);display:flex;justify-content:space-between;align-items:center;gap:8px"><div style="flex:1;min-width:0">${it.nombre?`<div style="font-weight:800;color:#185fa5">${escH(it.nombre)}</div>`:''}${it.desc?`<div style="font-size:11px;font-weight:400;color:#555;white-space:pre-line;margin-top:${it.nombre?'2px':'0'}">${_descHtml(it.desc)}</div>`:(!it.nombre?'Ítem '+(ii+1):'')}</div>${c.estado==='aprobada'?`<button onclick="reAprobarItem(${c.id},${ii})" style="font-size:10px;padding:2px 8px;background:#ba7517;color:#fff;border-color:#ba7517;flex-shrink:0">Cambiar</button>`:''}</div>`;
-      if(c.estado!=='aprobada'||aprobadaFi===null){
+      h+=`<div style="background:#f0f4f8;padding:7px 10px;font-size:12px;font-weight:600;border-bottom:0.5px solid rgba(0,0,0,.08);display:flex;justify-content:space-between;align-items:center;gap:8px"><div style="flex:1;min-width:0">${it.nombre?`<div style="font-weight:800;color:#185fa5">${escH(it.nombre)}</div>`:''}${it.desc?`<div style="font-size:11px;font-weight:400;color:#555;white-space:pre-line;margin-top:${it.nombre?'2px':'0'}">${_descHtml(it.desc)}</div>`:(!it.nombre?'Ítem '+(ii+1):'')}</div>${c.estado==='aprobada'&&it.confirmado===false?`<span style="font-size:10px;font-weight:700;color:#854d0e;background:#fef3e2;border:1px solid #f0c27a;border-radius:10px;padding:2px 8px;flex-shrink:0;white-space:nowrap">Pendiente del cliente</span>`:''}${c.estado==='aprobada'&&it.confirmado!==false?`<button onclick="reAprobarItem(${c.id},${ii})" style="font-size:10px;padding:2px 8px;background:#ba7517;color:#fff;border-color:#ba7517;flex-shrink:0">Cambiar</button>`:''}</div>`;
+      if(c.estado!=='aprobada'||aprobadaFi===null||it.confirmado===false){
         if(!tieneVariantes){
           // Un solo ítem sin variantes — seleccionar automáticamente al aprobar
           const f=it.filas[0]||{};
@@ -9367,11 +9838,18 @@ function mVC2(id){
     });
     const todosAprobados=itemsV.every(it=>it.filaAprobada!==undefined);
     const algunoAprobado=itemsV.some(it=>it.filaAprobada!==undefined);
+    const _pendListos=itemsV.filter(it=>it.confirmado===false&&it.filaAprobada!==undefined).length;
+    const _pendSin=itemsV.filter(it=>it.confirmado===false&&it.filaAprobada===undefined).length;
+    if(c.estado==='aprobada'&&_pendListos){
+      h+=`<div style="padding:10px 12px;background:#eaf3de;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:12px;font-weight:500"><i class="ti ti-circle-check" style="color:#3b6d11"></i> ${_pendListos} ítem${_pendListos!==1?'s':''} que el cliente confirmó ahora</span><button class="bp" onclick="aprobarItemsPendientes(${c.id})" style="font-size:12px"><i class="ti ti-clipboard-plus"></i> Aprobar y generar OT</button></div>`;
+    }else if(c.estado==='aprobada'&&_pendSin){
+      h+=`<div style="padding:8px 10px;background:#fef3e2;border-radius:8px;margin-bottom:8px;font-size:11px;color:#854d0e"><i class="ti ti-info-circle"></i> ${_pendSin} ítem${_pendSin!==1?'s':''} sin confirmar por el cliente. Cuando lo confirme, elegí la cantidad acá y aprobalo aparte.</div>`;
+    }
     if(c.estado!=='aprobada'&&todosAprobados){
       h+=`<div style="padding:10px 12px;background:#eaf3de;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:500"><i class="ti ti-circle-check" style="color:#3b6d11"></i> Todo seleccionado</span><button class="bp" onclick="aprobarCotConItemsSeleccionados(${c.id})" style="font-size:12px"><i class="ti ti-check"></i> Confirmar aprobación</button></div>`;
     }else if(c.estado!=='aprobada'&&algunoAprobado){
       const falta=itemsV.filter(it=>it.filaAprobada===undefined).length;
-      h+=`<div style="padding:8px 10px;background:#fef3e2;border-radius:8px;margin-bottom:8px;font-size:11px;color:#854d0e"><i class="ti ti-info-circle"></i> Falta seleccionar la cantidad de ${falta} ítem${falta!==1?'s':''} más.</div>`;
+      h+=`<div style="padding:10px 12px;background:#fef3e2;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:11px;color:#854d0e"><i class="ti ti-info-circle"></i> ${falta} ítem${falta!==1?'s':''} sin elegir: ${falta!==1?'quedan pendientes':'queda pendiente'} del cliente y ${falta!==1?'se pueden':'se puede'} aprobar más adelante.</span><button class="bp" onclick="aprobarCotConItemsSeleccionados(${c.id})" style="font-size:12px;flex-shrink:0"><i class="ti ti-check"></i> Aprobar lo elegido</button></div>`;
     }else if(c.estado!=='aprobada'){
       h+=`<div style="padding:8px 10px;background:#f5f5f3;border-radius:8px;margin-bottom:8px;font-size:11px;color:#888"><i class="ti ti-hand-click"></i> Hacé click en la cantidad que aprobó el cliente para cada ítem.</div>`;
     }
@@ -9389,7 +9867,7 @@ function mVC2(id){
   var _btnOTcomp=(c.estado==='aprobada'&&ot)?`<button class="bp" style="background:#5a7fa0" onclick="omCotNuevaOT(${_bid})"><i class="ti ti-plus"></i> OT complementaria</button>`:'';
   var _btnDup=`<button onclick="dupCot(${_bid})" title="Duplicar esta cotización tal cual"><i class="ti ti-copy"></i> Duplicar</button><button onclick="dupCot(${_bid},true)" title="Copia nueva con fecha de hoy, validez nueva y todo recalculado con las tablas de costos y el dólar actuales" style="background:#e9f6ec;color:#1a7f37;border-color:#8fcf9f"><i class="ti ti-refresh"></i> Duplicar actualizada</button>`;
   // Confirmar aprobación también abajo de todo (no hace falta volver a subir después de elegir las cantidades)
-  var _btnConf=(itemsV.length&&c.estado!=='aprobada'&&itemsV.every(it=>it.filaAprobada!==undefined))?`<button class="bp" onclick="aprobarCotConItemsSeleccionados(${_bid})"><i class="ti ti-check"></i> Confirmar aprobación</button>`:'';
+  var _btnConf=(itemsV.length&&c.estado!=='aprobada'&&itemsV.some(it=>it.filaAprobada!==undefined))?`<button class="bp" onclick="aprobarCotConItemsSeleccionados(${_bid})"><i class="ti ti-check"></i> Confirmar aprobación</button>`:'';
   h+=`<div class="mf"><button onclick="cm()">Cerrar</button><button onclick="generarPDFCotizacion(${_bid})"><i class="ti ti-printer"></i> PDF</button>${_btnDup}${_btnA}${_btnConf}${_btnOT}${_btnOTcomp}</div>`;
   return h;
 }
@@ -9405,22 +9883,31 @@ function aprobarFilaItem(cotId,ii,fi){
   const c=S.cotizaciones.find(x=>x.id==cotId);if(!c)return;
   if(!c.itemsVariantes)return;
   c.itemsVariantes[ii].filaAprobada=fi;
+  if(c.estado==='aprobada'&&c.itemsVariantes[ii].confirmado!==false)_cotRehacerItems(c); // "Cambiar" en un ítem ya aprobado: actualizar ítems y total
   sk('cotizaciones');
   cm();omCot(cotId); // reabrir el modal actualizado
 }
 // Confirmar aprobación cuando todos los ítems tienen cantidad seleccionada
+// Ítems planos de la cotización = solo los ítems confirmados (los pendientes del cliente no cuentan en el total)
+function _cotRehacerItems(c){
+  const out=[];
+  (c.itemsVariantes||[]).forEach((it,ii)=>{
+    if(it.confirmado===false||it.filaAprobada===undefined)return;
+    const f=(it.filas&&it.filas[it.filaAprobada])||{qty:0,precio:0,subtotal:0};
+    out.push({desc:it.desc,qty:f.qty,precio:f.precio,subtotal:f.subtotal,_ii:ii});
+  });
+  c.items=out.map(({_ii,...r})=>r);
+  const sub=c.items.reduce((a,i)=>a+(+i.subtotal||0),0);
+  c.subtotal=sub;c.iva=Math.round(sub*0.21);c.total=sub+c.iva;
+  return out.map(x=>x._ii); // posición en c.items → índice del ítem original
+}
 function aprobarCotConItemsSeleccionados(cotId){
   const c=S.cotizaciones.find(x=>x.id==cotId);if(!c)return;
   if(!c.itemsVariantes)return;
-  // Reconstruir items planos con las filas aprobadas
-  const nuevoItems=c.itemsVariantes.map(it=>{
-    const fi=it.filaAprobada!==undefined?it.filaAprobada:0;
-    const f=(it.filas&&it.filas[fi])||{qty:0,precio:0,subtotal:0};
-    return {desc:it.desc,qty:f.qty,precio:f.precio,subtotal:f.subtotal};
-  });
-  c.items=nuevoItems;
-  const sub=nuevoItems.reduce((a,i)=>a+i.subtotal,0);
-  c.subtotal=sub;c.iva=Math.round(sub*0.21);c.total=sub+c.iva;
+  if(!c.itemsVariantes.some(it=>it.filaAprobada!==undefined)){alert('Elegí la cantidad de al menos un ítem.');return;}
+  // Cada ítem es independiente: los elegidos se aprueban; los demás quedan pendientes del cliente
+  c.itemsVariantes.forEach(it=>{it.confirmado=it.filaAprobada!==undefined;});
+  _cotRehacerItems(c);
   c.estado='aprobada';
   sk('cotizaciones');
   // Abrir modal de distribución en OTs
@@ -9428,6 +9915,17 @@ function aprobarCotConItemsSeleccionados(cotId){
   abrirModalDistribuirOTs(cotId);
 }
 
+// El cliente confirmó después otro ítem de una cotización ya aprobada: se suma y se genera su OT
+function aprobarItemsPendientes(cotId){
+  const c=S.cotizaciones.find(x=>x.id==cotId);if(!c||!c.itemsVariantes)return;
+  const nuevos=[];
+  c.itemsVariantes.forEach((it,ii)=>{if(it.confirmado===false&&it.filaAprobada!==undefined){it.confirmado=true;nuevos.push(ii);}});
+  if(!nuevos.length)return;
+  const map=_cotRehacerItems(c);
+  sk('cotizaciones');
+  cm();
+  abrirModalDistribuirOTs(cotId,map.map((src,pos)=>nuevos.includes(src)?pos:-1).filter(x=>x>=0));
+}
 function setModoOT(modo){
   // Actualizar estilos de botones
   const btnU=Q('btn-ot-unica'),btnS=Q('btn-ot-separada');
@@ -9445,16 +9943,18 @@ function setModoOT(modo){
   }
 }
 
-function abrirModalDistribuirOTs(cotId){
+function abrirModalDistribuirOTs(cotId,solo){
   const c=S.cotizaciones.find(x=>x.id==cotId);if(!c)return;
+  const _incl=ii=>!Array.isArray(solo)||solo.includes(ii); // solo = posiciones de c.items a incluir (ítems aprobados después)
   const maqOpts=[...cotMaqLista(),''].map(m=>`<option value="${m}">${m||'— Sin asignar —'}</option>`).join('');
   let h=`<div class="mt2"><i class="ti ti-layout-distribute-vertical"></i> Distribuir en Órdenes de Trabajo</div>`;
 
   // Paso 1: preguntar si va todo en una OT o separado
-  let tieneMultiplesItems=(c.items||[]).length>1;
+  const _itsIncl=(c.items||[]).filter((x,ii)=>_incl(ii));
+  let tieneMultiplesItems=_itsIncl.length>1;
   if(!tieneMultiplesItems){
     try{
-      const rv0=_costeoDeItemDesc(c,(c.items&&c.items[0]||{}).desc);
+      const rv0=_costeoDeItemDesc(c,(_itsIncl[0]||{}).desc);
       if(rv0&&rv0.costeo&&typeof cotPiezasDe==='function'&&cotPiezasDe(rv0.costeo).length>1)tieneMultiplesItems=true;
     }catch(e){}
   }
@@ -9474,6 +9974,7 @@ function abrirModalDistribuirOTs(cotId){
   window._dotRows=[];
   let _rowN=0;
   (c.items||[]).forEach((it,ii)=>{
+    if(!_incl(ii))return;
     const rv=(typeof _costeoDeItemDesc==='function')?_costeoDeItemDesc(c,it.desc):null;
     const piezas=(rv&&rv.costeo)?cotPiezasPara(rv.costeo,+it.qty||rv.costeo.cantidad):null; // piezas de la cantidad del ítem
     const multiPz=piezas&&piezas.length>1;
@@ -9519,7 +10020,7 @@ async function confirmarDistribucionOTs(cotId){
     grupos[nroOT].entradas.push({item:{...it},piezaIdx:row.piezaIdx,piezaNombre:row.piezaNombre,comunes:!!row.primeraDelItem});
     if(!grupos[nroOT].maq&&maq)grupos[nroOT].maq=maq;
   });
-  const baseId=await nid('ot');
+  const baseId=await nid('ot'); // número nuevo al momento de aprobar (correlativo del día, también para ítems aprobados después)
   const letras=Object.keys(grupos).sort((a,b)=>Number(a)-Number(b));
   const multiOT=letras.length>1;
   const nuevasOTids=[];
@@ -11493,7 +11994,7 @@ async function dupCot(id,actualizar){
   {const d=(orig.fecha&&orig.validez)?Math.round((new Date(orig.validez)-new Date(orig.fecha))/864e5):0;
    nueva.validez=_cotSumarDias(hoy,d>0?d:15);}
   // La copia no hereda la aprobación de la original
-  (nueva.itemsVariantes||[]).forEach(it=>{if(it)delete it.filaAprobada;});
+  (nueva.itemsVariantes||[]).forEach(it=>{if(it){delete it.filaAprobada;delete it.confirmado;}});
   delete nueva.variantesAprobadas;
   S.cotizaciones.push(nueva);
   sk('cotizaciones');
