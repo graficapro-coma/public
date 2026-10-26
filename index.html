@@ -110,7 +110,7 @@ body.modo-taller .main{margin-left:0 !important;padding:12px !important}
   <div class="ni fin-only" onclick="nav('balmes')"><i class="ti ti-calendar-stats"></i>Balance mensual</div>
   <div class="ni fin-only" onclick="nav('balaño')"><i class="ti ti-chart-line"></i>Balance anual</div>
   <div style="padding:8px;border-top:0.5px solid rgba(0,0,0,.1);margin-top:auto;flex-shrink:0">
-    <div class="ni fin-only" onclick="descargarBackup()" style="font-size:12px;color:#185fa5;font-weight:500" title="Descargar una copia de seguridad de todos los datos a un archivo en tu computadora"><i class="ti ti-download"></i>Copia de seguridad <span id="backup-fecha-nav" style="font-size:10px;color:#999;font-weight:400"></span></div>
+    <div class="ni fin-only" onclick="backupAhora()" oncontextmenu="event.preventDefault();backupElegirCarpeta()" style="font-size:12px;color:#185fa5;font-weight:500" title="Guarda una copia de todos los datos en la carpeta fija de respaldos (clic derecho: cambiar la carpeta)"><i class="ti ti-download"></i>Copia de seguridad <span id="backup-fecha-nav" style="font-size:10px;color:#999;font-weight:400"></span></div>
     <div class="ni" onclick="doLogout()" style="font-size:12px;color:#a32d2d;font-weight:500"><i class="ti ti-logout"></i>Cerrar sesión</div>
   </div>
 </div>
@@ -676,8 +676,116 @@ async function dolarAutoActualizar(forzar){
   }catch(e){console.warn('Dólar automático: no se pudo consultar',e);}
   finally{window._dolarAutoEnCurso=false;}
 }
+// ===================== FERIADOS (Argentina) =====================
+// Base: feriados nacionales 2026 publicados en argentina.gob.ar/feriados. Los años siguientes se traen solos de
+// api.argentinadatos.com (mismos datos oficiales). Se guardan en S.cotConfig.feriados = {'AAAA-MM-DD':{n,tipo,bloquea}}.
+// bloquea=true: no se trabaja (plan de producción, días hábiles, entregas). Los puentes turísticos y feriados de otra
+// jurisdicción quedan marcados pero sin bloquear (en Tablas de costos → Configuración se tilda/destilda cada uno).
+// No se cargan los días no laborables religiosos (solo para quienes profesan esa religión).
+const FERIADOS_BASE={
+  '2026-01-01':{n:'Año Nuevo',tipo:'inamovible'},
+  '2026-02-16':{n:'Carnaval',tipo:'inamovible'},'2026-02-17':{n:'Carnaval',tipo:'inamovible'},
+  '2026-03-23':{n:'Puente turístico (no laborable)',tipo:'puente'},
+  '2026-03-24':{n:'Día de la Memoria por la Verdad y la Justicia',tipo:'inamovible'},
+  '2026-04-02':{n:'Malvinas / Jueves Santo',tipo:'inamovible'},'2026-04-03':{n:'Viernes Santo',tipo:'inamovible'},
+  '2026-05-01':{n:'Día del Trabajador',tipo:'inamovible'},'2026-05-25':{n:'Revolución de Mayo',tipo:'inamovible'},
+  '2026-06-15':{n:'Paso a la Inmortalidad de Güemes',tipo:'trasladable'},'2026-06-20':{n:'Día de la Bandera (Belgrano)',tipo:'inamovible'},
+  '2026-07-09':{n:'Día de la Independencia',tipo:'inamovible'},'2026-07-10':{n:'Puente turístico (no laborable)',tipo:'puente'},
+  '2026-08-17':{n:'Paso a la Inmortalidad de San Martín',tipo:'trasladable'},
+  '2026-10-12':{n:'Día del Respeto a la Diversidad Cultural',tipo:'trasladable'},
+  '2026-11-09':{n:'Visita del Papa León XIV',tipo:'inamovible'},
+  '2026-11-10':{n:'Visita del Papa (solo CABA y Córdoba)',tipo:'especial',bloquea:false},
+  '2026-11-11':{n:'Visita del Papa (Provincia de Buenos Aires)',tipo:'especial',bloquea:true},
+  '2026-11-23':{n:'Día de la Soberanía Nacional',tipo:'trasladable'},
+  '2026-12-07':{n:'Puente turístico (no laborable)',tipo:'puente'},
+  '2026-12-08':{n:'Inmaculada Concepción de María',tipo:'inamovible'},'2026-12-25':{n:'Navidad',tipo:'inamovible'}
+};
+const _ferBloqDef=t=>!(t==='puente'||t==='especial'||t==='nolaborable');
+function feriadosMapa(){
+  const m={};
+  Object.entries(FERIADOS_BASE).forEach(([f,x])=>{m[f]={n:x.n,tipo:x.tipo,bloquea:x.bloquea!=null?x.bloquea:_ferBloqDef(x.tipo)};});
+  const g=(S.cotConfig&&S.cotConfig.feriados)||{};
+  Object.entries(g).forEach(([f,x])=>{if(x&&x.borrado){delete m[f];return;}if(x)m[f]=Object.assign({},m[f]||{},x);});
+  return m;
+}
+// Feriado que BLOQUEA ese día (o null). fecha: 'AAAA-MM-DD' o Date
+function esFeriado(fecha){
+  const f=typeof fecha==='string'?fecha.slice(0,10):(fecha instanceof Date?fecha.getFullYear()+'-'+String(fecha.getMonth()+1).padStart(2,'0')+'-'+String(fecha.getDate()).padStart(2,'0'):'');
+  if(!f)return null;
+  // Cache: se rehace si cambia el objeto de feriados (sincronización) o si se editó (_ferCacheV=null)
+  const g=(S.cotConfig&&S.cotConfig.feriados)||null;
+  if(!window._ferCache||window._ferCacheRef!==g||!window._ferCacheV){window._ferCache=feriadosMapa();window._ferCacheRef=g;window._ferCacheV=1;}
+  const x=window._ferCache[f];return x&&x.bloquea?x:null;
+}
+// Feriado o día marcado (aunque no bloquee: puentes, otras jurisdicciones) — para mostrarlo en los calendarios
+function feriadoInfo(fecha){
+  esFeriado(fecha);const f=typeof fecha==='string'?fecha.slice(0,10):(fecha instanceof Date?fecha.getFullYear()+'-'+String(fecha.getMonth()+1).padStart(2,'0')+'-'+String(fecha.getDate()).padStart(2,'0'):'');
+  return (window._ferCache||{})[f]||null;
+}
+// Una vez por semana: trae el año actual y el siguiente si todavía no están (cuando el gobierno publica el año nuevo, entra solo)
+async function feriadosAutoActualizar(forzar){
+  if(window._clavesFallidas&&window._clavesFallidas.has&&window._clavesFallidas.has('cotConfig'))return;
+  const info=(S.cotConfig&&S.cotConfig.feriadosAuto)||{};
+  if(!forzar&&info.ts&&Date.now()-info.ts<7*864e5)return;
+  const y=new Date().getFullYear();let nuevos=0;const anios=[];
+  for(const anio of [y,y+1]){
+    try{
+      const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),10000);
+      let r;try{r=await fetch('https://api.argentinadatos.com/v1/feriados/'+anio,{signal:ctl.signal});}finally{clearTimeout(to);}
+      if(!r.ok)continue;const l=await r.json();if(!Array.isArray(l)||!l.length)continue;
+      if(!S.cotConfig)S.cotConfig=Object.assign({},COT_CONFIG_DEFAULT);
+      if(!S.cotConfig.feriados)S.cotConfig.feriados={};
+      const g=S.cotConfig.feriados,base=feriadosMapa();
+      l.forEach(x=>{const f=String(x&&x.fecha||'').slice(0,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(f))return;
+        if(base[f]||g[f])return; // no pisa lo que ya está (ni lo que se cambió a mano)
+        const tipo=String(x.tipo||'').toLowerCase();
+        g[f]={n:String(x.nombre||'Feriado').replace(/[<>]/g,'').slice(0,80),tipo,bloquea:_ferBloqDef(tipo),auto:true};nuevos++;});
+      anios.push(anio);
+    }catch(e){console.warn('Feriados: no se pudo consultar '+anio,e);}
+  }
+  if(!S.cotConfig)return;
+  S.cotConfig.feriadosAuto={ts:Date.now(),anios,nuevos};
+  await costosSave('cotConfig');window._ferCacheV=null;
+  if(forzar){alert(nuevos?`Se agregaron ${nuevos} feriados (${anios.join(', ')}).`:'Los feriados ya estaban al día ('+(anios.join(', ')||'sin conexión')+').');render();}
+}
+function feriadoEd(f,campo,val){
+  if(!S.cotConfig)S.cotConfig=Object.assign({},COT_CONFIG_DEFAULT);
+  if(!S.cotConfig.feriados)S.cotConfig.feriados={};
+  const g=S.cotConfig.feriados,actual=feriadosMapa()[f]||{};
+  if(campo==='bloquea')g[f]=Object.assign({},actual,g[f]||{},{bloquea:!!val});
+  else if(campo==='borrar'){if(!confirm('¿Quitar este feriado de la lista?'))return;g[f]={borrado:true};}
+  window._ferCacheV=null;costosSave('cotConfig');render();
+}
+function feriadoAgregar(){
+  const f=String((Q('fer-nuevo-f')||{}).value||''),n=String((Q('fer-nuevo-n')||{}).value||'').replace(/[<>]/g,'').trim().slice(0,80);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(f)){alert('Elegí la fecha.');return;}
+  if(!S.cotConfig)S.cotConfig=Object.assign({},COT_CONFIG_DEFAULT);
+  if(!S.cotConfig.feriados)S.cotConfig.feriados={};
+  S.cotConfig.feriados[f]={n:n||'Feriado / día no laborable',tipo:'local',bloquea:true};
+  window._ferCacheV=null;costosSave('cotConfig');render();
+}
+function feriadosConfigHTML(){
+  const m=feriadosMapa(),y=new Date().getFullYear(),hoy=fmtD(new Date());
+  const l=Object.entries(m).filter(([f])=>+f.slice(0,4)>=y).sort((a,b)=>a[0].localeCompare(b[0]));
+  const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const tl={inamovible:'inamovible',trasladable:'trasladable',puente:'puente turístico',especial:'especial',local:'agregado a mano',nolaborable:'no laborable'};
+  const au=(S.cotConfig&&S.cotConfig.feriadosAuto)||{};
+  return `<div class="card" style="padding:18px;max-width:620px;margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px"><div style="font-weight:700"><i class="ti ti-calendar-off"></i> Feriados</div>
+      <button onclick="feriadosAutoActualizar(true)" style="font-size:11px"><i class="ti ti-refresh"></i> Buscar feriados nuevos</button></div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px">Los tildados <b>no se trabajan</b>: se ven en rojo en el plan de producción y en entregas, y no cuentan como días hábiles (plazos de entrega, retornos de externos). Fuente: argentina.gob.ar/feriados; los años nuevos se agregan solos${au.ts?' (última revisión '+new Date(au.ts).toLocaleDateString('es-AR')+')':''}.</div>
+    <div style="max-height:260px;overflow:auto;border:0.5px solid rgba(0,0,0,.08);border-radius:8px">
+    ${l.map(([f,x])=>{const d=new Date(f+'T12:00:00');return `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-bottom:0.5px solid rgba(0,0,0,.05);font-size:12px;${f<hoy?'opacity:.45':''}">
+      <input type="checkbox" ${x.bloquea?'checked':''} onchange="feriadoEd('${f}','bloquea',this.checked)" title="Tildado = no se trabaja" style="width:auto">
+      <span style="width:92px;font-weight:700;color:${x.bloquea?'#a32d2d':'#888'}">${DIAS[d.getDay()]} ${f.slice(8,10)}/${f.slice(5,7)}/${f.slice(2,4)}</span>
+      <span style="flex:1">${cotEsc(x.n||'')}</span><span style="font-size:10px;color:#999">${tl[x.tipo]||cotEsc(x.tipo||'')}</span>
+      <button onclick="feriadoEd('${f}','borrar')" title="Quitar" style="border:none;background:none;color:#bbb;cursor:pointer"><i class="ti ti-x"></i></button></div>`;}).join('')}</div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap"><span style="font-size:11px;color:#666">Agregar día (feriado local, vacaciones, etc.):</span>
+      <input id="fer-nuevo-f" type="date" style="font-size:12px;padding:4px"><input id="fer-nuevo-n" placeholder="Motivo" style="font-size:12px;padding:4px 6px;width:160px">
+      <button onclick="feriadoAgregar()" style="font-size:11px"><i class="ti ti-plus"></i> Agregar</button></div></div>`;
+}
 function dolarAutoIniciar(){
-  dolarAutoActualizar();
+  dolarAutoActualizar();setTimeout(()=>{try{feriadosAutoActualizar();}catch(e){}},4000);
   clearInterval(window._dolarAutoT);window._dolarAutoT=setInterval(()=>dolarAutoActualizar(),5*60*1000); // revisa cada 5 minutos
 }
 // Limpieza de una sola vez: borra las 2 OTs de EJEMPLO del sistema (datos de demostración de 2024 que quedaron en la base real)
@@ -1203,6 +1311,30 @@ function cotPapelOpciones(p,maqForzada){
       });
     });
   }}
+  // PLIEGO FIJO (ej. sacabocado armado para 36×34 con 2 poses): el pliego de máquina es ése. Se calcula cuántos salen
+  // de cada formato de compra (en cualquier sentido) y lo que sobra; las poses son las cargadas (o las que entran).
+  {const pf=p.pliegoFijo,fw=+(pf&&pf.w)||0,fh=+(pf&&pf.h)||0;
+   if(fw>0&&fh>0){
+    out.length=0;
+    _catOrigenes(s).forEach(o=>{
+      const t=0.05,cA=Math.floor((o.w+t)/fw),rA=Math.floor((o.h+t)/fh),cB=Math.floor((o.w+t)/fh),rB=Math.floor((o.h+t)/fw);
+      let n=Math.max(cA*rA,cB*rB);if(o.sinCorte)n=(Math.abs(o.w-fw)<0.5&&Math.abs(o.h-fh)<0.5)||(Math.abs(o.w-fh)<0.5&&Math.abs(o.h-fw)<0.5)?1:0;
+      if(!n)return;
+      const aW=cA*rA>=cB*rB; // true: el lado fw del pliego fijo va sobre el lado "w" del pliego de compra
+      const fibW=(o.w>=o.h)!==(p.fibraPliego==='corto');      // la fibra del pliego de compra va sobre su lado w
+      const ladoFibra=fibW?(aW?fw:fh):(aW?fh:fw),fibraEnLargo=ladoFibra>=Math.max(fw,fh)-0.01;
+      const sobra=Math.round((1-n*fw*fh/(o.w*o.h))*100);
+      maqs.forEach(m=>{
+        if(!cotPliegoEnMaq([fw,fh],m))return;
+        const orient=_orientFibra(p,fibraEnLargo);
+        let poses=(PW>0&&PH>0)?(_B.estuche?_estPoses(_B.estuche,fw,fh,cotPinza(m,p),orient,_estPinzaNat(p,m),_pzLaminada(p)).n:cotPosesSug(PW,PH,fw,fh,cotPinza(m,p),orient,cotCalleHV(p),_B.px,_B.py)*_B.n):0;
+        if(+p.posturas>0&&!p._pag&&(p.posFijas||!poses))poses=Math.round(+p.posturas); // troquel armado: mandan las poses cargadas
+        if(PW>0&&PH>0&&!poses)return;
+        out.push({...o,i:aW?cA:cB,j:aW?rA:rB,cortes:n,sw:fw,sh:fh,cw:fw,ch:fh,refil:false,larga:false,fibraEnLargo,maq:m,poses,uo:poses*n,cu:poses?o.ars/(poses*n):null,
+          cutKey:'F'+fw+'x'+fh,pliegoFijo:true,notaCorte:o.sinCorte?'':`salen ${n} pliegos de ${cotFmtDec(fw,1)}×${cotFmtDec(fh,1)}`+(sobra>0?` (sobra ${sobra}%)`:'')});
+      });
+    });
+   }}
   // Costo por unidad = papel + impresión estimada (un pliego chico rinde menos poses → más impresos y chapas).
   // Impresión por pliego: el código de la pieza si es de esa máquina; si no, la mediana de los códigos de esa máquina.
   const _impPP={};
@@ -1814,6 +1946,7 @@ function rCostos(){
     ${fila('Ancho de guillotina','guillotinaCm',c.guillotinaCm,'cm — largo máximo de corte (decide si un pliego se puede cortar cruzado)')}
     <div style="font-size:11px;color:#888;margin-top:10px"><i class="ti ti-info-circle"></i> El dólar BNA venta se <b>actualiza solo</b> (dolarapi.com) de lunes a viernes a las 10, 11, 12, 13, 14 y 15 h${c.dolarAuto&&c.dolarAuto.cuando?` — última: <b style="color:#1a7f37">${cotEsc(c.dolarAuto.cuando)}</b> ($ ${cotFmtDec(+c.dolarAuto.valor,2)}${+c.dolarAuto.anterior&&+c.dolarAuto.anterior!==+c.dolarAuto.valor?`, antes $ ${cotFmtDec(+c.dolarAuto.anterior,2)}`:''})`:''}. Lo usan todos los costeos y la cláusula dólar del presupuesto. Si lo escribís a mano o usás "Traer BNA", vale hasta el próximo horario.</div>
     </div>`;
+    h+=feriadosConfigHTML();
     // Puestos del Modo Taller con su operario habitual (se precarga; en el taller se puede cambiar)
     h+=`<div class="card" style="padding:18px;max-width:620px;margin-top:12px">
       <div style="font-weight:700;margin-bottom:4px"><i class="ti ti-tool"></i> Puestos del taller</div>
@@ -2579,6 +2712,49 @@ function _lamOpciones(){
   return [...vistos.values()];
 }
 function _lamOpcionDe(cod){const x=(S.cotLaminados||[]).find(l=>l.codigo===cod);if(!x)return cod;const key=_lamNombre(x.material).toLowerCase()+'|'+(+x.precioM2||0);const o=_lamOpciones().find(y=>y.key===key);return o?o.v:cod;}
+// ===== Observaciones para producción, por sector =====
+// Se escriben en el costeo (cotW.obsProd) y al generar la OT pasan a o.obsProd. Cada sector las ve en su pantalla:
+// Pre-prensa en la OT, impresión y terminación en el Modo Taller, entrega en el Reparto.
+const OBS_SECT=[['ppd','Pre-prensa','#7b3fa0','ti-palette'],['imp','Impresión','#185fa5','ti-printer'],['term','Terminación','#c05600','ti-scissors'],['ent','Entrega / logística','#1a7f37','ti-truck-delivery']];
+function obsProdHTML(ob,on,titulo){
+  ob=ob||{};
+  return `<div class="card" style="padding:12px;margin-bottom:12px">
+    <strong style="font-size:12px"><i class="ti ti-notes"></i> ${titulo}</strong>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin-top:8px">
+    ${OBS_SECT.map(([k,lbl,col,ic])=>`<label style="display:block"><span style="font-size:10px;font-weight:700;color:${col};text-transform:uppercase"><i class="ti ${ic}"></i> ${lbl}</span>
+      <textarea rows="2" onchange="${on.replace('KEY',`'${k}'`)}" placeholder="${{ppd:'Ej: usar archivo v2, Pantone 877 plata, revisar textos legales…',imp:'Ej: plata primero, carga de tinta alta, ver muestra…',term:'Ej: stamping celeste VER MUESTRA, troquel con relieve…',ent:'Ej: entregar en 2 partes, llamar antes, depósito por calle lateral…'}[k]}" style="width:100%;font-size:12px;padding:6px 8px;border:1px solid ${ob[k]?col:'rgba(0,0,0,.15)'};border-radius:6px;margin-top:2px;resize:vertical">${cotEsc(ob[k]||'')}</textarea></label>`).join('')}</div></div>`;
+}
+function _obsTxt(v){return String(v==null?'':v).replace(/[<>]/g,'').trim().slice(0,1000);}
+function cotObsProd(k,val){if(!cotW)return;if(!cotW.obsProd)cotW.obsProd={};cotW.obsProd[k]=_obsTxt(val);}
+function otObsProdSet(id,k,val){const o=(S.ordenes||[]).find(x=>x.id===id);if(!o)return;if(!o.obsProd)o.obsProd={};o.obsProd[k]=_obsTxt(val);sk('ordenes');}
+// Bloque de solo lectura para las pantallas del taller y el reparto
+function obsProdAviso(o,k,grande){
+  const t=o&&o.obsProd&&o.obsProd[k];if(!t)return '';
+  const s=OBS_SECT.find(x=>x[0]===k)||['','Obs.','#555','ti-notes'];
+  return `<div style="margin-top:6px;font-size:${grande?14:12}px;background:#fffbe6;border:1px solid #f0d78c;border-left:4px solid ${s[2]};border-radius:8px;padding:6px 9px;white-space:pre-wrap"><b style="color:${s[2]}"><i class="ti ${s[3]}"></i> ${s[1]}:</b> ${cotEsc(t)}</div>`;
+}
+// Estuche: una sola medida (armado ancho × alto × prof.); la abierta es el desplegado que se calcula solo
+function _estBoxHTML(k,p){
+  const e=p.estuche,ar=_estArreglo(p);
+  const ei=(c,v,ph)=>`<input value="${+v>0?cotEsc(cotFmtDec(+v,1)):''}" placeholder="${ph}" onchange="cotPzEstEd(${k},'${c}',this.value)" style="width:40px;padding:5px 3px;border:1px solid #d32f2f;border-radius:6px;font-size:12px;text-align:center">`;
+  const ahorro=ar?Math.round((1-ar.area/ar.suelto.area)*100):0; // ar.area ya es por estuche
+  return `<div title="Desplegado aproximado (como Template Maker: tapa con lengüeta arriba y abajo). El troquelador ajusta el troquel final.">
+    <div style="font-size:10px;color:#d32f2f;font-weight:700"><i class="ti ti-box"></i> ESTUCHE armado (ancho × alto × prof.)</div>
+    ${ei('a',e.a,'ancho')}×${ei('h',e.h,'alto')}×${ei('p',e.p,'prof')} <button onclick="cotPzEstEd(${k},'off')" title="Sacar el estuche" style="border:none;background:none;color:#a32d2d;cursor:pointer;padding:0 2px"><i class="ti ti-x"></i></button>
+    <label title="La solapa de pegado no va impresa: va dentro de la pinza. Todos los estuches quedan derechos, en una fila contra la pinza." style="font-size:10px;color:${e.pinzaNat?'#d32f2f':'#666'};font-weight:${e.pinzaNat?'700':'400'};display:inline-flex;align-items:center;gap:3px;cursor:pointer;margin-left:4px"><input type="checkbox" ${e.pinzaNat?'checked':''} onchange="cotPzEstEd(${k},'pinzaNat',this.checked)" style="margin:0;accent-color:#d32f2f"> pinza natural</label>
+    ${ar?`<div style="font-size:10px;color:#555;margin-top:2px">abierto (desplegado) <b>${cotFmtDec(ar.dl.w,1)}×${cotFmtDec(ar.dl.h,1)}</b> · ${e.pinzaNat?`<b style="color:#d32f2f">todos derechos</b>, solapa en la pinza, tapas encastradas entre vecinos`:ar.n>1?`<b style="color:#d32f2f">encastrados</b> (uno derecho, uno girado)${ahorro>0?` · −${ahorro}% de papel`:''}`:'sueltos (no conviene encastrar)'}</div>`:'<div style="font-size:10px;color:#a35b00">cargá las 3 medidas</div>'}</div>`;
+}
+// Pliego de máquina fijo (troquel / sacabocado ya armado para esa medida)
+function cotPzPliegoFijo(k,campo,val){
+  if(!cotW)return;
+  if(!Array.isArray(cotW.piezas)||!cotW.piezas.length)cotW.piezas=cotPiezasDe(cotW);
+  const p=cotW.piezas[k];if(!p)return;
+  if(campo==='off')delete p.pliegoFijo;
+  else{if(!p.pliegoFijo)p.pliegoFijo={w:0,h:0};p.pliegoFijo[campo]=cotNumDec(val)||0;}
+  if(p.papelSel){p.papelSel.fmt='';p.papelSel.cut='';}
+  try{cotAutoPoses(k);}catch(e){}
+  cotRerender();
+}
 function cotLamMedida(k,campo,val){
   if(!cotW)return;
   if(!Array.isArray(cotW.piezas)||!cotW.piezas.length)cotW.piezas=cotPiezasDe(cotW);
@@ -3036,6 +3212,15 @@ function _estPoses(ar,SW,SH,mg,orient,pn,lam){
       if(pos.length>g.n)g={n:pos.length,pos,rot:true,lamDir:true};
     }
   }
+  // PINZA NATURAL: todos los estuches DERECHOS (ninguno girado 180°), girados 90° con la solapa de pegado metida en la pinza,
+  // en una fila a lo largo del pliego; las tapas de uno encastran entre las del vecino (como lo arma diseño).
+  if(+pn>0&&orient!=='a'){
+    const dl=ar.dl,A=dl.rects,c=arR.c,p0=+pn;
+    const paso=_minPaso(A,A,'y',0,c,dl.h+c.y); // estuches iguales uno al lado del otro (eje "y" del desplegado = largo del pliego)
+    const n1=dl.h>L+1e-6?0:Math.floor((L-dl.h)/paso+1e-6)+1,pos=[];
+    if(dl.w-p0<=C+1e-6)for(let i=0;i<n1;i++)pos.push({x:i*paso,y:-p0,r:0});
+    if(pos.length)g={n:pos.length,pos,rot:true,pinzaNat:true};
+  }
   return Object.assign({L,C,lam:!!lam},g);
 }
 // Lo que se acomoda en el pliego: la pieza, o el BLOQUE de montaje armado en diseño (ej. 2 estuches encastrados en 51×34)
@@ -3116,10 +3301,15 @@ function cotPreviewPliego(p){
   if(B.estuche){ // estuches: forma del desplegado en su posición real del encastre
     const ar=B.estuche,pnat=_estPinzaNat(p,cotMaqDeP(p)),ly=_estPoses(ar,SW,SH,mg,_orientFibra(p,fel),pnat,_pzLaminada(p));
     if(!ly.n)return `<div style="font-size:11px;color:#c62828;text-align:right;max-width:180px"><i class="ti ti-alert-triangle"></i> El estuche (desplegado ${cotFmtDec(ar.dl.w,1)}×${cotFmtDec(ar.dl.h,1)}) no entra en el pliego ${cotFmtDec(SW,1)}×${cotFmtDec(SH,1)}</div>`;
-    const cargadas=(+p.posturas>0)?Math.round(+p.posturas):ly.n,n=Math.min(ly.n,cargadas);
-    const boxW=170,sc=boxW/SW,W=SW*sc,H=SH*sc;
+    const cargadas=(+p.posturas>0)?Math.round(+p.posturas):ly.n;
     // centrar el conjunto en el área útil
     const Wd=ly.rot?ar.dl.h:ar.dl.w,Hd=ly.rot?ar.dl.w:ar.dl.h;
+    // Troquel armado (poses fijas o pliego fijo) con más poses de las que da el desplegado aproximado:
+    // se dibujan las cargadas en una fila, repartidas en el largo (el troquel real es más ajustado que la aproximación)
+    const forzado=cargadas>ly.n&&(p.posFijas||(p.pliegoFijo&&+p.pliegoFijo.w>0))&&cargadas<=ly.n*3;
+    if(forzado){const paso=cargadas>1?Math.max(0,(ly.L-Wd)/(cargadas-1)):0,y0=ly.pos[0].y;ly.pos=Array.from({length:cargadas},(_,i)=>({x:i*paso,y:y0,r:ly.pinzaNat?0:(i%2&&!ly.rot?1:0)}));ly.n=cargadas;ly.forzado=true;}
+    const n=Math.min(ly.n,cargadas);
+    const boxW=170,sc=boxW/SW,W=SW*sc,H=SH*sc;
     // Si se cargaron menos poses (troquel existente), se dibujan esas en el bloque más compacto:
     // probando llenar por filas o por columnas (ej. 6 de 8 → 3 columnas × 2 filas, no 4 + 2)
     const _sub=(cmp)=>ly.pos.slice().sort(cmp).slice(0,n);
@@ -3135,7 +3325,7 @@ function cotPreviewPliego(p){
     const banda=_svgFondoPliego(W,H,sc,SH,pc,fel);
     return `<div style="display:inline-block;text-align:center">
       <svg width="${W.toFixed(0)}" height="${H.toFixed(0)}" viewBox="0 0 ${W.toFixed(1)} ${H.toFixed(1)}" style="background:#fff;border:1.5px solid #2e7d32;border-radius:2px;display:block">${banda}${sh}</svg>
-      <div style="font-size:10px;color:#555;margin-top:2px">Pliego ${cotFmtDec(SW,1)}×${cotFmtDec(SH,1)} · <strong style="color:#1a7f37">${n} poses</strong>${n<ly.n?` <span style="color:#888">(entran ${ly.n})</span>`:''}<br><span style="color:#d32f2f">${ly.lam?'LAMINADO: solapas de pegado contra el borde':((ly.grilla||ar.n<2)?'sueltos (en este pliego no conviene encastrar)':'encastrados girados 180°')} · calle ↔${cotFmtDec(cotCalleHV(p).h,1)} ↕${cotFmtDec(cotCalleHV(p).v,1)}</span>${p.fibra?`<br><span style="color:#7b3fa0">fibra ${fel?'↔':'↕'} · ∥ ${p.fibra}</span>`:''}</div>
+      <div style="font-size:10px;color:#555;margin-top:2px">Pliego ${cotFmtDec(SW,1)}×${cotFmtDec(SH,1)} · <strong style="color:#1a7f37">${n} poses</strong>${n<ly.n?` <span style="color:#888">(entran ${ly.n})</span>`:''}${ly.forzado?' <span style="color:#a35b00">(troquel armado · dibujo aproximado)</span>':''}<br><span style="color:#d32f2f">${ly.pinzaNat?'PINZA NATURAL: todos derechos, solapa de pegado en la pinza'+(ly.lam?' (sirve para laminar)':''):ly.lam?'LAMINADO: solapas de pegado contra el borde':((ly.grilla||ar.n<2)?'sueltos (en este pliego no conviene encastrar)':'encastrados girados 180°')} · calle ↔${cotFmtDec(cotCalleHV(p).h,1)} ↕${cotFmtDec(cotCalleHV(p).v,1)}</span>${p.fibra?`<br><span style="color:#7b3fa0">fibra ${fel?'↔':'↕'} · ∥ ${p.fibra}</span>`:''}</div>
       ${cargadas>ly.n?`<div style="font-size:10px;color:#c62828;font-weight:700"><i class="ti ti-alert-triangle"></i> cargaste ${cargadas} poses y entran ${ly.n}</div>`:''}</div>`;
   }
   const g=_posesGrid(PW,PH,SW,SH,mg,_orientFibra(p,fel),cotCalleHV(p),B.px,B.py);
@@ -3603,6 +3793,30 @@ function cotPzPers(k,checked){
   p.personalizado=!!checked;
   cotRerender();
 }
+// Pieza sin impresión (interior blanco, base de block): se marca a propósito para que la revisión no avise
+function cotPzSinImp(k){
+  if(!cotW)return;
+  if(!Array.isArray(cotW.piezas)||!cotW.piezas.length)cotW.piezas=cotPiezasDe(cotW);
+  const p=cotW.piezas[k];if(!p)return;
+  p.sinImp=!p.sinImp;
+  if(p.sinImp){p.impCod=0;p.chapasCod=0;p.chapasCant=0;}
+  else if(p.maquina==='SM52')p.chapasCod=2;else if(p.maquina==='SM74')p.chapasCod=3;
+  cotRerender();
+}
+// Revisión antes de aplicar el costeo: lo que falta o parece un olvido (se puede seguir igual)
+function cotRevisarCosteo(w){
+  const av=[];const pzs=cotPiezasDe(w),multi=pzs.length>1;
+  pzs.forEach((p,k)=>{
+    const nom=multi?`"${p.nombre||('Pieza '+(k+1))}": `:'';
+    const mq=cotMaqDeP(p),dig=/xerox|digital/i.test(mq||'');
+    if(!cotPapelDePieza(p))av.push(nom+'no tiene papel elegido');
+    if(!(+p.posturas>0))av.push(nom+'las poses están en 0');
+    if(!p.sinImp&&!p.impCod)av.push(nom+'no tiene impresión elegida (si va en blanco, tocá "Sin impresión")');
+    if(!p.sinImp&&p.impCod&&!dig&&!(+p.chapasCant>0))av.push(nom+'no tiene chapas cargadas');
+    if(+p.lamCod>0&&!(+p.lamCaras>0))av.push(nom+'tiene laminado sin caras');
+  });
+  return av;
+}
 function cotPzMaq(k,m){
   if(!cotW)return;
   if(!Array.isArray(cotW.piezas)||!cotW.piezas.length)cotW.piezas=cotPiezasDe(cotW);
@@ -3629,6 +3843,7 @@ function cotPzMaq(k,m){
   if(p.maquina==='SM52')p.chapasCod=2;
   if(p.maquina==='SM74')p.chapasCod=3;
   if(cotEsMaqExtra(p.maquina))p.chapasCod=aiMatchChapa(p.maquina); // máquina agregada (ej. DELIGRAF): la chapa que la nombra en Chapas CTP
+  if(p.sinImp){p.chapasCod=0;p.chapasCant=0;} // pieza sin impresión: la máquina solo define el pliego
   if(p.maquina==='Xerox'){p.chapasCod=0;p.chapasCant=0;p.demasia=5;} // digital: 5 pliegos, sale bien de la 1ª hoja
   else if(p.demasia===5)p.demasia=cotCfg().demasia; // dejó Xerox: vuelve la demasía offset
   if(p._pag&&p.maquina&&p.maquina!=='Xerox'&&cotW.paginado)cotPagAplicar(true); // pieza del paginado: recompone impresión y chapas para la máquina nueva
@@ -3953,7 +4168,7 @@ function cotDesdeItem(ii){
     cotW.descripcion=item.desc||'';
     cotW.cliente=Q('cot-txt')?Q('cot-txt').value:'';
     cotW.clienteId=cotResolverCliente(cotW.cliente);
-    cotW.tipoTrabajo=Q('cd')?Q('cd').value:'';
+    cotW.tipoTrabajo=_itemTipo(item); // el del ítem (stickers, carpetas…) o el general
     const f0=item.filas[0]||{};
     cotW.cantidad=f0.qty||0;
     cotW.variantes=item.filas.slice(1).filter(f=>f.qty>0).map(f=>({cantidad:f.qty}));
@@ -4100,6 +4315,8 @@ function cotEmbedAplicar(){
   if(!cotW.cantidad){alert('Poné la cantidad real antes de aplicar.');return;}
   _cotUnswap(); // piezas de la base en su lugar (las de cada cantidad quedan en porCant)
   cotW.piezas=cotPiezasDe(cotW);
+  if(!(cotW.terc&&cotW.terc.on)){const av=cotRevisarCosteo(cotW);
+    if(av.length&&!confirm('Revisá antes de aplicar:\n\n• '+av.join('\n• ')+'\n\n¿Aplicar igual?'))return;}
   const r=cotCalc(cotW);
   cotW.calc={total:Math.round(r.total),venta:Math.round(r.venta),unitario:Math.round(r.unitario*100)/100,pesoKg:Math.round(r.pesoKg*10)/10,dolarEfectivo:Math.round(cotDolarEfectivo()*100)/100,guardado:new Date().toISOString()};
   cotW.calcVariantes=(cotW.variantes||[]).filter(v=>v.cantidad>0).map(v=>{
@@ -4110,7 +4327,7 @@ function cotEmbedAplicar(){
   const mkFila=(q,venta,unit,costo)=>{
     const old=oldFilas.find(f=>Math.round(+f.qty||0)===Math.round(+q||0));
     if(old&&old.manual){ // el usuario fijó el precio a mano → se respeta, solo se actualiza el costo real de referencia
-      return {qty:q,subtotal:old.subtotal,precio:old.precio,manual:true,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};
+      return {qty:q,subtotal:old.subtotal,precio:old.precio,manual:true,puManual:!!old.puManual,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};
     }
     const sub=cotRedondearVenta(venta);
     return {qty:q,subtotal:sub,precio:q?sub/q:unit,costo:Math.round(costo||0),ventaCalc:Math.round(venta||0)};
@@ -4917,9 +5134,9 @@ function rCotizador(){
     </div>
     <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:8px">
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;flex:1;min-width:0">
-      <div><div style="font-size:10px;color:#888;font-weight:600" title="Medida plana/desplegada que va a la máquina">MEDIDA ABIERTA (cm)</div>${ninp(p.piezaW,`cotPzEd(${k},'piezaW',this.value)`,'52px')} × ${ninp(p.piezaH,`cotPzEd(${k},'piezaH',this.value)`,'52px')}</div>
+      ${p.estuche?_estBoxHTML(k,p):`<div><div style="font-size:10px;color:#888;font-weight:600" title="Medida plana/desplegada que va a la máquina">MEDIDA ABIERTA (cm)</div>${ninp(p.piezaW,`cotPzEd(${k},'piezaW',this.value)`,'52px')} × ${ninp(p.piezaH,`cotPzEd(${k},'piezaH',this.value)`,'52px')}</div>
       <div><div style="font-size:10px;color:#888;font-weight:600" title="Medida final del producto terminado (folleto cerrado, o alto×ancho×fuelle en bolsa, alto×largo×prof en estuche)">MEDIDA CERRADA / FINAL (cm)</div>${(()=>{const mc=_mcPartes(p);const _est=/packag|estuche|caja/i.test(cotW.tipoTrabajo||'')||mc[2]>0; // estuches: alto × ancho × profundidad
-          return ninp(mc[0],`cotPzMcEd(${k},0,this.value)`,'52px')+' × '+ninp(mc[1],`cotPzMcEd(${k},1,this.value)`,'52px')+(_est?' × '+ninp(mc[2],`cotPzMcEd(${k},2,this.value)`,'46px').replace('<input ','<input placeholder="prof." title="Profundidad del estuche armado" '):'');})()}</div>
+          return ninp(mc[0],`cotPzMcEd(${k},0,this.value)`,'52px')+' × '+ninp(mc[1],`cotPzMcEd(${k},1,this.value)`,'52px')+(_est?' × '+ninp(mc[2],`cotPzMcEd(${k},2,this.value)`,'46px').replace('<input ','<input placeholder="prof." title="Profundidad del estuche armado" '):'');})()}</div>`}
       <div><div style="font-size:10px;color:#888;font-weight:600">DEMASÍA (pliegos)</div>${ninp(p.demasia,`cotPzEd(${k},'demasia',this.value)`,'70px')}</div>
       <div><div style="font-size:10px;color:#888;font-weight:600" title="Hojas por unidad: para blocks/cuadernos. Ej: block de 50 hojas → 50. Multiplica la cantidad ANTES de las posturas (misma chapa, corre de largo).">HOJAS x UNIDAD <i class="ti ti-help-circle" style="color:#bbb"></i></div>${ninp(p.cantMult||1,`cotPzEd(${k},'cantMult',this.value)`,'55px','cz-p'+k+'-cantmult')}</div>
       <div><div style="font-size:10px;color:#888;font-weight:600" title="Pliegos DISTINTOS de esta pieza: para revistas. Ej: interior 24 págs en pliegos de 8 → 3 entradas. Cada entrada suma su postura, su demasía y su juego de chapas.">ENTRADAS (pliegos ≠) <i class="ti ti-help-circle" style="color:#bbb"></i></div>${ninp(p.entradas||1,`cotPzEd(${k},'entradas',this.value)`,'55px')}</div>
@@ -4929,22 +5146,18 @@ function rCotizador(){
         <span style="display:inline-flex;border:1.5px solid #185fa5;border-radius:8px;overflow:hidden">
         <button onclick="cotPzMaq(${k},'SM52')" title="${_fit52?'Filtrar códigos de impresión de SM52':('El pliego no entra en la SM52 (válido: '+cotMaqRango('SM52')+')')}" style="padding:5px 10px;border:none;cursor:pointer;font-size:11px;font-weight:700;background:${maqPz==='SM52'?'#185fa5':'#fff'};color:${maqPz==='SM52'?'#fff':(_fit52?'#185fa5':'#c0c0c0')};${_fit52?'':'text-decoration:line-through'}">SM52</button>
         <button onclick="cotPzMaq(${k},'SM74')" title="Filtrar códigos de impresión de SM74" style="padding:5px 10px;border:none;border-left:1.5px solid #185fa5;cursor:pointer;font-size:11px;font-weight:700;background:${maqPz==='SM74'?'#185fa5':'#fff'};color:${maqPz==='SM74'?'#fff':'#185fa5'}">SM74</button>
-        <button onclick="cotPzMaq(${k},'Xerox')" title="${_fitX?'Impresión digital Xerox V180 (máx. 32,5×65)':('El pliego no entra en la Xerox (máx. '+cotMaqRango('Xerox')+')')}" style="padding:5px 10px;border:none;border-left:1.5px solid #185fa5;cursor:pointer;font-size:11px;font-weight:700;background:${maqPz==='Xerox'?'#1a7f37':'#fff'};color:${maqPz==='Xerox'?'#fff':(_fitX?'#1a7f37':'#c0c0c0')};${_fitX?'':'text-decoration:line-through'}">Xerox</button>${_maqEx.map(m=>{const ok=(!_pdims||cotPliegoEnMaq(_pdims,m))&&_fitCat(m),sel=maqPz===m;return `<button onclick="cotPzMaq(${k},'${cotEsc(m)}')" title="${ok?cotEsc(m)+(cotMaqRango(m)?' · pliego '+cotMaqRango(m):''):('El pliego no entra en '+cotEsc(m)+' ('+cotMaqRango(m)+')')}" style="padding:5px 10px;border:none;border-left:1.5px solid #185fa5;cursor:pointer;font-size:11px;font-weight:700;background:${sel?'#a35b00':'#fff'};color:${sel?'#fff':(ok?'#a35b00':'#c0c0c0')};${ok?'':'text-decoration:line-through'}">${cotEsc(m)}</button>`;}).join('')}</span>${(_esExtra&&!_fitE)?`<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:600"><i class="ti ti-alert-triangle"></i> El pliego no entra en ${cotEsc(maqPz)}</div>`:''}${(_pdims&&!_fit52&&_fit74&&!_esXerox&&!_esExtra)?'<div style="font-size:9px;color:#a35b00;margin-top:2px;font-weight:600">Solo SM74 (pliego grande)</div>':''}${(_pdims&&!_fit52&&!_fit74&&!_esXerox&&!_esExtra)?'<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:600">Pliego no entra en offset</div>':''}${_esXerox?(_fitX?'<div style="font-size:9px;color:#1a7f37;margin-top:2px;font-weight:600">Digital · sin chapas</div>':'<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:600"><i class="ti ti-alert-triangle"></i> El pliego no entra en la Xerox (máx. 32,5×65)</div>'):''}</div>
+        <button onclick="cotPzMaq(${k},'Xerox')" title="${_fitX?'Impresión digital Xerox V180 (máx. 32,5×65)':('El pliego no entra en la Xerox (máx. '+cotMaqRango('Xerox')+')')}" style="padding:5px 10px;border:none;border-left:1.5px solid #185fa5;cursor:pointer;font-size:11px;font-weight:700;background:${maqPz==='Xerox'?'#1a7f37':'#fff'};color:${maqPz==='Xerox'?'#fff':(_fitX?'#1a7f37':'#c0c0c0')};${_fitX?'':'text-decoration:line-through'}">Xerox</button>${_maqEx.map(m=>{const ok=(!_pdims||cotPliegoEnMaq(_pdims,m))&&_fitCat(m),sel=maqPz===m;return `<button onclick="cotPzMaq(${k},'${cotEsc(m)}')" title="${ok?cotEsc(m)+(cotMaqRango(m)?' · pliego '+cotMaqRango(m):''):('El pliego no entra en '+cotEsc(m)+' ('+cotMaqRango(m)+')')}" style="padding:5px 10px;border:none;border-left:1.5px solid #185fa5;cursor:pointer;font-size:11px;font-weight:700;background:${sel?'#a35b00':'#fff'};color:${sel?'#fff':(ok?'#a35b00':'#c0c0c0')};${ok?'':'text-decoration:line-through'}">${cotEsc(m)}</button>`;}).join('')}<button onclick="cotPzSinImp(${k})" title="Esta pieza va SIN IMPRESIÓN (ej. interior blanco de un cuaderno, base de un block). Solo papel y procesos; la máquina elegida sirve para el tamaño de pliego." style="padding:5px 10px;border:none;border-left:1.5px solid #185fa5;cursor:pointer;font-size:11px;font-weight:700;background:${p.sinImp?'#555':'#fff'};color:${p.sinImp?'#fff':'#777'}">Sin impresión</button></span>${(_esExtra&&!_fitE)?`<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:600"><i class="ti ti-alert-triangle"></i> El pliego no entra en ${cotEsc(maqPz)}</div>`:''}${(_pdims&&!_fit52&&_fit74&&!_esXerox&&!_esExtra)?'<div style="font-size:9px;color:#a35b00;margin-top:2px;font-weight:600">Solo SM74 (pliego grande)</div>':''}${(_pdims&&!_fit52&&!_fit74&&!_esXerox&&!_esExtra)?'<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:600">Pliego no entra en offset</div>':''}${_esXerox?(_fitX?'<div style="font-size:9px;color:#1a7f37;margin-top:2px;font-weight:600">Digital · sin chapas</div>':'<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:600"><i class="ti ti-alert-triangle"></i> El pliego no entra en la Xerox (máx. 32,5×65)</div>'):''}</div>
       <div><div style="font-size:10px;color:#888;font-weight:600" title="Poses que entran según la máquina y el pliego elegidos">POSTURAS x PLIEGO <span id="cz-p${k}-poses-hint"></span></div><input id="cz-p${k}-posturas" value="${p.posturas==null?'':cotEsc(cotFmtDec(p.posturas,3))}" onchange="cotPzEd(${k},'posturas',this.value)" style="width:70px;padding:5px 6px;border:1px solid rgba(0,0,0,.15);border-radius:6px;font-size:12px;text-align:right"></div>
+      ${(()=>{const pf=p.pliegoFijo||{},on=+pf.w>0&&+pf.h>0;
+        const fi=(c,v)=>`<input value="${+v>0?cotEsc(cotFmtDec(+v,1)):''}" placeholder="auto" onchange="cotPzPliegoFijo(${k},'${c}',this.value)" style="width:44px;padding:5px 3px;border:1px solid ${on?'#c62828':'rgba(0,0,0,.15)'};background:${on?'#fdecea':'#fff'};color:${on?'#c62828':'#333'};font-weight:${on?700:400};border-radius:6px;font-size:12px;text-align:center">`;
+        return `<div title="Si ya sabés en qué pliego va (ej. sacabocado armado para 36×34 con 2 poses): cargá la medida del pliego de máquina. El sistema calcula cuántos salen de cada pliego de compra y dibuja las poses cargadas. Vacío = automático.">
+          <div style="font-size:10px;color:${on?'#c62828':'#888'};font-weight:700">PLIEGO FIJO (cm)</div>${fi('w',pf.w)}×${fi('h',pf.h)}${on?` <button onclick="cotPzPliegoFijo(${k},'off')" title="Volver al pliego automático" style="border:none;background:none;color:#a32d2d;cursor:pointer;padding:0 2px"><i class="ti ti-x"></i></button>`:''}</div>`;})()}
       ${(()=>{const g=cotCalleHV({}),act=cotCalleHV(p);
         const box=(q,lbl,tit)=>{const ov=Math.abs(act[q]-g[q])>0.001;
           return `<span title="${tit}" style="font-size:11px;color:${ov?'#c62828':'#888'};font-weight:700">${lbl}</span><input value="${ov?cotEsc(cotFmtDec(act[q],1)):''}" placeholder="${cotFmtDec(g[q],1)}" onchange="cotPzCalle(${k},this.value,'${q}')" title="${tit} · vacío = ${cotFmtDec(g[q],1)} cm de Configuración" style="width:38px;padding:5px 3px;border:1px solid ${ov?'#c62828':'rgba(0,0,0,.15)'};background:${ov?'#fdecea':'#fff'};color:${ov?'#c62828':'#333'};font-weight:${ov?'700':'400'};border-radius:6px;font-size:12px;text-align:center">`;};
         return `<div title="Calle: cm libres entre pieza y pieza (para el corte). Corte seco = 0 (ej. fondo blanco o todo pleno).">
           <div style="font-size:10px;color:#888;font-weight:600">CALLE (cm)</div>
           ${box('h','↔','Calle horizontal: entre columnas (a lo largo del pliego)')} ${box('v','↕','Calle vertical: entre filas')}</div>`;})()}
-      ${(()=>{if(!p.estuche)return '';const e=p.estuche,ar=_estArreglo(p);
-        const ei=(c,v,ph)=>`<input value="${+v>0?cotEsc(cotFmtDec(+v,1)):''}" placeholder="${ph}" onchange="cotPzEstEd(${k},'${c}',this.value)" style="width:40px;padding:5px 3px;border:1px solid #d32f2f;border-radius:6px;font-size:12px;text-align:center">`;
-        const ahorro=ar?Math.round((1-ar.area/ar.suelto.area)*100):0; // ar.area ya es por estuche
-        return `<div title="Desplegado aproximado (como Template Maker: tapa con lengüeta arriba y abajo). El troquelador ajusta el troquel final.">
-          <div style="font-size:10px;color:#d32f2f;font-weight:700"><i class="ti ti-box"></i> ESTUCHE armado (ancho × alto × prof.)</div>
-          ${ei('a',e.a,'ancho')}×${ei('h',e.h,'alto')}×${ei('p',e.p,'prof')} <button onclick="cotPzEstEd(${k},'off')" title="Sacar el estuche" style="border:none;background:none;color:#a32d2d;cursor:pointer;padding:0 2px"><i class="ti ti-x"></i></button>
-          <label title="La solapa de pegado no va impresa: puede ir dentro de la pinza y se aprovecha más la cartulina" style="font-size:10px;color:${e.pinzaNat?'#d32f2f':'#666'};font-weight:${e.pinzaNat?'700':'400'};display:inline-flex;align-items:center;gap:3px;cursor:pointer;margin-left:4px"><input type="checkbox" ${e.pinzaNat?'checked':''} onchange="cotPzEstEd(${k},'pinzaNat',this.checked)" style="margin:0;accent-color:#d32f2f"> pinza natural</label>
-          ${ar?`<div style="font-size:10px;color:#555;margin-top:2px">desplegado <b>${cotFmtDec(ar.dl.w,1)}×${cotFmtDec(ar.dl.h,1)}</b> · ${ar.n>1?`<b style="color:#d32f2f">encastrados</b> (uno derecho, uno girado)${ahorro>0?` · −${ahorro}% de papel`:''}`:'sueltos (no conviene encastrar)'}</div>`:'<div style="font-size:10px;color:#a35b00">cargá las 3 medidas</div>'}</div>`;})()}
       ${(()=>{if(p.estuche)return '';const bq=p.bloque||{},on=!!(p.bloque&&(+bq.n>0||+bq.w>0||p._bqOpen));
         const bi=(c,v,w,ph)=>`<input value="${v>0?cotEsc(cotFmtDec(v,1)):''}" placeholder="${ph}" onchange="cotPzBloqueEd(${k},'${c}',this.value)" style="width:${w};padding:5px 4px;border:1px solid ${on?'#d32f2f':'rgba(0,0,0,.15)'};border-radius:6px;font-size:12px;text-align:center">`;
         return `<div title="Para estuches y troqueles que se ENCASTRAN: armá el montaje en el programa de diseño y cargá cuántas poses entran en el bloque y lo que mide ese bloque. El sistema acomoda los bloques en el pliego y elige el papel más conveniente.">
@@ -4981,8 +5194,9 @@ function rCotizador(){
     h+=`<tr><td></td><td colspan="4" id="cz-p${k}-papel-det" style="padding:0 6px 10px">${cotPapelDet(pd)}</td></tr>`;
     const _dc=p.impDescPct>0?'#1a7f37':(p.impDescPct<0?'#a32d2d':'');
     const impCtl=impSel+` <span style="font-size:10px;color:${_dc||'#888'}">${p.impDescPct<0?'recargo:':'desc:'}</span> <input value="${p.impDescPct?cotFmtDec(p.impDescPct,1):''}" onchange="cotPzEd(${k},'impDescPct',this.value)" placeholder="0" title="Descuento en impresión (%) — típico en interiores de muchas entradas. Negativo = recargo: -10 sube la impresión un 10% (ej. mucha carga de tinta)" style="width:44px;padding:5px 4px;border:1.5px solid ${_dc||'rgba(0,0,0,.15)'};border-radius:6px;font-size:12px;font-weight:700;text-align:center;color:${_dc||'#555'}">%`;
-    h+=fila('IMPRESIÓN',codInp('cz-p'+k+'-impcodinp',p.impCod,'impCod'),impCtl,'cz-p'+k+'-imp-det',cotImpDet(pd),'cz-p'+k+'-imp-cost',pd.impCosto);
-    if(!_esXerox)h+=fila('CHAPAS CTP','',sel(chapasOpts,p.chapasCod,`cotPzEd(${k},'chapasCod',this.value)`,'250px','cz-p'+k+'-chapascod')+` <span style="font-size:10px;color:#888">cant x entrada:</span> ${ninp(p.chapasCant,`cotPzEd(${k},'chapasCant',this.value)`,'50px','cz-p'+k+'-chapascant')}`,'cz-p'+k+'-chapas-det',(pd.chapasWarn?`<span style="color:#c0392b;font-weight:700">⚠ retiración necesita poses PARES · así van ${pd.chapasColTot||8} chapas o pasá a SM74</span> `:'')+(pd.entradas>1?`${p.chapasCant||0} × ${pd.entradas} entradas = ${(p.chapasCant||0)*pd.entradas} chapas`:''),'cz-p'+k+'-chapas-cost',pd.chapasCosto);
+    if(p.sinImp)h+=fila('IMPRESIÓN','',`<span style="font-size:12px;font-weight:700;color:#555;background:#efefed;border-radius:6px;padding:5px 10px"><i class="ti ti-file"></i> Sin impresión — papel en blanco</span> <button onclick="cotPzSinImp(${k})" style="font-size:10px;padding:3px 8px">Lleva impresión</button>`,'cz-p'+k+'-imp-det','','cz-p'+k+'-imp-cost',0);
+    else h+=fila('IMPRESIÓN',codInp('cz-p'+k+'-impcodinp',p.impCod,'impCod'),impCtl,'cz-p'+k+'-imp-det',cotImpDet(pd),'cz-p'+k+'-imp-cost',pd.impCosto);
+    if(!_esXerox&&!p.sinImp)h+=fila('CHAPAS CTP','',sel(chapasOpts,p.chapasCod,`cotPzEd(${k},'chapasCod',this.value)`,'250px','cz-p'+k+'-chapascod')+` <span style="font-size:10px;color:#888">cant x entrada:</span> ${ninp(p.chapasCant,`cotPzEd(${k},'chapasCant',this.value)`,'50px','cz-p'+k+'-chapascant')}`,'cz-p'+k+'-chapas-det',(pd.chapasWarn?`<span style="color:#c0392b;font-weight:700">⚠ retiración necesita poses PARES · así van ${pd.chapasColTot||8} chapas o pasá a SM74</span> `:'')+(pd.entradas>1?`${p.chapasCant||0} × ${pd.entradas} entradas = ${(p.chapasCant||0)*pd.entradas} chapas`:''),'cz-p'+k+'-chapas-cost',pd.chapasCosto);
     h+=fila('LAMINADO / LACA','',
       `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${sel(lamOpts,_lamOpcionDe(p.lamCod),`cotPzEd(${k},'lamCod',this.value)`,'200px','cz-p'+k+'-lamsel')}
        <button onclick="cotToggleLamPers(${k})" title="Laca/laminado personalizado: medida y precio/m² a mano" style="font-size:11px;font-weight:800;padding:4px 9px;border-radius:6px;border:1.5px solid #b89b3e;background:${(lcOpen||lcActivo)?'#b89b3e':'#fdf9ee'};color:${(lcOpen||lcActivo)?'#fff':'#8a7a40'}">P</button>
@@ -5090,6 +5304,8 @@ function rCotizador(){
     <button onclick="cotOtroAdd()" style="font-size:11px"><i class="ti ti-plus"></i> Proceso de tabla</button>
     <button onclick="cotManAdd()" style="font-size:11px"><i class="ti ti-plus"></i> Línea manual</button></div>
   <div style="font-size:10px;color:#aaa;margin-top:6px"><i class="ti ti-info-circle"></i> "Mill. de pliegos" suma los pliegos de TODAS las piezas (ej: el abrochado procesa tapa + interiores). El orden de esta lista es el que sale en la OT.</div></div>`;
+  // ---- OBSERVACIONES PARA PRODUCCIÓN (pasan a la OT) ----
+  h+=obsProdHTML(w.obsProd,'cotObsProd(KEY,this.value)','Observaciones para producción <span style="font-weight:400;color:#888;font-size:10px">(pasan a la OT: cada sector ve las suyas)</span>');
   // ---- VARIANTES DE CANTIDAD ----
   h+=`<div class="card" style="padding:12px;margin-bottom:12px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -5211,26 +5427,68 @@ function updateProvTable(){
 }
 
 // ---- PAGES ----
-// ==== TEMPORAL — borra TODOS los datos salvo clientes y proveedores, y reinicia la numeración. Borrar cuando no se use. ====
 // ---- Copia de seguridad local (sin costo, funciona en plan gratuito) ----
 // Descarga TODOS los datos a un archivo .json en la computadora del usuario.
+// Backup COMPLETO: todas las colecciones (COL_KEYS) y toda la configuración (BLOB_KEYS),
+// armado dinámicamente para que nunca vuelva a quedar incompleto al agregar módulos nuevos.
+function _backupArmar(){
+  const backup={_app:'GraficaPro',_version:2,_fecha:new Date().toISOString()};
+  [...COL_KEYS,...BLOB_KEYS].forEach(k=>{if(S[k]!==undefined)backup[k]=S[k];});
+  const f=new Date();const stamp=f.getFullYear()+'-'+String(f.getMonth()+1).padStart(2,'0')+'-'+String(f.getDate()).padStart(2,'0')+'_'+String(f.getHours()).padStart(2,'0')+String(f.getMinutes()).padStart(2,'0');
+  return {json:JSON.stringify(backup,null,2),nombre:'GraficaPro_backup_'+stamp+'.json'};
+}
+function _backupMarcar(){
+  if(!S.ids)S.ids={};S.ids._lastBackup=new Date().toISOString().slice(0,10);sk('ids');
+  const b=document.getElementById('backup-reminder');if(b)b.remove();
+  if(typeof actualizarBackupNav==='function')actualizarBackupNav();
+}
+// ---- Respaldo automático en una CARPETA FIJA (la de Drive compartida) ----
+// Se elige la carpeta una vez por compu (Chrome / Edge). Desde el lunes, el primero que entra guarda la copia ahí:
+// si el navegador ya tiene permiso, sin preguntar nada; si no, con un clic en el aviso ("Guardar respaldo").
+const _BK_DB='gp-backup';
+function _bkIdb(){return new Promise((res,rej)=>{const r=indexedDB.open(_BK_DB,1);r.onupgradeneeded=()=>r.result.createObjectStore('h');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function _bkCarpeta(){try{const d=await _bkIdb();return await new Promise(res=>{const t=d.transaction('h').objectStore('h').get('dir');t.onsuccess=()=>res(t.result||null);t.onerror=()=>res(null);});}catch(e){return null;}}
+async function _bkCarpetaSet(h){const d=await _bkIdb();await new Promise((res,rej)=>{const t=d.transaction('h','readwrite');t.objectStore('h').put(h,'dir');t.oncomplete=res;t.onerror=()=>rej(t.error);});}
+async function backupElegirCarpeta(){
+  if(!window.showDirectoryPicker){alert('Este navegador no permite elegir una carpeta fija (usá Chrome o Edge). La copia se va a descargar en "Descargas".');descargarBackup();return;}
+  try{
+    const h=await window.showDirectoryPicker({id:'gp-backup',mode:'readwrite'});
+    await _bkCarpetaSet(h);
+    if(await backupGuardarEnCarpeta(true))alert('Listo: la copia se guardó en la carpeta "'+h.name+'".\nDesde ahora, cada semana se guarda ahí.');
+  }catch(e){if(e&&e.name!=='AbortError')alert('No se pudo usar esa carpeta: '+(e.message||e));}
+}
+async function backupGuardarEnCarpeta(interactivo){
+  const h=await _bkCarpeta();if(!h)return false;
+  try{
+    let p=await h.queryPermission({mode:'readwrite'});
+    if(p!=='granted'){if(!interactivo)return false;p=await h.requestPermission({mode:'readwrite'});if(p!=='granted')return false;}
+    const {json,nombre}=_backupArmar();
+    const fh=await h.getFileHandle(nombre,{create:true}),w=await fh.createWritable();
+    await w.write(json);await w.close();
+    _backupMarcar();
+    // Aviso breve abajo a la izquierda (no interrumpe)
+    {const d=document.createElement('div');d.style.cssText='position:fixed;bottom:16px;left:16px;z-index:99998;background:#eaf6ec;color:#1a7f37;border:1px solid #9fd3a8;border-radius:10px;padding:9px 12px;font-size:12px;font-weight:600;box-shadow:0 6px 22px rgba(0,0,0,.15)';
+     d.innerHTML='<i class="ti ti-circle-check"></i> Copia de seguridad guardada en "'+cotEsc(h.name)+'"';document.body.appendChild(d);setTimeout(()=>d.remove(),6000);}
+    return true;
+  }catch(e){console.warn('backup carpeta',e);if(interactivo)alert('No se pudo guardar en la carpeta: '+(e.message||e));return false;}
+}
+// Botón del menú / del aviso: carpeta fija si hay; si no, la elige; sin soporte, descarga
+async function backupAhora(){
+  if(await _bkCarpeta()){if(await backupGuardarEnCarpeta(true))return;}
+  if(window.showDirectoryPicker&&confirm('¿Elegir una carpeta fija para las copias (por ejemplo la de Drive compartida)?\n\nAceptar = elegir carpeta · Cancelar = descargar en "Descargas"')){await backupElegirCarpeta();return;}
+  descargarBackup();
+}
 function descargarBackup(){
   try{
-    // Backup COMPLETO: todas las colecciones (COL_KEYS) y toda la configuración (BLOB_KEYS),
-    // armado dinámicamente para que nunca vuelva a quedar incompleto al agregar módulos nuevos.
-    const backup={_app:'GraficaPro',_version:2,_fecha:new Date().toISOString()};
-    [...COL_KEYS,...BLOB_KEYS].forEach(k=>{if(S[k]!==undefined)backup[k]=S[k];});
-    const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
+    const {json,nombre}=_backupArmar();
+    const blob=new Blob([json],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
-    const f=new Date();const stamp=f.getFullYear()+'-'+String(f.getMonth()+1).padStart(2,'0')+'-'+String(f.getDate()).padStart(2,'0')+'_'+String(f.getHours()).padStart(2,'0')+String(f.getMinutes()).padStart(2,'0');
-    a.href=url;a.download='GraficaPro_backup_'+stamp+'.json';
+    a.href=url;a.download=nombre;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url),2000);
     // Registrar la fecha del último backup (compartida entre máquinas vía Firestore)
-    if(!S.ids)S.ids={};S.ids._lastBackup=new Date().toISOString().slice(0,10);sk('ids');
-    const b=document.getElementById('backup-reminder');if(b)b.remove();
-    if(typeof actualizarBackupNav==='function')actualizarBackupNav();
+    _backupMarcar();
     const nOts=(S.ordenes||[]).length,nCli=(S.clientes||[]).length,nCot=(S.cotizaciones||[]).length;
     alert(`Copia de seguridad descargada.\n\nIncluye: ${nCli} clientes, ${nCot} cotizaciones, ${nOts} órdenes y todo lo demás.\n\nGuardá el archivo en un lugar seguro (por ejemplo, una carpeta de Drive o un pendrive). Se recomienda hacerlo una vez por semana.`);
   }catch(e){alert('No se pudo generar la copia: '+(e&&e.message||e));}
@@ -5256,25 +5514,25 @@ function actualizarBackupNav(){
   el.textContent='· última: '+_fmtBackupFecha();
   el.style.color=pend?'#a35b00':'#999';
 }
-function chequearRecordatorioBackup(){
+async function chequearRecordatorioBackup(){
   if(!puedeVerFinanzas())return; // solo a quien puede hacer el backup
   actualizarBackupNav();
   const ya=document.getElementById('backup-reminder');
-  const ahora=new Date();const dia=ahora.getDay();const hora=ahora.getHours();
-  // Mostrar: viernes 16hs+, o sábado/domingo, o cualquier día si ya pasó una semana entera sin copia
-  const esViernesTarde=(dia===5&&hora>=16);
-  const esFinde=(dia===6||dia===0);
+  const ahora=new Date();
   const last=S.ids&&S.ids._lastBackup?new Date(S.ids._lastBackup+'T00:00:00'):null;
   const diasSinBackup=last?Math.floor((ahora-last)/864e5):999;
-  const toca=backupPendienteEstaSemana()&&(esViernesTarde||esFinde||diasSinBackup>=7);
+  // Desde el lunes, si todavía no hay copia de esta semana: el primero que entra la guarda en la carpeta fija
+  const toca=backupPendienteEstaSemana();
   if(!toca){if(ya&&ya.dataset.auto==='1')ya.remove();return;}
+  if(!window._bkIntentoAuto){window._bkIntentoAuto=true;if(await backupGuardarEnCarpeta(false))return;} // con permiso: sin preguntar
+  if(!backupPendienteEstaSemana())return;
   if(ya||window._backupReminderCerrado)return; // no repetir ni reabrir si lo cerró
   // Chip discreto en la esquina inferior izquierda (no tapa botones)
   const div=document.createElement('div');div.id='backup-reminder';div.dataset.auto='1';
   div.style.cssText='position:fixed;bottom:16px;left:16px;z-index:99998;background:#fff;color:#333;border:1px solid #e0c48a;border-left:4px solid #d99518;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;font-size:12px;max-width:300px;box-shadow:0 6px 22px rgba(0,0,0,.18)';
   const txt=last?`Sin copia hace ${diasSinBackup} días (última: ${_fmtBackupFecha()}).`:'Todavía no hiciste ninguna copia de seguridad.';
   div.innerHTML=`<i class="ti ti-alert-triangle" style="color:#d99518;font-size:16px"></i><span style="flex:1"><b>Respaldo semanal</b><br>${txt}</span>`
-    +`<div style="display:flex;flex-direction:column;gap:5px"><button onclick="descargarBackup()" style="background:#185fa5;color:#fff;border:none;border-radius:7px;padding:6px 11px;font-weight:600;cursor:pointer;white-space:nowrap;font-size:12px"><i class="ti ti-download"></i> Copiar</button>`
+    +`<div style="display:flex;flex-direction:column;gap:5px"><button onclick="backupAhora()" title="Guarda la copia en la carpeta fija (la primera vez te pide elegirla)" style="background:#185fa5;color:#fff;border:none;border-radius:7px;padding:6px 11px;font-weight:600;cursor:pointer;white-space:nowrap;font-size:12px"><i class="ti ti-device-floppy"></i> Guardar respaldo</button>`
     +`<button onclick="window._backupReminderCerrado=true;document.getElementById('backup-reminder').remove()" style="background:transparent;color:#888;border:1px solid rgba(0,0,0,.15);border-radius:7px;padding:4px 11px;cursor:pointer;font-size:11px">Ahora no</button></div>`;
   document.body.appendChild(div);
 }
@@ -5301,33 +5559,6 @@ function restaurarBackup(){
   };
   inp.click();
 }
-// NOTA DE SEGURIDAD: función de mantenimiento peligrosa. Ya NO tiene botón en la UI.
-// Solo se puede ejecutar a propósito desde la consola del navegador escribiendo wipeDatos('CONFIRMAR-BORRAR-TODO').
-async function wipeDatos(codigo){
-  if(codigo!=='CONFIRMAR-BORRAR-TODO'){console.warn('wipeDatos bloqueado: llamá wipeDatos("CONFIRMAR-BORRAR-TODO") a propósito.');return;}
-  if(!confirm('⚠ Esto BORRA todo: cotizaciones, órdenes de trabajo, fichas, remitos, gastos, planificación, análisis de costos y stock de papel. Reinicia la numeración en 1.\n\nSe conservan SOLO clientes y proveedores.\n\n¿Continuar?'))return;
-  if(!confirm('Confirmá de nuevo: esta acción NO se puede deshacer. ¿Borrar todo salvo clientes y proveedores?'))return;
-  showSaving&&showSaving();
-  try{
-    const colsWipe=['cotizaciones','ordenes','remitos','fichas','gastos'];
-    for(const k of colsWipe){
-      const arr=(S[k]||[]).slice();
-      for(const item of arr){try{await window._fsDelDoc(window._fsDoc(db,'gp',k,'docs',String(item.id)));}catch(e){console.warn('del',k,item.id,e);}}
-      S[k]=[]; if(window._knownIds)window._knownIds[k]=new Set();
-    }
-    S.facturas=[];S.cobranzas=[];
-    S.planificacion={};S.analCostos={};S.stockPapel=[];S.stockMovs=[];
-    S.ids={cot:1,ot:1,rem:1,fac:1,cob:1,ficha:1,fichas:1};
-    await sv('planificacion',S.planificacion);
-    await sv('analCostos',S.analCostos);
-    await sv('stockPapel',S.stockPapel);
-    await sv('stockMovs',S.stockMovs);
-    await sv('ids',S.ids);
-    showSaved&&showSaved();
-    alert('Listo. Se borró todo salvo clientes y proveedores. La numeración arranca de nuevo en 1.');
-    curPg='dash';render();
-  }catch(e){alert('Hubo un error al borrar: '+(e&&e.message||e));}
-}
 // ===================== PANEL DE CONTROL VISUAL =====================
 // Indicadores de colores, estado de cada máquina / proceso, trabajos con fecha límite y dos gráficos.
 const DASH_COL={azul:'#256abf',verde:'#178a5e',naranja:'#d95926',violeta:'#6250d6',rojo:'#d03b3b',gris:'#6b6a66'};
@@ -5351,13 +5582,16 @@ function dashVisualHTML(){
       <div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="font-size:12px;font-weight:600;opacity:.92">${titulo}</div><i class="ti ti-${ico}" style="font-size:22px;opacity:.85"></i></div>
       <div style="font-size:28px;font-weight:800;line-height:1.15;margin-top:4px">${valor}</div>
       <div style="font-size:11px;opacity:.9;margin-top:2px">${sub}</div></div>`;
-  let h=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:16px">`;
+  let h=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px">`;
+  // Pendientes de pre-prensa (diseño / CTP sin terminar) y OTs aprobadas que todavía no tienen el papel pedido ni en stock
+  const ppPend=activas.filter(o=>otAprobada(o)&&(o.pasos||[]).some(x=>x&&(pasoCol(x)==='ppd'||pasoCol(x)==='ctp')&&!x.na&&x.estado!=='na'&&x.estado!=='done'));
+  const sinPapel=activas.filter(o=>otAprobada(o)&&!(o.papel&&o.papel.enStock)&&(!o.papel||(o.papel.estado||'pendiente')==='pendiente'));
   h+=tile(DASH_COL.azul,'player-play','En producción',enProd.length,`${enCurso} paso${enCurso!==1?'s':''} en curso ahora`,"nav('seg')");
+  h+=tile(DASH_COL.naranja,'calendar-due','Para entregar esta semana',prox7.length,`próximos 7 días · ${listas.length} lista${listas.length!==1?'s':''}`,"nav('entregas')");
   h+=tile(atrasadas.length?DASH_COL.rojo:DASH_COL.gris,'alert-triangle','Atrasadas',atrasadas.length,atrasadas.length?'pasó la fecha de entrega':'nada atrasado',"fSeg='atr';nav('seg')");
-  h+=tile(DASH_COL.naranja,'calendar-due','Entregas 7 días',prox7.length,`${listas.length} lista${listas.length!==1?'s':''} para entregar`,"nav('entregas')");
   h+=tile(DASH_COL.violeta,'clipboard-check','OT por aprobar',sinAprobar.length,'esperan recursos / aprobación',"nav('ot')");
-  h+=tile(DASH_COL.verde,'file-invoice','Cotizaciones abiertas',cotAbiertas.length,fin?$k(cotAbiertas.reduce((s,c)=>s+(+c.subtotal||0),0))+' en juego':'borradores y enviadas',"nav('cot')");
-  if(fin)h+=tile('#184f95','cash','Aprobado este mes',$k(cotAprobMes.reduce((s,c)=>s+(+c.subtotal||0),0)),`${cotAprobMes.length} cotizaci${cotAprobMes.length!==1?'ones':'ón'} · sin IVA`,"nav('cot')");
+  h+=tile(ppPend.length?'#2b7f9e':DASH_COL.gris,'palette','Pendiente pre-prensa',ppPend.length,'diseño / chapas sin terminar',"planMaq='Pre-prensa';nav('plan')");
+  h+=tile(sinPapel.length?'#a35b00':DASH_COL.gris,'file-alert','OT sin papel asignado',sinPapel.length,'aprobadas, papel sin pedir ni en stock',"window._papelModo='pedidos';window._papelTab='pedir';nav('papel')");
   h+=`</div>`;
   // ---- Máquinas y procesos ----
   const sem=(()=>{const d=new Date();const dow=(d.getDay()+6)%7;d.setDate(d.getDate()-dow);const f=new Date(d);f.setDate(f.getDate()+5);return {ini:fmtD(d),fin:fmtD(f)};})();
@@ -5365,10 +5599,13 @@ function dashVisualHTML(){
   const tarjetaMaq=(nombre,ico,activo,pend,proximo,cargaPct,extra)=>{
     const est=activo?(activo.p.pausa?{t:'EN PAUSA',c:'#c47d16',bg:'#fff4e2'}:{t:'TRABAJANDO',c:'#178a5e',bg:'#e7f6ee'}):{t:'LIBRE',c:'#6b6a66',bg:'#f1f0ec'};
     const barCol=cargaPct==null?'#ccc':(cargaPct>95?DASH_COL.rojo:(cargaPct>75?'#e08a00':'#178a5e'));
-    return `<div style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:12px;min-width:0">
+    // Clic en la tarjeta: el plan de esa máquina (si está en Planificación); si no, su pantalla del Modo Taller
+    const nq=String(nombre).replace(/[\\"<>]/g,'').replace(/'/g,"\\'");
+    const click=(S.maquinas||[]).includes(nombre)?`planMaq='${nq}';planOffset=0;nav('plan')`:`_tLS('gp_tallerPuesto','${nq}');nav('taller')`;
+    return `<div onclick="${click}" title="Ver ${cotEsc(nombre)}" onmouseover="this.style.boxShadow='0 2px 10px rgba(37,106,191,.25)'" onmouseout="this.style.boxShadow=''" style="cursor:pointer;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:12px;min-width:0">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><div style="font-weight:800;font-size:14px;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><i class="ti ti-${ico}" style="color:#256abf"></i> ${cotEsc(nombre)}</div>
         <span style="font-size:10px;font-weight:800;color:${est.c};background:${est.bg};border-radius:20px;padding:2px 8px;white-space:nowrap">${est.t}</span></div>
-      <div style="font-size:12px;color:#333;margin-top:6px;min-height:32px;line-height:1.35">${activo?`<b style="cursor:pointer;color:#185fa5" onclick="om('vot',${activo.o.id})">${cotEsc(activo.o.num)}</b> · ${cotEsc(activo.o.nombreCorto||activo.o.descripcion||'')}${activo.p.operario?`<div style="color:#888;font-size:11px">${cotEsc(activo.p.operario)}${activo.p.pausa?' · '+cotEsc(activo.p.pausa.motivo):''}</div>`:''}`:(proximo?`<span style="color:#888">Próximo:</span> <b style="cursor:pointer;color:#185fa5" onclick="om('vot',${proximo.o.id})">${cotEsc(proximo.o.num)}</b> · ${cotEsc(proximo.o.nombreCorto||proximo.o.descripcion||'')}`:'<span style="color:#aaa">Sin trabajos en espera</span>')}</div>
+      <div style="font-size:12px;color:#333;margin-top:6px;min-height:32px;line-height:1.35">${activo?`<b style="cursor:pointer;color:#185fa5" onclick="event.stopPropagation();om('vot',${activo.o.id})">${cotEsc(activo.o.num)}</b> · ${cotEsc(activo.o.nombreCorto||activo.o.descripcion||'')}${activo.p.operario?`<div style="color:#888;font-size:11px">${cotEsc(activo.p.operario)}${activo.p.pausa?' · '+cotEsc(activo.p.pausa.motivo):''}</div>`:''}`:(proximo?`<span style="color:#888">Próximo:</span> <b style="cursor:pointer;color:#185fa5" onclick="event.stopPropagation();om('vot',${proximo.o.id})">${cotEsc(proximo.o.num)}</b> · ${cotEsc(proximo.o.nombreCorto||proximo.o.descripcion||'')}`:'<span style="color:#aaa">Sin trabajos en espera</span>')}</div>
       <div style="display:flex;justify-content:space-between;font-size:11px;color:#666;margin-top:6px"><span><b style="color:#1e293b;font-size:13px">${pend}</b> en espera</span>${extra||(cargaPct!=null?`<span>carga semana <b style="color:${barCol}">${cargaPct}%</b></span>`:'')}</div>
       ${cargaPct!=null?`<div style="height:6px;background:#eceae4;border-radius:4px;margin-top:4px;overflow:hidden" title="Horas planificadas esta semana sobre la capacidad (11 h por día hábil)"><div style="height:100%;width:${Math.min(100,cargaPct)}%;background:${barCol};border-radius:4px"></div></div>`:''}
     </div>`;
@@ -5625,7 +5862,7 @@ function updateCotResults(){
     const realIdx=S.cotizaciones.indexOf(c);
     const nomCorto=[...new Set((c.itemsVariantes||[]).map(it=>(it.nombre||'').trim()).filter(Boolean))].join(', ');
     const netoVta=(c.subtotal!=null&&c.subtotal>0)?c.subtotal:Math.max(0,(c.total||0)-(c.iva||0));
-    h+=`<tr class="rlink" onclick="omCot(${c.id})"><td>${c.fecha}</td><td><strong>${hl(c.num,f)}</strong></td><td>${hl(cNom(c.clienteId),f)}</td><td style="font-size:11px;color:#555">${capNom(c.vendedor)||'—'}</td><td style="font-size:11px;color:#888">${c.tipoTrabajo||'—'}</td><td style="font-size:12px;font-weight:600;color:#185fa5">${nomCorto?hl(nomCorto,f):'—'}</td><td>${netoVta>0?$m(netoVta):'—'}</td><td>${stBadge(c.estado)}</td><td style="white-space:nowrap;text-align:right" onclick="event.stopPropagation()"><span style="display:inline-flex;gap:5px;align-items:center;justify-content:flex-end">${c.estado==='borrador'?`<button onclick="event.stopPropagation();cotSetEstado(${c.id},'enviada')" title="Marcar como enviada" style="font-size:10px;padding:4px 8px;background:#5a7fa0;color:#fff;border-color:#5a7fa0"><i class="ti ti-send"></i>Enviar</button>`:''}${(c.estado==='borrador'||c.estado==='enviada')?`<button class="bs" onclick="omCot(${c.id})" title="Aprobar la cotización: elegí la cantidad/ítem y continuá" style="font-size:10px;padding:4px 8px"><i class="ti ti-check"></i>Aprobar</button>`:''}${c.estado==='aprobada'?(!hasOT?`<button class="bs" onclick="genOT(${c.id})" title="Generar la orden de trabajo de esta cotización" style="font-size:10px;padding:4px 8px"><i class="ti ti-clipboard-plus"></i>Agregar OT</button>`:`<button class="bs" style="background:#5a7fa0;font-size:10px;padding:4px 8px" onclick="omCotNuevaOT(${c.id})" title="Agregar una OT complementaria"><i class="ti ti-plus"></i>Agregar OT</button>`):''}<button onclick="dupCot(${c.id})" title="Crear una cotización nueva copiando esta" style="font-size:10px;padding:4px 8px"><i class="ti ti-copy"></i>Copiar cot.</button>${triAcc(`omCot(${c.id})`,`om('ec2',${c.id})`,`delCotIdx(${realIdx})`)}</span></td></tr>`;
+    h+=`<tr class="rlink" onclick="omCot(${c.id})"><td>${c.fecha}</td><td><strong>${hl(c.num,f)}</strong></td><td>${hl(cNom(c.clienteId),f)}</td><td style="font-size:11px;color:#555">${capNom(c.vendedor)||'—'}</td><td style="font-size:11px;color:#888">${c.tipoTrabajo||'—'}</td><td style="font-size:12px;font-weight:600;color:#185fa5">${nomCorto?hl(nomCorto,f):'—'}</td><td>${netoVta>0?$m(netoVta):'—'}</td><td>${stBadge(c.estado)}</td><td style="white-space:nowrap;text-align:right" onclick="event.stopPropagation()"><span style="display:inline-flex;gap:5px;align-items:center;justify-content:flex-end">${(c.estado==='borrador'||c.estado==='enviada')?`<button class="bs" onclick="omCot(${c.id})" title="Aprobar la cotización: elegí la cantidad/ítem y continuá" style="font-size:10px;padding:4px 8px"><i class="ti ti-check"></i>Aprobar</button>`:''}${c.estado==='aprobada'?(!hasOT?`<button class="bs" onclick="genOT(${c.id})" title="Generar la orden de trabajo de esta cotización" style="font-size:10px;padding:4px 8px"><i class="ti ti-clipboard-plus"></i>Agregar OT</button>`:`<button class="bs" style="background:#5a7fa0;font-size:10px;padding:4px 8px" onclick="omCotNuevaOT(${c.id})" title="Agregar una OT complementaria"><i class="ti ti-plus"></i>Agregar OT</button>`):''}<button onclick="dupCot(${c.id})" title="Crear una cotización nueva copiando esta" style="font-size:10px;padding:4px 8px"><i class="ti ti-copy"></i>Copiar cot.</button>${triAcc(`omCot(${c.id})`,`om('ec2',${c.id})`,`delCotIdx(${realIdx})`)}</span></td></tr>`;
   });
   h+=`</tbody></table>`+_pagCtrl(total,pCot,_cotPgs,'cotPage')+`</div>`;
   cont.innerHTML=h;
@@ -5955,9 +6192,39 @@ function segClick(otId,idx,colk){
   }
   avPIdx(otId,idx);
 }
+// ===== Arte aprobado por el cliente =====
+// Sin el OK del arte no se cierran las chapas (CTP), no arranca la impresión ni se planifica en una impresora.
+// Desde la oficina se puede marcar en el momento (con confirmación); el usuario del taller solo recibe el aviso.
+function _arteCheck(o,accion){
+  if(!o||o.arteOK)return true;
+  if(typeof esUsuarioTaller==='function'&&esUsuarioTaller()){alert(`${o.num}: el arte todavía NO está aprobado por el cliente.\n${accion}\n\nAvisale a pre-prensa.`);return false;}
+  if(!confirm(`${o.num}: el arte todavía NO está aprobado por el cliente.\n${accion}\n\n¿El cliente ya lo aprobó?\nAceptar = marcar "arte aprobado" ahora y seguir · Cancelar = esperar`))return false;
+  o.arteOK={fecha:new Date().toISOString(),por:(typeof currentUser!=='undefined'&&currentUser&&currentUser.email)||''};
+  sk('ordenes');return true;
+}
+// Antes de avanzar un paso: cerrar CTP o arrancar impresión piden el arte aprobado
+function _arteAntesDeAvanzar(o,p){
+  if(!p)return true;const col=pasoCol(p);
+  if(p.estado==='active'&&col==='ctp')return _arteCheck(o,'No se pueden dar por hechas las chapas sin el OK del arte.');
+  if(p.estado==='pending'&&col==='imp')return _arteCheck(o,'No se puede arrancar la impresión sin el OK del arte.');
+  return true;
+}
+function otArteToggle(id){
+  const o=(S.ordenes||[]).find(x=>x.id===id);if(!o)return;
+  if(o.arteOK){if(!confirm('¿Quitar el OK del arte?'))return;o.arteOK=null;}
+  else o.arteOK={fecha:new Date().toISOString(),por:(typeof currentUser!=='undefined'&&currentUser&&currentUser.email)||''};
+  sk('ordenes');if(document.querySelector('.mod'))updModal(mVOT(id));else render();
+}
+function arteBadge(o,conBoton){
+  const ok=o&&o.arteOK;
+  const b=ok?`<span style="font-size:11px;font-weight:700;color:#1a7f37;background:#eaf6ec;border-radius:10px;padding:2px 8px;white-space:nowrap"><i class="ti ti-palette"></i> Arte OK ${fmtHora(ok.fecha)}</span>`
+    :`<span style="font-size:11px;font-weight:700;color:#a32d2d;background:#fdf0f0;border-radius:10px;padding:2px 8px;white-space:nowrap"><i class="ti ti-palette-off"></i> Arte sin aprobar</span>`;
+  return b+(conBoton?` <button onclick="event.stopPropagation();otArteToggle(${o.id})" style="font-size:10px;padding:2px 8px">${ok?'Quitar':'✓ Cliente aprobó el arte'}</button>`:'');
+}
 // Igual que avP pero por índice (soporta pasos con nombres repetidos)
 function avPIdx(otId,idx){
   const o=S.ordenes.find(x=>x.id===otId);if(!o||!o.pasos||!o.pasos[idx])return;
+  if(!_arteAntesDeAvanzar(o,o.pasos[idx]))return;
   const p=o.pasos[idx];const now=new Date();const h=now.toISOString().slice(0,10);
   if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}
   else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}
@@ -6216,7 +6483,7 @@ function _papelPrefillDesdeCosteo(o){
     if(!m.aclaracion&&(pap.notaCorte||_ref))m.aclaracion='Guillotina: '+(pap.notaCorte||('cortar a '+cotFmtDec(pap.corteAncho,1)+'×'+cotFmtDec(pap.corteAlto,1)))+' (pliego de '+cotFmtDec(pap.origAncho,1)+'×'+cotFmtDec(pap.origAlto,1)+')'+_ref;
     // Montaje encastrado y sentido de fibra pensados en el costeo: pre-prensa y prensa lo arman igual
     {const B=_pzBloque(pz),extra=[];
-     if(B.estuche){const e=pz.estuche;extra.push('ESTUCHE '+cotFmtDec(+e.a,1)+'×'+cotFmtDec(+e.h,1)+'×'+cotFmtDec(+e.p,1)+' · desplegado aprox. '+cotFmtDec(B.estuche.dl.w,1)+'×'+cotFmtDec(B.estuche.dl.h,1)+(B.n>1?' · encastrados (uno derecho, uno girado 180°)':'')+' · calle ↔ '+cotFmtDec(cotCalleHV(pz).h,1)+' / ↕ '+cotFmtDec(cotCalleHV(pz).v,1)+' cm'+(e.pinzaNat?' · PINZA NATURAL: la solapa de pegado (sin imprimir) va en la pinza':'')+(_pzLaminada(pz)?' · LAMINADO: solapas de pegado contra el borde del pliego (reserva de laminado)':'')+' (troquel a confirmar)');}
+     if(B.estuche){const e=pz.estuche;extra.push('ESTUCHE '+cotFmtDec(+e.a,1)+'×'+cotFmtDec(+e.h,1)+'×'+cotFmtDec(+e.p,1)+' · desplegado aprox. '+cotFmtDec(B.estuche.dl.w,1)+'×'+cotFmtDec(B.estuche.dl.h,1)+(e.pinzaNat?' · todos derechos, uno al lado del otro con las tapas encastradas':(B.n>1?' · encastrados (uno derecho, uno girado 180°)':''))+' · calle ↔ '+cotFmtDec(cotCalleHV(pz).h,1)+' / ↕ '+cotFmtDec(cotCalleHV(pz).v,1)+' cm'+(e.pinzaNat?' · PINZA NATURAL: la solapa de pegado (sin imprimir) va en la pinza':'')+(_pzLaminada(pz)?' · LAMINADO: solapas de pegado contra el borde del pliego (reserva de laminado)':'')+' (troquel a confirmar)');}
      else if(B.bloque)extra.push('MONTAJE: bloque '+cotFmtDec(B.w,1)+'×'+cotFmtDec(B.h,1)+' cm con '+B.n+' poses encastradas');
      {const hv=cotCalleHV(pz),g=cotCalleHV({});
       if(!B.estuche&&(Math.abs(hv.h-g.h)>0.001||Math.abs(hv.v-g.v)>0.001))extra.push((hv.h===0&&hv.v===0)?'CORTE SECO (sin calle)':'CALLE ↔ '+cotFmtDec(hv.h,1)+' / ↕ '+cotFmtDec(hv.v,1)+' cm entre piezas'+(hv.h===0||hv.v===0?' (corte seco en un sentido)':''));}
@@ -6907,7 +7174,7 @@ function _retornoSugerido(o){
   const d=new Date();d.setHours(12,0,0,0);const hoyS=d.toISOString().slice(0,10);
   const iso=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
   if(o&&o.entrega){
-    const e=new Date(o.entrega+'T12:00:00');let n=0;while(n<2){e.setDate(e.getDate()-1);if(e.getDay()!==0&&e.getDay()!==6)n++;}
+    const e=new Date(o.entrega+'T12:00:00');let n=0;while(n<2){e.setDate(e.getDate()-1);if(e.getDay()!==0&&e.getDay()!==6&&!esFeriado(e))n++;}
     const s=iso(e);if(s>hoyS)return s;
   }
   return (typeof addDiasHabiles==='function')?addDiasHabiles(hoyS,5):hoyS;
@@ -7149,7 +7416,7 @@ function rEntregas(){
 
   // ---- VISTA SEMANAL DE ENTREGAS ----
   h+=`<div class="cal-wrap" style="margin-bottom:16px"><table class="cal-table"><thead><tr><th class="hc">Flete</th>`;
-  semDias.forEach(d=>{h+=`<th${isHoyD(d)?' style="background:#e6f1fb;color:#185fa5"':''}>${fmtCorto(d)}</th>`;});
+  semDias.forEach(d=>{const fi=feriadoInfo(d);h+=`<th${fi?` style="background:${fi.bloquea?'#fdecec;color:#a32d2d':'#fff6e5;color:#a35b00'}" title="${cotEsc(fi.n)}"`:(isHoyD(d)?' style="background:#e6f1fb;color:#185fa5"':'')}>${fmtCorto(d)}${fi?`<div style="font-size:9px;font-weight:700">${fi.bloquea?'🇦🇷 FERIADO':'no laborable'}</div>`:''}</th>`;});
   h+=`</tr></thead><tbody>`;
 
   // Fila "Sin flete" — OTs sin flete asignado
@@ -7160,7 +7427,7 @@ function rEntregas(){
     h+=`<td style="padding:3px;vertical-align:top;min-height:32px">`;
     delDia.forEach(o=>{
       h+=`<div style="background:#f0f0ee;border-radius:5px;padding:3px 6px;margin-bottom:2px;font-size:10px;cursor:pointer" onclick="om('editEntrega',${o.id})">`;
-      h+=`<div style="font-weight:600">${o.num}</div>`;
+      h+=`<div style="font-weight:600">${o.num}${esFeriado(fecha)?' <span style="color:#a32d2d" title="La entrega cae en feriado">⚠ feriado</span>':''}</div>`;
       h+=`<div style="opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px">${o.descripcion}</div>`;
       h+=`</div>`;
     });
@@ -7184,7 +7451,7 @@ function rEntregas(){
       h+=`<td style="padding:3px;vertical-align:top;min-height:32px${esHoy?';background:rgba(24,95,165,.04)':''}">`;
       delDia.forEach(o=>{
         h+=`<div class="${otCol(o.id)}" style="border-radius:5px;padding:3px 6px;margin-bottom:2px;font-size:10px;cursor:pointer;border:0.5px solid rgba(0,0,0,.08)" onclick="om('editEntrega',${o.id})">`;
-        h+=`<div style="font-weight:600">${o.num}</div>`;
+        h+=`<div style="font-weight:600">${o.num}${esFeriado(fecha)?' <span style="color:#a32d2d" title="La entrega cae en feriado">⚠ feriado</span>':''}</div>`;
         h+=`<div style="opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px">${cNom(o.clienteId)}</div>`;
         if(o.fleteObs)h+=`<div style="opacity:.6;font-style:italic">${o.fleteObs}</div>`;
         h+=`</div>`;
@@ -7279,6 +7546,7 @@ function saveEditEntrega(id){
 // Editar la fecha de entrega directo desde la OT (recalcula los días hábiles)
 function otSetEntrega(id,val){
   const o=S.ordenes.find(x=>x.id===id);if(!o)return;
+  {const fe=val&&esFeriado(val);if(fe&&!confirm(`El ${val.split('-').reverse().join('/')} es feriado (${fe.n}). ¿Dejar la entrega ese día igual?`)){if(document.querySelector('.mod'))updModal(mVOT(id));else render();return;}}
   o.entrega=val;sk('ordenes');
   if(document.querySelector('.mod'))updModal(mVOT(id));else render();
 }
@@ -7349,14 +7617,17 @@ function rCalSemanal(maq){
   h+=`</div>`;
   h+=`<div style="display:flex;gap:12px;align-items:flex-start">`;
   h+=`<div class="cal-wrap" style="flex:1;min-width:0"><table class="cal-table"><thead><tr><th class="hc">Hora</th>`;
-  dias.forEach(d=>{h+=`<th ${isHoy(d)?'style="background:#e6f1fb;color:#185fa5"':''}>${DIAS[d.getDay()]} ${d.getDate()}/${MESES[d.getMonth()]}</th>`;});
+  dias.forEach(d=>{const fi=feriadoInfo(d);h+=`<th ${fi?`style="background:${fi.bloquea?'#fdecec;color:#a32d2d':'#fff6e5;color:#a35b00'}" title="${cotEsc(fi.n)}"`:(isHoy(d)?'style="background:#e6f1fb;color:#185fa5"':'')}>${DIAS[d.getDay()]} ${d.getDate()}/${MESES[d.getMonth()]}${fi?`<div style="font-size:9px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px">${fi.bloquea?'FERIADO':'no laborable'} · ${cotEsc(fi.n)}</div>`:''}</th>`;});
   h+=`</tr></thead><tbody>`;
-  ALL_SLOTS.forEach(slot=>{
+  // Feriados que bloquean: el día queda rojo y no se puede planificar (salvo que ya tuviera bloques cargados)
+  const _ferDia={};dias.forEach(d=>{const f=fmtD(d),fe=esFeriado(d);if(fe&&!Object.values(pm[f]||{}).some(b=>b&&!b.cont))_ferDia[f]=fe;});
+  ALL_SLOTS.forEach((slot,si)=>{
     h+=`<tr><td class="hcel">${slot}</td>`;
     dias.forEach(d=>{
       if(d.getDay()===0){h+=`<td class="fuer"></td>`;return;}
-      if(slot==='13:00'){h+=`<td class="alm">🍽️ Almuerzo</td>`;return;}
       const fecha=fmtD(d);
+      if(_ferDia[fecha]){if(si===0)h+=`<td rowspan="${ALL_SLOTS.length}" style="background:repeating-linear-gradient(135deg,#fdecec,#fdecec 8px,#fbe0e0 8px,#fbe0e0 16px);color:#a32d2d;text-align:center;vertical-align:middle;font-size:11px;font-weight:700">🇦🇷<br>FERIADO<br><span style="font-weight:500;font-size:10px">${cotEsc(_ferDia[fecha].n)}</span></td>`;return;}
+      if(slot==='13:00'){h+=`<td class="alm">🍽️ Almuerzo</td>`;return;}
       const bl=pm[fecha]&&pm[fecha][slot];
       if(bl&&!bl.cont){
         const ot=S.ordenes.find(o=>o.id===bl.otId);
@@ -7446,7 +7717,7 @@ function rCalSemanal(maq){
           const hoy=new Date();hoy.setHours(0,0,0,0);
           const dias=o.entrega?Math.round((new Date(o.entrega+'T00:00:00')-hoy)/(1000*60*60*24)):null;
           const urgColor=dias!==null&&dias<0?'#a32d2d':dias!==null&&dias<=3?'#ba7517':'inherit';
-          h+=`<tr><td><strong>${o.num}</strong></td><td style="max-width:150px">${o.descripcion}</td><td>${cNom(o.clienteId)}</td>`;
+          h+=`<tr><td><strong>${o.num}</strong><div style="margin-top:3px">${arteBadge(o,true)}</div></td><td style="max-width:220px">${o.descripcion}${obsProdAviso(o,'ppd',false)}</td><td>${cNom(o.clienteId)}</td>`;
           h+=`<td style="color:${urgColor};font-size:11px;white-space:nowrap">${o.entrega||'—'}${dias!==null?`<br><span style="font-size:10px">${dias<0?Math.abs(dias)+'d atraso':dias===0?'Hoy':dias+'d'}</span>`:''}</td>`;
           h+=`<td>${p.estado==='pending'?'<span class="badge ba">Pendiente</span>':'<span class="badge bi">En curso</span>'}<div style="font-size:9px;color:#888;margin-top:2px">${p.nombre.replace('Pre-prensa ','→ ')}</div></td>`;
           h+=`<td style="white-space:nowrap">`;
@@ -7498,7 +7769,7 @@ function rCalSemanal(maq){
           const hoy=new Date();hoy.setHours(0,0,0,0);
           const dias=o.entrega?Math.round((new Date(o.entrega+'T00:00:00')-hoy)/(1000*60*60*24)):null;
           const urgColor=dias!==null&&dias<0?'#a32d2d':dias!==null&&dias<=3?'#ba7517':'inherit';
-          h+=`<tr><td><strong>${o.num}</strong></td><td style="max-width:150px">${o.descripcion}</td><td>${cNom(o.clienteId)}</td>`;
+          h+=`<tr><td><strong>${o.num}</strong><div style="margin-top:3px">${arteBadge(o,true)}</div></td><td style="max-width:220px">${o.descripcion}${obsProdAviso(o,'ppd',false)}</td><td>${cNom(o.clienteId)}</td>`;
           h+=`<td style="color:${urgColor};font-size:11px;white-space:nowrap">${o.entrega||'—'}${dias!==null?`<br><span style="font-size:10px">${dias<0?Math.abs(dias)+'d atraso':dias===0?'Hoy':dias+'d'}</span>`:''}</td>`;
           h+=`<td>${p.estado==='pending'?'<span class="badge ba">Esperando papel</span>':'<span class="badge bi">Cortando</span>'}</td>`;
           h+=`<td style="white-space:nowrap">`;
@@ -7535,6 +7806,7 @@ function rTallerDiario(){
   h+='<div style="display:flex;align-items:center;gap:8px">';
   h+='<button onclick="tallerOff--;render()" style="padding:4px 9px">‹</button>';
   h+='<strong style="font-size:14px">📋 Plan de Taller — '+DIAS[base.getDay()]+' '+base.getDate()+'/'+MESES[base.getMonth()]+(esHoy?' <span style=\'color:#185fa5;font-size:11px\'>(Hoy)</span>':'')+'</strong>';
+  {const fi=feriadoInfo(fecha);if(fi)h+='<span style="font-size:12px;font-weight:700;padding:2px 8px;border-radius:8px;background:'+(fi.bloquea?'#fdecec;color:#a32d2d':'#fff6e5;color:#a35b00')+'">'+(fi.bloquea?'🇦🇷 FERIADO':'no laborable')+' · '+cotEsc(fi.n)+'</span>';}
   h+='<button onclick="tallerOff++;render()" style="padding:4px 9px">›</button>';
   h+='<button onclick="tallerOff=0;render()" style="padding:4px 9px;margin-left:4px">Hoy</button>';
   h+='</div>';
@@ -8569,6 +8841,8 @@ function rTaller(){
           <div style="font-size:14px;color:${color};font-weight:700;margin-top:4px">${cotEsc(p.nombre)}${pau?` · EN PAUSA: ${cotEsc(p.pausa.motivo)} desde ${fmtHora(p.pausa.desde)}`:(act?` · EN CURSO desde ${fmtHora(p.fechaInicio)}${p.operario?' ('+cotEsc(p.operario)+')':''}`:'')}</div>
           <div style="font-size:13px;color:#666;margin-top:4px">${pl?`Pliegos: <b>${Number(pl).toLocaleString('es-AR')}</b> (c/demasía) · `:''}${cant?`Cantidad: <b>${cant.toLocaleString('es-AR')}</b> · `:''}${it.plan?(it.hoy?`<b style="color:#1a7f37">Planificado HOY ${it.plan.slot}</b>`:`Planificado ${it.plan.fecha.split('-').reverse().join('/')} ${it.plan.slot}`):'Sin planificar'}</div>
           ${it.previos.length&&!act?`<div style="font-size:13px;color:#a35b00;margin-top:4px"><i class="ti ti-alert-triangle"></i> Todavía falta: ${it.previos.map(cotEsc).join(', ')}</div>`:''}
+          ${pu.tipo==='imp'&&!o.arteOK?`<div style="font-size:14px;color:#a32d2d;font-weight:700;margin-top:4px"><i class="ti ti-palette-off"></i> Arte sin aprobar por el cliente: no arrancar</div>`:''}
+          ${obsProdAviso(o,pu.tipo==='imp'?'imp':'term',true)}
           ${(o.avisosTaller||[]).filter(x=>!x.visto).length?`<div style="font-size:12px;color:#a32d2d;margin-top:4px"><i class="ti ti-message-report"></i> Hay avisos sin ver por el coordinador</div>`:''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch">
@@ -8587,6 +8861,7 @@ function _tallerPaso(otId,idx){const o=(S.ordenes||[]).find(x=>x.id===otId);cons
 function tallerIniciar(otId,idx){
   const {o,p}=_tallerPaso(otId,idx),pu=tallerPuestoAct();if(!o||!p||!pu)return;
   if(!otAprobada(o)){alert('La OT '+o.num+' no está aprobada. Avisale al coordinador.');return;}
+  if(pasoCol(p)==='imp'&&!_arteCheck(o,'No se puede arrancar la impresión sin el OK del arte.'))return;
   const op=tallerOperario();if(!op){alert('Poné tu nombre en "Operario".');return;}
   p.estado='active';if(!p.fechaInicio)p.fechaInicio=new Date().toISOString();
   p.operario=op;p.tallerPuesto=pu.n;delete p.pausa;
@@ -8744,6 +9019,7 @@ function rReparto(){
       <div style="font-size:13px;color:#555;margin-top:4px">${tot?`Cantidad: <b>${tot.toLocaleString('es-AR')}</b>`:''}${ent?` · <b style="color:#c47d16">ya entregado ${ent.toLocaleString('es-AR')}</b>`:''}${o.entrega?` · Fecha: <b>${fmtF(o.entrega)}</b>`:''}${o.fleteAsignado?` · ${cotEsc(o.fleteAsignado)}`:''}</div>
       ${dir?`<div style="font-size:14px;margin-top:4px"><i class="ti ti-map-pin" style="color:#185fa5"></i> ${cotEsc(dir)}</div>`:''}
       ${o.fleteObs?`<div style="font-size:13px;color:#666;font-style:italic;margin-top:2px">${cotEsc(o.fleteObs)}</div>`:''}
+      ${obsProdAviso(o,'ent',true)}
       ${noLista?`<div style="font-size:13px;color:#a35b00;margin-top:4px"><i class="ti ti-alert-triangle"></i> Todavía figura ${cotEsc(String(o.estado||'').replace(/_/g,' '))} (no está marcada como lista)</div>`:''}
       ${ult&&ult.tipo==='no'?`<div style="font-size:13px;color:#a32d2d;margin-top:4px">Último intento ${fmtHora(ult.fecha)}: no se entregó (${cotEsc(ult.motivo||'')})</div>`:''}
       <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-top:10px">
@@ -9259,8 +9535,8 @@ function savProvInline(){
 // ---- HELPERS FECHA ----
 function addDiasHabiles(fecha,dias){
   const d=new Date(fecha+'T00:00:00');let added=0;
-  while(added<dias){d.setDate(d.getDate()+1);const dow=d.getDay();if(dow!==0&&dow!==6)added++;}
-  return d.toISOString().slice(0,10);
+  while(added<dias){d.setDate(d.getDate()+1);const dow=d.getDay();if(dow!==0&&dow!==6&&!esFeriado(d))added++;}
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 // Días hábiles disponibles para producir entre ingreso y entrega (excluye domingos; el taller trabaja sábados).
 function diasHabiles(iso1,iso2){
@@ -9269,7 +9545,7 @@ function diasHabiles(iso1,iso2){
   if(isNaN(a)||isNaN(b))return null;
   if(b<a)return 0;
   let n=0;const d=new Date(a);d.setDate(d.getDate()+1);
-  while(d<=b){if(d.getDay()!==0)n++;d.setDate(d.getDate()+1);}
+  while(d<=b){if(d.getDay()!==0&&!esFeriado(d))n++;d.setDate(d.getDate()+1);} // sin domingos ni feriados
   return n;
 }
 // Caché del dólar BNA para no consultar en cada llamada
@@ -9458,7 +9734,7 @@ function mNC2(){
 <div class="fr">
   <div class="fg"><label>Plazo de entrega</label><div style="display:flex;gap:5px;align-items:center"><input id="cplazo" type="number" min="1" max="90" value="${plazo}" style="width:65px" oninput="updPlazoNotas()"><span style="font-size:11px;color:#666">días hábiles</span></div></div>
 </div>
-<div class="fg" style="margin-bottom:9px"><label>Tipo de trabajo</label><div style="display:flex;gap:6px;align-items:center"><select id="cd" style="flex:1;font-size:13px"><option value="">— Elegir tipo de trabajo —</option>${tiposOrdenados().map(t=>`<option value="${cotEsc(t)}">${cotEsc(t)}</option>`).join('')}</select><input id="cd-nuevo" placeholder="Nuevo tipo..." style="width:160px;font-size:12px"><button onclick="addTipoTrabajo()" style="font-size:11px;white-space:nowrap"><i class="ti ti-plus"></i>Crear</button></div></div>
+<div class="fg" style="margin-bottom:9px"><label>Tipo de trabajo</label><div style="display:flex;gap:6px;align-items:center"><select id="cd" onchange="try{_leerItemsDOMNuevo();_renderItems();}catch(e){}" style="flex:1;font-size:13px"><option value="">— Elegir tipo de trabajo —</option>${tiposOrdenados().map(t=>`<option value="${cotEsc(t)}">${cotEsc(t)}</option>`).join('')}</select><input id="cd-nuevo" placeholder="Nuevo tipo..." style="width:160px;font-size:12px"><button onclick="addTipoTrabajo()" style="font-size:11px;white-space:nowrap"><i class="ti ti-plus"></i>Crear</button></div></div>
 <div style="margin-bottom:9px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
     <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.05em">Ítems de venta</label>
@@ -9842,6 +10118,12 @@ function _renderItems(){
     h+=`<button onclick="dupItemNuevo(${ii})" title="Duplicar este ítem (con su costeo) para cambiar la cantidad" style="font-size:10px;padding:2px 7px;background:#f0f4f8;color:#555;border-color:#bbb;white-space:nowrap"><i class="ti ti-copy"></i> Duplicar</button>`;
     h+=`<button onclick="removeItem(${ii})" style="font-size:10px;padding:2px 5px;color:#a32d2d;border-color:#a32d2d"><i class="ti ti-trash"></i></button>`;
     h+=`</div></div>`;
+    {const er=_escalaRara(item);if(er)h+=`<div style="margin-top:5px;font-size:11px;font-weight:700;color:#a32d2d;background:#fdf0f0;border-radius:6px;padding:4px 8px"><i class="ti ti-alert-triangle"></i> Escala rara: ${er}</div>`;}
+    // Tipo de trabajo de ESTE ítem (stickers + carpetas en la misma cotización). Vacío = el general de arriba.
+    {const tg=Q('cd')?Q('cd').value:'',tOwn=item.tipoTrabajo||'';
+     h+=`<div style="display:flex;align-items:center;gap:6px;margin-top:5px"><span style="font-size:10px;color:#888;font-weight:600">TIPO DE ESTE ÍTEM</span>
+      <select onchange="onItemTipo(${ii},this.value)" title="Cada ítem puede ser de otro tipo de trabajo (ej. stickers y carpetas en la misma cotización). Al costear se cargan los procesos de ese tipo." style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid ${tOwn?'#185fa5':'rgba(0,0,0,.15)'};color:${tOwn?'#185fa5':'#888'};font-weight:${tOwn?700:400};max-width:240px">
+        <option value="">${tg?'= general ('+cotEsc(tg)+')':'— igual al general —'}</option>${tiposOrdenados().map(t=>`<option value="${cotEsc(t)}" ${t===tOwn?'selected':''}>${cotEsc(t)}</option>`).join('')}</select></div>`;}
     h+=`<textarea placeholder="Descripción completa del trabajo (medidas, papel, colores, terminaciones...)" class="id2" data-ii="${ii}" rows="2" oninput="onItemDesc(${ii},this.value)" style="width:100%;font-size:12px;margin-top:5px;padding:6px 9px;line-height:1.5;resize:vertical;min-height:46px;border:1px solid rgba(0,0,0,.14);border-radius:6px">${(item.desc||'').replace(/</g,'&lt;')}</textarea>`;
     h+=(()=>{const ref=(item.filas||[]).filter(f=>f.costo||f.ventaCalc);if(!ref.length)return '';return `<div style="font-size:10px;color:#888;margin-top:4px;line-height:1.5">${ref.map(f=>`<span style="white-space:nowrap">${$n(f.qty)}u · costo $${$n(f.costo||0)} · sug. $${$n(cotRedondearVenta(f.ventaCalc||0))}${f.manual?` · <span style="color:#1a7f37;font-weight:700">definitivo $${$n(f.subtotal||0)}</span>`:''}</span>`).join(' &nbsp;|&nbsp; ')}</div>`;})();
     if(item.aiSug){const s=item.aiSug;const parts=[s.maquina?'Máq '+s.maquina:'',s.material?s.material+(s.gramaje?' '+s.gramaje+'g':''):'',(s.medidaAbierta&&(s.medidaAbierta.ancho||s.medidaAbierta.alto))?'abierto '+(s.medidaAbierta.ancho||'?')+'x'+(s.medidaAbierta.alto||'?'):'',s.medidaCerrada?'cerrado '+s.medidaCerrada:'',s.colores||'',(s.procesos&&s.procesos.length)?s.procesos.join(', '):''].filter(Boolean);if(parts.length)h+=`<div style="font-size:10px;color:#6b28b6;margin-top:3px"><i class="ti ti-lock" style="font-size:9px"></i> Interno IA (no sale en PDF): ${parts.join(' · ')} <span style="color:#aaa">· se usa al costear</span></div>`;}
@@ -9928,6 +10210,24 @@ function onItemQty(ii,fi,el){
   const ips=g.querySelectorAll('.ip');if(ips[fi]){ips[fi].value=f.precio?$n(f.precio):'';ips[fi].setAttribute('data-raw',f.precio||0);}
   calcT();
 }
+// Escala incoherente: una cantidad MAYOR con precio unitario MAYOR que una menor (pasa al pisar precios a mano)
+function _escalaRara(item){
+  const fl=(item&&item.filas||[]).filter(f=>+f.qty>0&&+f.subtotal>0).map(f=>({q:+f.qty,u:+f.subtotal/+f.qty})).sort((a,b)=>a.q-b.q);
+  for(let i=1;i<fl.length;i++)if(fl[i].u>fl[i-1].u*1.001)return `${cotFmt(fl[i].q)} u. sale $ ${cotFmtDec(fl[i].u,2)} c/u y ${cotFmt(fl[i-1].q)} u. sale $ ${cotFmtDec(fl[i-1].u,2)} c/u: la cantidad mayor queda más cara por unidad`;
+  return '';
+}
+function _escalasOk(items){
+  const l=(items||[]).map(it=>{const t=_escalaRara(it);return t?`• ${it.nombre||'Ítem'}: ${t}`:'';}).filter(Boolean);
+  return !l.length||confirm('Escalas de precio raras:\n\n'+l.join('\n')+'\n\n¿Guardar igual?');
+}
+// Tipo de trabajo del ítem: el propio o, si no tiene, el general de la cotización
+function _itemTipo(item){return (item&&item.tipoTrabajo)||(Q('cd')?Q('cd').value:'')||'';}
+function onItemTipo(ii,val){
+  const item=_itemsState()[ii];if(!item)return;
+  item.tipoTrabajo=String(val||'').replace(/[<>]/g,'').slice(0,60);
+  if(item.costeo)item.costeo.tipoTrabajo=_itemTipo(item);
+  _leerItemsDOMNuevo();_renderItems();
+}
 // Unitario escrito a mano (ej. redondear $54,20 a $55): total = unitario × cantidad
 function onItemPu(ii,fi,el){
   const item=_itemsState()[ii];if(!item)return;
@@ -9981,7 +10281,7 @@ function estrPartesDeItem(item){
   if(!item.estrFamilia)return [];
   const e=(S.cotEstructuras||[]).find(x=>estrNorm(x.nombre)===estrNorm(item.estrFamilia));
   if(!e)return [];
-  const tt=Q('cd')?Q('cd').value:'';
+  const tt=_itemTipo(item);
   if(e.tipoTrabajo&&tt&&estrNorm(e.tipoTrabajo)!==estrNorm(tt))return []; // la IA la asoció a una familia de otro tipo de trabajo
   return (e.items||[]).filter(it=>!it.opcional).map(_estrParte);
 }
@@ -10068,14 +10368,18 @@ function estrArmarAplicar(sel){
   const partes=(e.items||[]).filter((it,ii)=>marcados.includes(ii)).map(_estrParte);
   // Si hay un solo ítem todavía sin costear (ej. ya escribiste "Bolsa kraft 20x30"), la estructura se le asigna a ése
   const libre=items.length===1&&!items[0].costeo?items[0]:null;
+  let destino=libre;
   if(libre){
     if(!String(libre.nombre||'').trim())libre.nombre=String(e.nombre||'').slice(0,60);
     libre.estrFamilia=e.nombre;libre.estrPartes=partes;delete libre.estrTipo;
   }else{
-    items.push({nombre:String(e.nombre||'').slice(0,60),desc:'',filas:[{qty:0,subtotal:0,precio:0}],estrFamilia:e.nombre,estrPartes:partes});
+    destino={nombre:String(e.nombre||'').slice(0,60),desc:'',filas:[{qty:0,subtotal:0,precio:0}],estrFamilia:e.nombre,estrPartes:partes};
+    items.push(destino);
   }
-  // Fijar el tipo de trabajo si la estructura lo define y no hay uno elegido
-  if(e.tipoTrabajo){const sel2=Q('cd');if(sel2&&!sel2.value){if([...sel2.options].some(o=>o.value===e.tipoTrabajo))sel2.value=e.tipoTrabajo;}}
+  // Tipo de trabajo de la estructura: si no hay general, pasa a ser el general; si el general es otro, queda como tipo de ESE ítem
+  if(e.tipoTrabajo){const sel2=Q('cd');
+    if(sel2&&!sel2.value&&[...sel2.options].some(o=>o.value===e.tipoTrabajo))sel2.value=e.tipoTrabajo;
+    else if(sel2&&sel2.value&&estrNorm(sel2.value)!==estrNorm(e.tipoTrabajo))destino.tipoTrabajo=e.tipoTrabajo;}
   estrArmarCerrar();
   _renderItems();
 }
@@ -10124,7 +10428,9 @@ function mVC2(id){
     h+=`<div style="padding:7px;text-align:right;font-size:11px;background:#f5f5f3">Sub: ${$m(sub)} · IVA: ${$m(iva)} · <strong>Total: ${$m(tot)}</strong></div></div>`;
     return h;
   };
-  let h=`<div class="mt2">${c.num} — ${cNom(c.clienteId)} ${stBadge(c.estado)}</div>`;
+  // Triángulo de acciones también acá: ver (PDF), modificar, eliminar
+  const _tri=triAcc(`generarPDFCotizacion(${c.id})`,`om('ec2',${c.id})`,`(function(){const n=S.cotizaciones.length;delCot(${c.id});if(S.cotizaciones.length<n)cm();})()`);
+  let h=`<div class="mt2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-right:36px"><span>${c.num} — ${cNom(c.clienteId)} ${stBadge(c.estado)}</span><span style="margin-left:auto">${_tri}</span></div>`;
   h+=`<div class="kv"><span class="kk">Fecha cotización</span><span class="kval"><input type="date" value="${c.fecha||''}" onchange="cotSetFecha(${c.id},'fecha',this.value)" title="Cambiá la fecha (recalcula la entrega según el plazo)" style="font-size:13px;padding:2px 6px;border:1px solid rgba(0,0,0,.25);border-radius:6px"> <i class="ti ti-pencil" style="color:#185fa5;font-size:11px"></i></span></div>`;
   if(c.vendedor)h+=`<div class="kv"><span class="kk">Vendedor</span><span class="kval"><strong>${capNom(c.vendedor)}</strong></span></div>`;
   if(c.tipoTrabajo)h+=`<div class="kv"><span class="kk">Tipo de trabajo</span><span class="kval">${c.tipoTrabajo}</span></div>`;
@@ -10383,7 +10689,11 @@ async function confirmarDistribucionOTs(cotId){
     _otTercerizar(c,g.entradas.map(e=>e.item.desc),pasos,asignaciones); // trabajo tercerizado: va directo al proveedor externo
     let _nc='';try{const rv0=_rvDeItemDesc(c,(g.entradas[0]||{}).item.desc);_nc=(rv0&&rv0.nombre)||'';}catch(e){}
     if(_nc&&g.entradas.length===1&&g.entradas[0].piezaNombre)_nc=_nc+' — '+g.entradas[0].piezaNombre;
-    S.ordenes.push({
+    // Observaciones para producción de los costeos de estos ítems (si hay varios, se juntan sin repetir)
+    const _obs={};
+    g.entradas.forEach(e=>{try{const rv=_rvDeItemDesc(c,e.item.desc),ob=rv&&rv.costeo&&rv.costeo.obsProd;if(!ob)return;
+      OBS_SECT.forEach(([k])=>{const t=String(ob[k]||'').trim();if(t&&!String(_obs[k]||'').includes(t))_obs[k]=(_obs[k]?_obs[k]+'\n':'')+t;});}catch(err){}});
+    S.ordenes.push({obsProd:_obs,
       id:idOT,num,baseId,cotId:c.id,clienteId:c.clienteId,
       fecha:_hoyD,
       entrega:_entD,
@@ -10822,6 +11132,7 @@ function mVOT(id){
   h+=otAprobada(o)
     ?`<div style="background:#eaf3de;border:1px solid #86efac;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#27500a;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span><i class="ti ti-circle-check"></i> OT aprobada el ${o.aprobadaOT.fecha}${o.aprobadaOT.por?' · '+o.aprobadaOT.por:''}</span><button onclick="aprobarOT(${o.id})" style="font-size:11px;padding:3px 8px">Quitar aprobación</button></div>`
     :`<div style="background:#fcebeb;border:1px solid #f7c1c1;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#791f1f;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span><i class="ti ti-alert-triangle"></i> OT sin aprobar — no se puede comprar papel ni planificar hasta el OK.</span><button class="bs" onclick="aprobarOT(${o.id})" style="font-size:11px;padding:4px 9px"><i class="ti ti-circle-check"></i>Aprobar OT</button></div>`;
+  h+=`<div class="kv"><span class="kk">Arte del cliente</span><span class="kval">${arteBadge(o,true)}</span></div>`;
   h+=`<div class="kv"><span class="kk">Cliente</span><span class="kval">${cNom(o.clienteId)}</span></div>`;
   h+=kv2('Vendedor',capNom(o.vendedor));
   h+=kv2('OT controlada por',o.controladaPor);
@@ -10837,6 +11148,7 @@ function mVOT(id){
   }
   if(o.nombreCorto)h+=`<div style="margin-top:8px;font-size:14px;font-weight:700;color:#185fa5">${escHtml(o.nombreCorto)}</div>`;
   h+=`<div style="margin-top:8px;background:#f5f5f3;border-radius:7px;padding:9px;font-size:12px;line-height:1.5;white-space:pre-line">${o.descripcion?_descHtml(o.descripcion):'—'}</div>`;
+  h+=`<div style="margin-top:8px">${obsProdHTML(o.obsProd,`otObsProdSet(${o.id},KEY,this.value)`,'Observaciones para producción')}</div>`;
   h+=otAnalisisTec(o);
 
   // Material
@@ -11451,6 +11763,9 @@ function moverBloque(m0,f0,s0,m1,f1,s1){
 function planDrop(ev,maq,fecha,slot){
   ev.preventDefault();ev.currentTarget.style.background='';
   if(!_dragData)return;
+  {const fe=esFeriado(fecha);if(fe&&!confirm(`El ${fecha.split('-').reverse().join('/')} es feriado (${fe.n}). ¿Planificar igual?`)){_dragData=null;return;}}
+  // Planificar en una impresora pide el arte aprobado
+  if(_dragData.tipo==='ot'&&typeof esMaqImpresion==='function'&&esMaqImpresion(maq)){const o=S.ordenes.find(x=>x.id===_dragData.otId);if(o&&!_arteCheck(o,'No se puede planificar la impresión sin el OK del arte.')){_dragData=null;return;}}
   if(_dragData.tipo==='ot')crearBloqueDrop(maq,fecha,slot,_dragData.otId);
   else if(_dragData.tipo==='bloque')moverBloque(_dragData.maq,_dragData.fecha,_dragData.slot,maq,fecha,slot);
   _dragData=null;
@@ -11580,7 +11895,7 @@ function mEditProv(id){const p=S.proveedores.find(x=>x.id===id);if(!p)return'';c
         filas:(it.filas||[{qty:0,precio:0,subtotal:0}]).map(f=>Object.assign({qty:f.qty||0,precio:f.precio||0,subtotal:f.subtotal||0},
           f.manual?{manual:true}:{},f.puManual?{puManual:true}:{},f.costo!=null?{costo:f.costo}:{},f.ventaCalc!=null?{ventaCalc:f.ventaCalc}:{})), // conserva precio fijado a mano y costo de referencia
         costeo:it.costeo?JSON.parse(JSON.stringify(it.costeo)):undefined,
-        estrTipo:it.estrTipo,estrFamilia:it.estrFamilia,estrPartes:it.estrPartes
+        estrTipo:it.estrTipo,estrFamilia:it.estrFamilia,estrPartes:it.estrPartes,tipoTrabajo:it.tipoTrabajo||''
       }));
       _renderItems();
       const mt=document.querySelector('.mt2');
@@ -11596,6 +11911,7 @@ function mEditProv(id){const p=S.proveedores.find(x=>x.id===id);if(!p)return'';c
     const idx=arr.findIndex(x=>x.id===id);if(idx<0)return;
     const c=arr[idx];
     const rawItems=_leerItemsDOMNuevo();
+    if(!_escalasOk(rawItems))return;
     const items=rawItems.map(it=>({desc:_composeItemDesc(it),qty:(it.filas[0]||{}).qty||0,precio:(it.filas[0]||{}).precio||0,subtotal:(it.filas[0]||{}).subtotal||0})).filter(i=>i.desc);
     // Con variantes de cantidad el total queda en 0 hasta que se apruebe una cantidad
     const sub=cotConVariantes(rawItems)?0:items.reduce((a,i)=>a+i.subtotal,0),iva=sub*.21;
@@ -11876,6 +12192,7 @@ function _cidOProvisional(hidId,txtId){
 async function savCot(st){
   const cid=_cidOProvisional('cot-id','cot-txt');if(!cid){alert('Poné el nombre del cliente (podés escribir solo el nombre; los datos se completan después).');return;}
   const rawItems=_leerItemsDOMNuevo();
+  if(!_escalasOk(rawItems))return;
   const items=rawItems.map(it=>({desc:_composeItemDesc(it),qty:(it.filas[0]||{}).qty||0,precio:(it.filas[0]||{}).precio||0,subtotal:(it.filas[0]||{}).subtotal||0})).filter(i=>i.desc);
   // Validación: al menos un ítem con descripción y cantidad > 0
   if(!items.length){alert('Agregá al menos un ítem con descripción a la cotización.');return;}
@@ -11889,7 +12206,7 @@ async function savCot(st){
   const entrega=addDiasHabiles(fechaCot,plazo);
   const {id,num}=await nidCot();
   const vendedor=getVendedor();
-  const tipoTrabajo=Q('cd')?.value||'';
+  const tipoTrabajo=Q('cd')?.value||(rawItems.find(it=>it.tipoTrabajo)||{}).tipoTrabajo||''; // sin general: el del primer ítem
   const pesoEstimado=(typeof _pesoDesdeItems==='function')?_pesoDesdeItems(rawItems):'';
   const costoCosteos=rawItems.reduce((a,it)=>a+((it.costeo&&it.costeo.calc&&it.costeo.calc.total)||0),0);
   S.cotizaciones.push({id,num,clienteId:cid,fecha:fechaCot,validez:Q('cv').value,entrega,plazo,maquina:'',items,itemsVariantes:rawItems,subtotal:sub,iva,total:sub+iva,estado:st,notas:Q('cno2').value,tipoTrabajo,vendedor,costoTotal:costoCosteos||0,costos:null,variantes:[],pesoEstimado});
@@ -11909,7 +12226,8 @@ function estrAprender(tipoTrabajo,rawItems){
     const ei=arr.findIndex(e=>estrNorm(e.nombre)===estrNorm(it.estrFamilia));if(ei<0)continue;
     const e=arr[ei];
     // Si la plantilla tiene tipo de trabajo y la cotización es de otro tipo, no es de esta familia
-    if(e.tipoTrabajo&&tipoTrabajo&&estrNorm(e.tipoTrabajo)!==estrNorm(tipoTrabajo))continue;
+    const _tt=it.tipoTrabajo||tipoTrabajo;
+    if(e.tipoTrabajo&&_tt&&estrNorm(e.tipoTrabajo)!==estrNorm(_tt))continue;
     const existentes=(e.items||[]).map(x=>estrItemToken(x.nombre));
     const ignorados=Array.isArray(e.aprIgnorar)?e.aprIgnorar:[];
     const partes=[];
@@ -12168,8 +12486,8 @@ function updateOT(id){
   syncPasos(o); // recalcula CTP N/A y Terminación/Externos según el detalle actual
   sk('ordenes');cm();om('vot',id);
 }
-function avP(otId,nom){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos.find(x=>x.nombre===nom);if(!p)return;const now=new Date();const h=now.toISOString().slice(0,10);if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}recomputeEstadoOT(o);sk('ordenes');render();}
-function avPN(otId,idx){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos[idx];const n=Q('np'+idx);if(n&&n.value)p.nota=n.value;const now=new Date();const h=now.toISOString().slice(0,10);if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}recomputeEstadoOT(o);sk('ordenes');cm();om('vot',otId);}
+function avP(otId,nom){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos.find(x=>x.nombre===nom);if(!p)return;if(!_arteAntesDeAvanzar(o,p))return;const now=new Date();const h=now.toISOString().slice(0,10);if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}recomputeEstadoOT(o);sk('ordenes');render();}
+function avPN(otId,idx){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos[idx];if(!_arteAntesDeAvanzar(o,p))return;const n=Q('np'+idx);if(n&&n.value)p.nota=n.value;const now=new Date();const h=now.toISOString().slice(0,10);if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}recomputeEstadoOT(o);sk('ordenes');cm();om('vot',otId);}
 async function savRem(){const cid=gCid('rem-id');if(!cid){alert('Seleccioná un cliente');return;}const otId=parseInt(Q('remo').value)||null;const ot=otId?S.ordenes.find(o=>o.id===otId):null;const numSeq=await nid('rem'),id=uid(),num=`R-${String(numSeq).padStart(4,'0')}`;S.remitos.push({id,num,clienteId:cid,otNum:ot?.num||'',fecha:Q('rf').value,dir:Q('rd').value,det:Q('rdet').value,estado:'emitido'});sk('remitos');cm();render();}
 function mkRem(id,st){const i=S.remitos.findIndex(r=>r.id===id);if(i>=0){S.remitos[i].estado=st;sk('remitos');cm();render();}}
 function savGas(){const c=Q('gc')?.value.trim();if(!c){alert('Ingresá el concepto');return;}const id=uid();S.gastos.push({id,concepto:c,tipo:Q('gti').value,monto:parseFloat(Q('gm').value)||0,mes:Q('gme').value});sk('gastos');cm();render();}
