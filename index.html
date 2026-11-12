@@ -1524,7 +1524,7 @@ function extTabVer(i){const e=(S.externos||[])[i];if(e==null)return;planMaq=e;pl
 // provForzado: tercerizado elegido al generar la OT (aunque el ítem no se haya costeado como tercerizado)
 function _otTercerizar(cot,descs,pasos,asignaciones,provForzado){
   let prov=provForzado!=null?String(provForzado).replace(/[<>]/g,'').trim().slice(0,60):null;
-  if(prov===null)for(const d of (descs||[])){try{const rv=_costeoDeItemDesc(cot,d);const co=rv&&rv.costeo;if(co&&co.terc&&co.terc.on){prov=String(co.terc.prov||'').trim();break;}}catch(e){}}
+  if(prov===null&&provForzado===undefined)for(const d of (descs||[])){try{const rv=_costeoDeItemDesc(cot,d);const co=rv&&rv.costeo;if(co&&co.terc&&co.terc.on){prov=String(co.terc.prov||'').trim();break;}}catch(e){}}
   if(prov===null)return false;
   if(prov)prov=asegurarExterno(prov)||prov;
   (pasos||[]).forEach(p=>{const col=pasoCol(p);if(col==='papel'||col==='corte'||col==='imp'||col==='ctp'||(col==='term'&&/^terminaci[oó]n$/i.test(p.nombre||''))){p.estado='na';p.na=true;}});
@@ -2600,7 +2600,42 @@ function cotRedondearVenta(v){
 // c × precio del millar (ej. plotter de corte $ 200.000 el millar = $ 200 por pliego).
 // Por pliego (sin mínimo): tildado en Tablas de costos, o sin 1er millar cargado y con millar sig. (ej. plotter $ 200.000 = $ 200 x pliego)
 function _procProp(t){return !!(t&&(t.proporcional||(!(+t.primerMillar>0)&&+t.millarSiguiente>0)));}
-function _procCosto(t,c){
+// ESCALA DEL PROVEEDOR por cantidad (ej. laca sectorizada / hot stamping: $ x millar distinto para 12.000, 30.000, 60.000…).
+// esc = { "12000": 350000, "30000": 280000 } → precio para esa cantidad (millar, caja o total según el modo del proceso).
+// Cantidad que no está en la escala: se interpola entre las dos más cercanas (afuera del rango, la más cercana).
+function _escPrecio(esc,cant){
+  if(!esc||typeof esc!=='object')return null;
+  const L=Object.keys(esc).map(q=>[+q,+esc[q]]).filter(x=>x[0]>0&&x[1]>0).sort((a,b)=>a[0]-b[0]);
+  if(!L.length||!(cant>0))return null;
+  const ex=L.find(x=>x[0]===Math.round(cant));if(ex)return ex[1];
+  if(cant<=L[0][0])return L[0][1];if(cant>=L[L.length-1][0])return L[L.length-1][1];
+  for(let i=1;i<L.length;i++)if(cant<L[i][0]){const a=L[i-1],b=L[i];return a[1]+(b[1]-a[1])*(cant-a[0])/(b[0]-a[0]);}
+  return null;
+}
+function _escActiva(x){return !!(x&&x.esc&&Object.values(x.esc).some(v=>+v>0));}
+// Fila de la escala del proveedor (debajo del proceso): un precio por cada cantidad cotizada
+function _escCants(){const w=cotW||{};return [...new Set([+w.cantidad||0].concat((w.variantes||[]).map(v=>+v.cantidad||0)).filter(q=>q>0))].sort((a,b)=>a-b);}
+function _escRowHTML(kind,k,i,x,modo,cols){
+  if(!x||!(x._escOpen||_escActiva(x)))return '';
+  const u={pliegos:'$ x millar',unidades:'$ x millar',peso:'$ x caja'}[modo]||'$ total';
+  const cs=_escCants();
+  return `<tr style="background:#f7f2fb"><td colspan="${cols}" style="padding:6px 10px 8px">
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+      <div style="font-size:11px;font-weight:700;color:#7b3fa0;align-self:center"><i class="ti ti-stairs"></i> Escala del proveedor <span style="font-weight:400;color:#888">(${u} según la cantidad)</span></div>
+      ${cs.map(q=>`<div><div style="font-size:9.5px;color:#888;font-weight:700">${cotFmt(q)} u.</div><input value="${x.esc&&+x.esc[q]>0?cotFmt(+x.esc[q]):''}" placeholder="${u}" onchange="cotEscEd('${kind}',${k},${i},${q},this.value)" style="width:96px;padding:4px 6px;border:1.5px solid #c9a8e0;border-radius:6px;font-size:12px;font-weight:700;text-align:right;color:#7b3fa0"></div>`).join('')}
+      <button onclick="cotEscEd('${kind}',${k},${i},'off')" title="Sacar la escala (vuelve al costo de la tabla)" style="font-size:10px;padding:3px 8px;color:#a32d2d;border-color:#e8a0a0">Quitar escala</button>
+    </div>
+    <div style="font-size:10px;color:#888;margin-top:3px">Cada cantidad usa su precio; si cotizás otra cantidad, se calcula entre las dos más cercanas. ${u==='$ total'?'Es el monto total del proceso.':'Se multiplica por los '+(u==='$ x caja'?'cajas':'millares')+' de esa cantidad.'}</div>
+  </td></tr>`;
+}
+function cotEscEd(kind,k,i,q,val){
+  if(!cotW)return;
+  const x=kind==='o'?(cotW.otros||[])[i]:(((cotW.piezas||[])[k]||{}).procesos||[])[i];if(!x)return;
+  if(q==='open'){x._escOpen=true;x.ovMonto=false;if(!x.esc)x.esc={};}
+  else if(q==='off'){delete x.esc;delete x._escOpen;}
+  else{if(!x.esc)x.esc={};const n=cotNum(val);if(n>0)x.esc[q]=n;else delete x.esc[q];x.ovMonto=false;}
+  cotRerender();
+}function _procCosto(t,c){
   if(!t||t.codigo===0||!(c>0))return 0;
   if(_procProp(t))return c*(+t.millarSiguiente||+t.primerMillar||0);
   return c>1?(+t.primerMillar||0)+(c-1)*(+t.millarSiguiente||0):(+t.primerMillar||0);
@@ -2611,7 +2646,7 @@ function cotCalc(w,cantOverride){
   const tercOn=!!(w.terc&&w.terc.on);
   // Configuración propia de ESTA cantidad (ej. 10.000 en SM74 con otro margen); si no tiene, usa la de la base
   const pcq=_cotPorCant(w,cantOverride);
-  const piezas=tercOn?[]:((pcq&&Array.isArray(pcq.piezas)&&pcq.piezas.length)?pcq.piezas:(w._piezasBase||cotPiezasDe(w))); // tercerizado: no se cuenta la producción propia
+  const piezas=(tercOn&&!w.terc.propias)?[]:((pcq&&Array.isArray(pcq.piezas)&&pcq.piezas.length)?pcq.piezas:(w._piezasBase||cotPiezasDe(w))); // tercerizado: no se cuenta la producción propia
   let papelCosto=0,impCosto=0,chapasCosto=0,lamCosto=0,pesoKg=0,procPzTotal=0;
   let pliegosNetosT=0,pliegosTotT=0,millaresT=0;
   const piezasDet=piezas.map((p,k)=>{
@@ -2701,7 +2736,7 @@ function cotCalc(w,cantOverride){
       const tp=(S.cotOtros||[]).find(x=>x.codigo===pr.cod);
       const modoP=pr.auto===true?'pliegos':(pr.auto||'');
       const cc=pr.ov?(+pr.cant||0):(modoP==='unidades'?cantEf/1000:(modoP==='pliegos'?(_procProp(tp)?pliegosTot/1000:millares):(pr.cant||0)));
-      const costoAuto=_procCosto(tp,cc);
+      const _epP=_escPrecio(pr.esc,cant);const costoAuto=_epP!=null?_epP*cc:_procCosto(tp,cc);
       const costoP=pr.ovMonto?(+pr.montoOv||0):costoAuto; // monto pisado a mano (cotización de proveedor)
       procPzCosto+=costoP;procPzDet.push({idx:pi,cod:pr.cod,cant:cc,modo:modoP,concepto:tp?tp.concepto:'—',proveedor:pr.proveedor||'',costo:costoP,ov:!!pr.ov,ovMonto:!!pr.ovMonto});
     });
@@ -2722,7 +2757,7 @@ function cotCalc(w,cantOverride){
     // "peso": cajas según el peso del trabajo (1 caja cada N kg, Configuración); sin peso calculado, 1 caja
     const kgCaja=Math.max(1,+cfg.kgPorCaja||20);
     const c=o.ov?(+o.cant||0):(modo==='peso'?(pesoKg>0?Math.ceil(pesoKg/kgCaja-1e-9):1):(modo==='unidades'?cant/1000:(modo==='pliegos'?(_procProp(t)?pliegosTotT/1000:millaresT):(o.cant||0))));
-    const costoAuto=_procCosto(t,c);
+    const _ep=_escPrecio(o.esc,cant);const costoAuto=_ep!=null?_ep*c:_procCosto(t,c);
     const costo=o.ovMonto?(+o.montoOv||0):costoAuto; // monto pisado a mano (cotización de proveedor)
     otrosCosto+=costo;otrosDet.push({idx:i,cod:o.cod,cant:c,modo,concepto:t?t.concepto:'—',proveedor:o.proveedor||'',costo,ov:!!o.ov,ovMonto:!!o.ovMonto});
   });
@@ -4228,13 +4263,22 @@ async function cotAFormal(id){
   alert('Cotización '+num+' creada como borrador'+(conVar?' con '+filas.length+' cantidades ('+filas.map(f=>cotFmt(f.qty)).join(' / ')+')':'')+'.\nAbrila en Cotizaciones para revisar y generar el PDF.');
   nav('cot');
 }
+// TAB entre casilleros del costeo: al cambiar un valor se redibuja la pantalla y se perdía el foco
+// (había que ir con el mouse al casillero siguiente). Se recuerda la posición y se pasa al siguiente.
+const _FOCO_SEL='input:not([type=hidden]):not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])';
+window._tabNav=null;
+document.addEventListener('keydown',e=>{if(e.key==='Tab'&&e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))window._tabNav={el:e.target,shift:e.shiftKey,t:Date.now()};},true);
+function _focables(){return [...document.querySelectorAll(_FOCO_SEL)].filter(x=>x.offsetParent!==null&&x.tabIndex>=0);}
 function cotRerender(){
+  const tn=window._tabNav,ae=document.activeElement;
+  let idx=-1;
+  if(tn&&Date.now()-tn.t<500&&tn.el&&tn.el.isConnected&&(!ae||ae===tn.el||ae===document.body)){idx=_focables().indexOf(tn.el);} // al cambiar con Tab el casillero ya perdió el foco
+  window._tabNav=null;
   if(window._cotEmbed){
     const b=document.getElementById('cot-embed-body');
     if(b)b.innerHTML=rCotizador();
-    return;
-  }
-  render();
+  }else render();
+  if(idx>=0)setTimeout(()=>{const L=_focables(),el=L[idx+(tn.shift?-1:1)];if(el){el.focus();try{if(el.select)el.select();}catch(e){}}},0);
 }
 function _pesoDesdeItems(rawItems){
   const ps=[];
@@ -4997,6 +5041,13 @@ function cotPaginadoHTML(w){
   return h;
 }
 // ===== Trabajo TERCERIZADO: presupuesto de un proveedor en lugar de la producción propia =====
+function cotTercPropias(on){
+  if(!cotW||!cotW.terc)return;
+  if(on){cotW.terc.propias=true;cotW.piezas=cotPiezasDe(cotW);const p0=cotW.piezas[0];
+    if(cotW.piezas.length===1&&p0&&!p0.papelCod&&!(p0.papelSel&&p0.papelSel.fam)&&!p0.impCod&&(!p0.nombre||/pieza/i.test(p0.nombre)))p0.nombre='Sticker';}
+  else if(confirm('¿Quitar la impresión propia? Las piezas dejan de sumarse al costo.'))delete cotW.terc.propias;else return;
+  cotRerender();
+}
 function cotTercToggle(){if(!cotW)return;if(!cotW.terc)cotW.terc={costos:{}};cotW.terc.on=!cotW.terc.on;cotRerender();}
 function cotTercEd(campo,val){
   if(!cotW||!cotW.terc)return;
@@ -5195,9 +5246,15 @@ function rCotizador(){
   // ---- TERCERIZADO: presupuesto de un proveedor en lugar de la producción propia ----
   const _tercOn=!!(w.terc&&w.terc.on);
   h+=cotTercHTML(w,r);
-  if(!_tercOn){ // producción propia: paginado + piezas (si está tercerizado, no se muestran ni se cuentan)
+  if(_tercOn&&!w.terc.propias){ // tercerizado: se puede sumar algo impreso en casa (ej. un sticker para cerrar el sobre)
+    h+=`<div style="margin:-4px 0 12px"><button onclick="cotTercPropias(true)" title="Sumar una pieza que imprimís vos (sticker, faja, tarjeta…) dentro de este mismo trabajo tercerizado" style="font-size:12px;color:#185fa5;border-color:#185fa5"><i class="ti ti-plus"></i> Agregar impresión propia (sticker, faja…)</button></div>`;
+  }
+  if(_tercOn&&w.terc.propias){
+    h+=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:-4px 0 8px;padding:7px 10px;background:#eef4fb;border:1px solid #c7dbf0;border-radius:8px;font-size:12px;color:#185fa5"><span><i class="ti ti-printer"></i> <b>Impresión propia</b> además del tercerizado: estas piezas se suman al costo y al generar la OT salen en una OT interna aparte.</span><button onclick="cotTercPropias(false)" style="font-size:11px;padding:3px 9px;color:#a32d2d;border-color:#e8a0a0">Quitar impresión propia</button></div>`;
+  }
+  if(!_tercOn||w.terc.propias){ // producción propia: paginado + piezas (tercerizado: solo si se sumó impresión propia)
   // ---- PAGINADO (arriba de todo): definir revista/cuaderno y armar la estructura antes de las piezas ----
-  h+=cotPaginadoHTML(w);
+  if(!_tercOn)h+=cotPaginadoHTML(w);
   // ---- PIEZAS (entradas de máquina) ----
   const multi=w.piezas.length>1;
   w.piezas.forEach((p,k)=>{
@@ -5377,7 +5434,7 @@ function rCotizador(){
         <td style="padding:5px;overflow:visible">${modoSelP}</td>
         <td style="padding:5px;text-align:right"><input value="${cotFmtDec(pdd.cant,3)}" onchange="cotPzProcEd(${k},${pi},'cant',this.value)" ${ovM?'disabled':''} title="${ovM?'Costo fijado a mano — los millares no se usan':(pdd.ov?'Millares fijados a mano':'Millares automáticos — editables')}" style="width:60px;padding:4px 6px;border:1px solid ${pdd.ov?'#7b3fa0':'rgba(0,0,0,.15)'};border-radius:6px;font-size:12px;text-align:right;${ovM?'opacity:.4':''};${pdd.ov?'color:#7b3fa0;font-weight:700':''}"></td>
         <td style="padding:5px;text-align:right"><input value="${costoMostrar?cotFmt(costoMostrar):(ovM?'0':'')}" onchange="cotPzProcEd(${k},${pi},'costo',this.value)" placeholder="auto" title="${ovM?'Monto fijado a mano (cotización de proveedor). Borralo para volver al costo automático.':'Costo automático — escribí acá para pisarlo con la cotización de un proveedor'}" style="width:92px;font-size:12px;font-weight:700;padding:4px 6px;border:1px solid ${ovM?'#7b3fa0':'rgba(0,0,0,.12)'};border-radius:6px;text-align:right;${ovM?'color:#7b3fa0':'color:#333'}"></td>
-        <td style="text-align:center"><button onclick="cotPzProcDel(${k},${pi})" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>`;
+        <td style="text-align:center;white-space:nowrap"><button onclick="cotEscEd('p',${k},${pi},'open')" title="Escala del proveedor: un precio distinto para cada cantidad (12.000, 30.000…)" style="border:none;background:none;color:${_escActiva(pr)?'#7b3fa0':'#bbb'};cursor:pointer;padding:0 3px"><i class="ti ti-stairs"></i></button><button onclick="cotPzProcDel(${k},${pi})" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>${_escRowHTML('p',k,pi,pr,(pr.auto===true?'pliegos':(pr.auto||'')),6)}`;
     }).join('');
     h+=`<div style="margin-top:8px;padding-top:8px;border-top:0.5px dashed rgba(0,0,0,.14)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
@@ -5422,7 +5479,7 @@ function rCotizador(){
     <td style="padding:6px;overflow:visible">${modoSel}</td>
     <td style="padding:6px;text-align:right"><input id="cz-ot-cant-${o.idx}" value="${o.modo==='peso'?cotFmt(o.cant):cotFmtDec(o.cant,3)}" onchange="cotOtroEd(${o.idx},'cant',this.value)" ${ovM?'disabled':''} title="${ovM?'Costo fijado a mano — los millares no se usan':(o.ov?'Millares fijados a mano (elegí un modo para volver al automático)':'Millares automáticos — editalos si este proceso va solo a algunas piezas (ej: troquelado solo en inserts)')}" style="width:70px;padding:4px 6px;border:1px solid ${o.ov?'#7b3fa0':'rgba(0,0,0,.15)'};border-radius:6px;font-size:12px;text-align:right;${ovM?'opacity:.4':''};${o.ov?'color:#7b3fa0;font-weight:700':''}"></td>
     <td style="padding:6px;text-align:right"><input id="cz-ot-cost-${o.idx}" value="${o.costo?cotFmt(o.costo):(ovM?'0':'')}" onchange="cotOtroEd(${o.idx},'costo',this.value)" placeholder="auto" title="${ovM?'Monto fijado a mano (cotización de proveedor). Borralo para volver al costo automático.':'Costo automático — escribí acá para pisarlo con la cotización de un proveedor'}" style="width:98px;font-size:12px;font-weight:700;padding:4px 6px;border:1px solid ${ovM?'#7b3fa0':'rgba(0,0,0,.12)'};border-radius:6px;text-align:right;${ovM?'color:#7b3fa0':'color:#333'}"></td>
-    <td style="text-align:center"><button onclick="cotOtroDel(${o.idx})" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>`;
+    <td style="text-align:center;white-space:nowrap"><button onclick="cotEscEd('o',0,${o.idx},'open')" title="Escala del proveedor: un precio distinto para cada cantidad (12.000, 30.000…)" style="border:none;background:none;color:${_escActiva(w.otros[o.idx])?'#7b3fa0':'#bbb'};cursor:pointer;padding:0 3px"><i class="ti ti-stairs"></i></button><button onclick="cotOtroDel(${o.idx})" style="border:none;background:none;color:#a32d2d;cursor:pointer"><i class="ti ti-trash"></i></button></td></tr>${_escRowHTML('o',0,o.idx,w.otros[o.idx],o.modo,7)}`;
    }else{
     const m=e.x,i=e.i,md=(r.manDet||[])[i]||{};
     const modo=m.modo||'fijo',conPU=['pu','pliegos','unidades','peso'].includes(modo);
@@ -5502,15 +5559,23 @@ function nav(p){
   render();
 }
 let _lastRenderPg=null,_scrollPorPg={};
+// Barra roja arriba de TODAS las pantallas cuando hay OTs marcadas URGENTE (la ve todo el mundo: taller, pre-prensa, logística…)
+function _urgBarra(){
+  try{
+    const u=(S.ordenes||[]).filter(o=>o&&o.urgente&&!o.archivada&&o.estado!=='entregada'&&o.estado!=='cancelada');
+    if(!u.length)return '';
+    return `<div style="background:#c62828;color:#fff;border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="white-space:nowrap"><i class="ti ti-urgent"></i> ${u.length} OT${u.length>1?'s':''} URGENTE${u.length>1?'S':''}:</b>${u.map(o=>`<span onclick="om('vot',${o.id})" title="${escHtml((o.urgente.motivo||'')+(o.entrega?' · entrega '+o.entrega.split('-').reverse().join('/'):''))}" style="cursor:pointer;background:rgba(255,255,255,.18);border-radius:6px;padding:2px 8px;white-space:nowrap"><b>${escHtml(o.num)}</b> ${escHtml(cNom(o.clienteId)||'')}${o.entrega?' · '+o.entrega.split('-').reverse().slice(0,2).join('/'):''}</span>`).join('')}</div>`;
+  }catch(e){return '';}
+}
 function render(){
-  if(esUsuarioTaller()&&curPg!=='taller'&&curPg!=='mov')curPg='taller'; // el usuario del taller solo ve su pantalla (y Movimientos)
+  if(esUsuarioTaller()&&curPg!=='taller'&&curPg!=='mov')curPg=rolUsuario()==='deposito'?'mov':'taller'; // el usuario del taller solo ve su pantalla (y Movimientos)
   document.body.classList.toggle('modo-taller',esUsuarioTaller());
   const fns={rec:rRec,taller:rTaller,mov:rMov,reparto:rReparto,dash:rDash,cli:rCli,prov:rProv,cot:rCot,ot:rOT,seg:rSeg,papel:rPapel,plan:rPlan,entregas:rEntregasView,ficha:rFicha,rem:rRem,gas:rGas,analot:rAnalOT,tiempos:rTiempos,capacidad:rCapacidad,balmes:rBalMes,balaño:rBalAño,costos:rCostos,cotizador:rCotizador,insumos:rInsumos};
   const pg=Q('pg');
   // Guardar la posición de scroll de la página que estábamos viendo (para no saltar arriba al re-renderizar)
   if(pg&&_lastRenderPg!==null)_scrollPorPg[_lastRenderPg]=pg.scrollTop;
   const mismaPg=(_lastRenderPg===curPg);
-  if(fns[curPg])pg.innerHTML=fns[curPg]();
+  if(fns[curPg])pg.innerHTML=_urgBarra()+fns[curPg]();
   if(curPg==='cli'){updateCliTable();}
   if(curPg==='prov'){updateProvTable();}
   try{actualizarBadgeExt();}catch(e){} // contador de envíos a externos en el menú
@@ -5815,6 +5880,7 @@ function rDash(){
   const saludo=hr<12?'Buen día':(hr<20?'Buenas tardes':'Buenas noches');
   let h=`<div class="ph"><div><div class="pt">${saludo}${u?', '+cotEsc(u.charAt(0).toUpperCase()+u.slice(1)):''}</div><div class="ps">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})} · Panel de control</div></div><div style="display:flex;gap:6px"><button class="bp" onclick="nav('seg')"><i class="ti ti-traffic-lights"></i>Tablero de seguimiento</button></div></div>`;
   try{h+=tallerAvisosHTML();}catch(e){} // avisos que mandaron los maquinistas desde el Modo Taller
+  try{h+=ppDashHTML();}catch(e){} // dónde está cada trabajo en pre-prensa (sin tener que preguntar)
   // Trabajos tercerizados sin el costo del proveedor cargado (presupuesto, o factura una vez lista/entregada)
   try{const tf=(S.ordenes||[]).filter(o=>o&&!o.archivada&&o.estado!=='cancelada'&&otTercFalta(o));
     if(tf.length)h+=`<div style="border:1.5px solid #9fd3c0;background:#f1faf6;border-radius:10px;padding:9px 12px;margin-bottom:12px;font-size:12px"><b style="color:#0f6e56"><i class="ti ti-building-factory"></i> Tercerizados sin costo cargado (${tf.length})</b> · ${tf.slice(0,12).map(o=>`<a href="#" onclick="om('vot',${o.id});return false" style="color:#185fa5;font-weight:700">${cotEsc(o.num)}</a> <span style="color:#888">(falta ${otTercFalta(o)})</span>`).join(' · ')}</div>`;}catch(e){}
@@ -6054,7 +6120,7 @@ function updateOTResults(){
     const pc=_cot.length>0?Math.round((dn/_cot.length)*100):0;
     const a=o.asignaciones||{};
     const tags=[...new Set(Object.values(a).filter(v=>v&&v.nombre).map(v=>v.nombre))].slice(0,3).map(n=>`<span class="rtag maq" style="font-size:9px">${n}</span>`).join(' ');
-    h+=`<tr class="rlink" onclick="om('vot',${o.id})"><td><strong>${hl(o.num,f)}</strong>${!otAprobada(o)?' <i class="ti ti-lock" style="font-size:10px;color:#a32d2d" title="OT sin aprobar"></i>':''}</td><td>${hl(cNom(o.clienteId),f)}</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${hl(o.descripcion,f)}</td><td style="max-width:150px">${tags||'<span style="color:#bbb">—</span>'}</td><td style="white-space:nowrap;font-size:11px">${o.entrega||'—'}</td><td>${stBadge(o.estado)}</td><td style="min-width:80px"><div style="background:#f5f5f3;border-radius:3px;height:5px;overflow:hidden;margin-bottom:2px"><div style="height:100%;width:${pc}%;background:${pc===100?'#3b6d11':'#185fa5'};border-radius:3px"></div></div><span style="font-size:10px;color:#888">${dn}/${_cot.length}</span></td><td style="white-space:nowrap;text-align:right" onclick="event.stopPropagation()">${o.archivada?`<button onclick="desarchivarOT(${o.id})" title="Sacar del archivo" style="font-size:10px;padding:3px 7px;vertical-align:middle"><i class="ti ti-archive-off"></i>Desarchivar</button>`:((o.estado==='entregada'||o.estado==='cancelada')?`<button onclick="archivarOT(${o.id})" title="Archivar: la saca del listado diario (se puede recuperar con 'Ver archivadas')" style="font-size:10px;padding:3px 7px;vertical-align:middle"><i class="ti ti-archive"></i>Archivar</button>`:`<button onclick="om('asgn',${o.id})" style="font-size:10px;padding:3px 7px;vertical-align:middle"><i class="ti ti-cpu"></i>Asignar</button>`)} ${triAcc(`om('vot',${o.id})`,`om('editOT',${o.id})`,`delOT(${o.id})`)}</td></tr>`;
+    h+=`<tr class="rlink" onclick="om('vot',${o.id})"><td><strong>${hl(o.num,f)}</strong> ${urgBadge(o,true)} ${o.pp&&o.pp.est!=='liberado'?ppBadge(o,true):''}${!otAprobada(o)?' <i class="ti ti-lock" style="font-size:10px;color:#a32d2d" title="OT sin aprobar"></i>':''}</td><td>${hl(cNom(o.clienteId),f)}</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${hl(o.descripcion,f)}</td><td style="max-width:150px">${tags||'<span style="color:#bbb">—</span>'}</td><td style="white-space:nowrap;font-size:11px">${o.entrega||'—'}</td><td>${stBadge(o.estado)}</td><td style="min-width:80px"><div style="background:#f5f5f3;border-radius:3px;height:5px;overflow:hidden;margin-bottom:2px"><div style="height:100%;width:${pc}%;background:${pc===100?'#3b6d11':'#185fa5'};border-radius:3px"></div></div><span style="font-size:10px;color:#888">${dn}/${_cot.length}</span></td><td style="white-space:nowrap;text-align:right" onclick="event.stopPropagation()">${o.archivada?`<button onclick="desarchivarOT(${o.id})" title="Sacar del archivo" style="font-size:10px;padding:3px 7px;vertical-align:middle"><i class="ti ti-archive-off"></i>Desarchivar</button>`:((o.estado==='entregada'||o.estado==='cancelada')?`<button onclick="archivarOT(${o.id})" title="Archivar: la saca del listado diario (se puede recuperar con 'Ver archivadas')" style="font-size:10px;padding:3px 7px;vertical-align:middle"><i class="ti ti-archive"></i>Archivar</button>`:`<button onclick="om('asgn',${o.id})" style="font-size:10px;padding:3px 7px;vertical-align:middle"><i class="ti ti-cpu"></i>Asignar</button>`)} ${triAcc(`om('vot',${o.id})`,`om('editOT',${o.id})`,`delOT(${o.id})`)}</td></tr>`;
   });
   h+=`</tbody></table>`+_pagCtrl(totalOT,pOT,_otPgs,'otPage')+`</div>`;
   cont.innerHTML=h;
@@ -6434,7 +6500,16 @@ function _refreshExtProcs(otId){updModal(mExtProcs(otId));}
 // ¿La OT está aprobada para producir? (revisados los datos + OK cliente)
 function otAprobada(o){return !!(o&&o.aprobadaOT);}
 // El papel se compra recién cuando pre-prensa armó el pliego (paso "Pre-prensa diseño" terminado) y vio que entra según lo cotizado
-function otPliegoListo(o){const p=(o&&o.pasos||[]).find(x=>pasoCol(x)==='ppd');return !p||p.na||p.estado==='na'||p.estado==='done';}
+// ¿Se puede comprar el papel? Cuando el CLIENTE aprobó el diseño (la postura ya no cambia), o si un socio autorizó comprar igual.
+// OTs viejas (sin estados de pre-prensa): como antes, cuando pre-prensa terminó.
+function otPliegoListo(o){const p=(o&&o.pasos||[]).find(x=>pasoCol(x)==='ppd');if(!p||p.na||p.estado==='na')return true;if(o.papelAut||o.arteOK)return true;return !o.pp&&p.estado==='done';}
+function papelAutorizar(id){
+  const o=S.ordenes.find(x=>x.id==id);if(!o)return;
+  if(!esSocio()){alert('Comprar el papel antes de que el cliente apruebe el diseño lo autoriza uno de los socios.');return;}
+  const pl=(o.material&&(+o.material.pliegos||+o.material.hojas))||0;
+  if(!confirm(`Comprar el papel de ${o.num} SIN el diseño aprobado por el cliente${pl?' ('+pl.toLocaleString('es-AR')+' pliegos)':''}.\n\nSi el cliente cambia la medida o el formato, el papel puede no servir.\n¿Autorizar la compra?`))return;
+  o.papelAut={por:getVendedor()||rolUsuario(),fecha:new Date().toISOString()};sk('ordenes');render();
+}
 // Avisa y frena si la OT no está aprobada; devuelve true si está bloqueada
 function bloqueoSinAprobar(o,accion){
   if(otAprobada(o))return false;
@@ -7123,7 +7198,7 @@ function rPapel(){
     const est=pa.estado;
     let accion='';
     if(pa.enStock)accion=`<span class="badge bi">stock</span> <button onclick="papelSet(${o.id},'enStock',false)" style="font-size:10px;padding:2px 6px">pedir</button>`;
-    else if(est==='pendiente')accion=(pa.stockParcial?`<span class="badge bi" title="Una parte sale del stock">parcial stock</span> <button onclick="papelSinStockParcial(${o.id})" title="No usar stock: comprar todo" style="font-size:10px;padding:2px 6px">comprar todo</button> `:'')+(otAprobada(o)&&!otPliegoListo(o)?`<span class="badge ba" style="cursor:pointer" onclick="om('vot',${o.id})" title="Pre-prensa todavía no armó el pliego: no comprar hasta confirmar que entra según lo cotizado"><i class="ti ti-lock" style="font-size:9px"></i> esperando pre-prensa</span>`:otAprobada(o)?`<button class="bs" onclick="papelEstado(${o.id},'comprado')" style="font-size:10px;padding:3px 7px"><i class="ti ti-shopping-cart"></i>Comprado</button> <label style="font-size:10px;color:#888;display:inline-flex;align-items:center;gap:2px"><input type="checkbox" onchange="papelSet(${o.id},'enStock',this.checked)" style="width:auto"> stock</label>`:`<span class="badge br" style="cursor:pointer" onclick="om('vot',${o.id})" title="Aprobá la OT primero"><i class="ti ti-lock" style="font-size:9px"></i> aprobar OT</span>`);
+    else if(est==='pendiente')accion=(pa.stockParcial?`<span class="badge bi" title="Una parte sale del stock">parcial stock</span> <button onclick="papelSinStockParcial(${o.id})" title="No usar stock: comprar todo" style="font-size:10px;padding:2px 6px">comprar todo</button> `:'')+(otAprobada(o)&&!otPliegoListo(o)?`<span class="badge ba" style="cursor:pointer" onclick="om('vot',${o.id})" title="El cliente todavía no aprobó el diseño: si cambia la medida o el formato, cambia el pliego. No comprar todavía (o que un socio autorice comprar igual)"><i class="ti ti-lock" style="font-size:9px"></i> esperando aprobación del diseño</span>${esSocio()?` <button onclick="papelAutorizar(${o.id})" title="Autorizar la compra aunque el cliente no aprobó el diseño" style="font-size:10px;padding:2px 6px;color:#a35b00;border-color:#e0b070">comprar igual</button>`:''}`:otAprobada(o)?`<button class="bs" onclick="papelEstado(${o.id},'comprado')" style="font-size:10px;padding:3px 7px"><i class="ti ti-shopping-cart"></i>Comprado</button> <label style="font-size:10px;color:#888;display:inline-flex;align-items:center;gap:2px"><input type="checkbox" onchange="papelSet(${o.id},'enStock',this.checked)" style="width:auto"> stock</label>`:`<span class="badge br" style="cursor:pointer" onclick="om('vot',${o.id})" title="Aprobá la OT primero"><i class="ti ti-lock" style="font-size:9px"></i> aprobar OT</span>`);
     else if(est==='comprado')accion=`<span class="badge bg2">comprado</span> <button class="bp" onclick="papelEstado(${o.id},'recibido')" style="font-size:10px;padding:3px 7px"><i class="ti ti-download"></i>Recibido</button>`;
     else if(est==='recibido')accion=`<span class="badge bg2"><i class="ti ti-check"></i> recibido</span> <button onclick="papelEstado(${o.id},'pendiente')" style="font-size:10px;padding:2px 6px">reabrir</button>`;
     accion+=` <button onclick="printCartel(${o.id})" title="Cartel de pallet" style="font-size:10px;padding:2px 6px"><i class="ti ti-tag"></i></button>`;
@@ -7580,7 +7655,7 @@ function rEntregas(){
     h+=`<td style="padding:3px;vertical-align:top;min-height:32px">`;
     delDia.forEach(o=>{
       h+=`<div style="background:#f0f0ee;border-radius:5px;padding:3px 6px;margin-bottom:2px;font-size:10px;cursor:pointer" onclick="om('editEntrega',${o.id})">`;
-      h+=`<div style="font-weight:600">${o.num}${esFeriado(fecha)?' <span style="color:#a32d2d" title="La entrega cae en feriado">⚠ feriado</span>':''}</div>`;
+      h+=`<div style="font-weight:600">${o.num} ${urgBadge(o,true)}${esFeriado(fecha)?' <span style="color:#a32d2d" title="La entrega cae en feriado">⚠ feriado</span>':''}</div>`;
       h+=`<div style="opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px">${o.descripcion}</div>`;
       h+=`</div>`;
     });
@@ -7604,7 +7679,7 @@ function rEntregas(){
       h+=`<td style="padding:3px;vertical-align:top;min-height:32px${esHoy?';background:rgba(24,95,165,.04)':''}">`;
       delDia.forEach(o=>{
         h+=`<div class="${otCol(o.id)}" style="border-radius:5px;padding:3px 6px;margin-bottom:2px;font-size:10px;cursor:pointer;border:0.5px solid rgba(0,0,0,.08)" onclick="om('editEntrega',${o.id})">`;
-        h+=`<div style="font-weight:600">${o.num}${esFeriado(fecha)?' <span style="color:#a32d2d" title="La entrega cae en feriado">⚠ feriado</span>':''}</div>`;
+        h+=`<div style="font-weight:600">${o.num} ${urgBadge(o,true)}${esFeriado(fecha)?' <span style="color:#a32d2d" title="La entrega cae en feriado">⚠ feriado</span>':''}</div>`;
         h+=`<div style="opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px">${cNom(o.clienteId)}</div>`;
         if(o.fleteObs)h+=`<div style="opacity:.6;font-style:italic">${o.fleteObs}</div>`;
         h+=`</div>`;
@@ -7635,7 +7710,7 @@ function rEntregas(){
         const dir=o.material?.dir||o.fichaDir||(()=>{const fi=S.fichas.find(f=>f.otId===o.id);return fi?fi.ent1Dir:'';})();
         h+=`<tr${isHoyD(d)?' style="background:#fffbf0"':''}>`;
         if(idx===0)h+=`<td rowspan="${viajes.length}" style="font-weight:600;vertical-align:top;white-space:nowrap">${fmtCorto(d)}</td>`;
-        h+=`<td><strong>${o.num}</strong></td>`;
+        h+=`<td><strong>${o.num}</strong> ${urgBadge(o,true)}</td>`;
         h+=`<td>${cNom(o.clienteId)}</td>`;
         h+=`<td style="max-width:150px">${o.descripcion}</td>`;
         h+=`<td style="font-size:11px">${dir||'—'}</td>`;
@@ -7655,7 +7730,7 @@ function rEntregas(){
     h+=`<div class="card" style="margin-top:4px"><div style="font-size:12px;font-weight:500;color:#888;margin-bottom:8px"><i class="ti ti-calendar-question"></i> Sin fecha de entrega (${sinFecha.length})</div>`;
     sinFecha.forEach(o=>{
       h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid rgba(0,0,0,.05)">`;
-      h+=`<div><div style="font-size:12px;font-weight:500">${o.num} — ${o.descripcion}</div><div style="font-size:10px;color:#888">${cNom(o.clienteId)}</div></div>`;
+      h+=`<div><div style="font-size:12px;font-weight:500">${o.num} ${urgBadge(o,true)} — ${o.descripcion}</div><div style="font-size:10px;color:#888">${cNom(o.clienteId)}</div></div>`;
       h+=`<button onclick="om('editEntrega',${o.id})" style="font-size:11px"><i class="ti ti-edit"></i>Asignar</button>`;
       h+=`</div>`;
     });
@@ -7790,6 +7865,7 @@ function rCalSemanal(maq){
         h+=`<td style="padding:2px" rowspan="${dur}" onclick="om('editB','${maq}|${fecha}|${slot}')" ondragover="planDragOver(event)" ondragleave="planDragLeave(event)" ondrop="planDrop(event,'${maq.replace(/'/g,"\\'")}','${fecha}','${slot}')">`;
         h+=`<div class="bloque ${col}" style="height:${dur*26-4}px;cursor:${verde?'default':'grab'}${verde?';background:#c0dd97;border-color:#3b6d11;color:#173a05':''}${bl.bloqueo?';'+bloqCatStyle(bl):''}" draggable="${verde?'false':'true'}" ondragstart="planDragB(event,'${maq.replace(/'/g,"\\'")}','${fecha}','${slot}')"><button class="bx" onclick="event.stopPropagation();delBloque('${maq}','${fecha}','${slot}')">×</button>`;
         h+=ot?`<div style="font-weight:600">${ot.num} ${verde?'<i class="ti ti-circle-check" style="font-size:10px;color:#27500a"></i>':readyDot(ot,8)}</div><div style="font-size:9px;font-weight:600;color:${verde?'#27500a':'#185fa5'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cNomCorto(ot.clienteId)||''}</div><div style="font-size:9px;opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ot.descripcion||''}</div>${(()=>{const m=ot.material||{},im=ot.impresion||{};let r='';const l1=[im.colores||'',(m.fx&&m.fy)?m.fx+'×'+m.fy:''].filter(Boolean).join(' · ');if(l1)r+=`<div style="font-size:8px;opacity:.75">${l1}</div>`;const mat=[m.material||'',m.marca||'',m.grs?m.grs+'g':''].filter(Boolean).join(' ');if(mat)r+=`<div style="font-size:8px;opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${mat}</div>`;const cant=im.piezas||m.pliegos;if(cant)r+=`<div style="font-size:8px;opacity:.75">${Number(cant).toLocaleString('es-AR')} ${im.piezas?'pzs':'pliegos'}</div>`;return r;})()}`:(bl.bloqueo?`<div style="font-weight:600;font-size:10px"><i class="ti ti-alert-octagon" style="font-size:10px"></i> ${bl.texto||'Bloqueado'}</div>${bl.nota?`<div style="font-size:9px;opacity:.8">${bl.nota}</div>`:''}`:'?');
+        if(ot&&ot.urgente)h+=`<div style="margin:1px 0">${urgBadge(ot,true)}</div>`;
         if(ot&&bl.extra)h+=`<div style="font-size:9px;font-weight:700;color:#7c2fb0"><i class="ti ti-repeat" style="font-size:9px"></i> ${bl.pasada||'Pasada'}</div>`;
         if(bl.pasoNombre)h+=`<div style="font-size:9px;opacity:.7;font-style:italic">${bl.pasoNombre}</div>`;
         if(verde)h+=`<div style="font-size:8px;font-weight:700;color:#27500a">✓ ${esMaqImpresion(maq)?'impresa':'hecho'}</div>`;
@@ -7819,9 +7895,10 @@ function rCalSemanal(maq){
   const otsPlan=otsAct.filter(planeadaAca);
   // OJO: mirar bloques de ESTA máquina, no de todas — si no, una OT con tiempo real
   // registrado en Pre-prensa desaparecía de las listas de SM52/SM74 sin estar planificada ahí.
-  const otsAsig=otsAct.filter(o=>!planeadaAca(o)&&asignadaAca(o));
-  const otsResto=otsAct.filter(o=>!planeadaAca(o)&&!asignadaAca(o));
-  const pill=o=>`<div class="ot-pill ${otCol(o.id)}" data-s="${(o.num+' '+cNom(o.clienteId)+' '+(o.descripcion||'')).toLowerCase().replace(/"/g,'')}" draggable="true" ondragstart="planDragOT(event,${o.id})" style="cursor:grab;display:block;margin:0;line-height:1.25" title="${cNom(o.clienteId)} · ${(o.descripcion||'').replace(/"/g,'&quot;')} · Entrega: ${o.entrega||'—'} — ${otAprobada(o)?'Arrastrá al calendario para planificar':'OT sin aprobar: aprobala antes de planificar'}"><div style="display:flex;align-items:center;gap:3px">${!otAprobada(o)?'<i class="ti ti-lock" style="font-size:9px;color:#a32d2d"></i>':''}${readyDot(o,8)} <strong>${o.num}</strong></div><div style="font-size:10px;font-weight:600;color:#185fa5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cNomCorto(o.clienteId)}</div><div style="font-size:10px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.descripcion||'—'}</div>${o.entrega?`<div style="font-size:9px;opacity:.7">Entrega ${o.entrega.slice(8,10)}/${o.entrega.slice(5,7)}</div>`:''}</div>`;
+  const _urgPrim=(a,b)=>(a.urgente?0:1)-(b.urgente?0:1); // URGENTES primero en la cola para planificar
+  const otsAsig=otsAct.filter(o=>!planeadaAca(o)&&asignadaAca(o)).sort(_urgPrim);
+  const otsResto=otsAct.filter(o=>!planeadaAca(o)&&!asignadaAca(o)).sort(_urgPrim);
+  const pill=o=>`<div class="ot-pill ${otCol(o.id)}" data-s="${(o.num+' '+cNom(o.clienteId)+' '+(o.descripcion||'')).toLowerCase().replace(/"/g,'')}" draggable="true" ondragstart="planDragOT(event,${o.id})" style="cursor:grab;display:block;margin:0;line-height:1.25" title="${cNom(o.clienteId)} · ${(o.descripcion||'').replace(/"/g,'&quot;')} · Entrega: ${o.entrega||'—'} — ${otAprobada(o)?'Arrastrá al calendario para planificar':'OT sin aprobar: aprobala antes de planificar'}"><div style="display:flex;align-items:center;gap:3px">${!otAprobada(o)?'<i class="ti ti-lock" style="font-size:9px;color:#a32d2d"></i>':''}${readyDot(o,8)} <strong>${o.num}</strong> ${urgBadge(o,true)}</div><div style="font-size:10px;font-weight:600;color:#185fa5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cNomCorto(o.clienteId)}</div><div style="font-size:10px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.descripcion||'—'}</div>${o.entrega?`<div style="font-size:9px;opacity:.7">Entrega ${o.entrega.slice(8,10)}/${o.entrega.slice(5,7)}</div>`:''}</div>`;
   h+=`<div style="width:212px;flex-shrink:0;position:sticky;top:6px;max-height:76vh;overflow-y:auto;background:#fafaf8;border:0.5px solid rgba(0,0,0,.08);border-radius:9px;padding:9px">`;
   h+=`<div class="sw" style="margin-bottom:8px"><input id="plan-busca" placeholder="Buscar OT…" autocomplete="off" spellcheck="false" oninput="planFiltraPills(this.value)" style="width:100%;font-size:11px;padding:5px 9px;border:1px solid rgba(0,0,0,.2);border-radius:7px"></div>`;
   h+=`<div id="plan-pills">`;
@@ -7988,7 +8065,7 @@ function rTallerDiario(){
         h+='<td style="padding:2px;vertical-align:top" rowspan="'+dur+'" onclick="planMaq=\''+m.replace(/'/g,"\\'")+'\';planOffset=0;render()">';
         h+='<div class="bloque '+col+'" style="min-height:'+(dur*26-4)+'px'+(verde?';background:#c0dd97;border-color:#3b6d11;color:#173a05':'')+(bl.bloqueo?';'+bloqCatStyle(bl):'')+'">';
         if(ot){
-          h+='<div style="font-weight:600;font-size:11px">'+ot.num+(verde?' ✓':'')+'</div>';
+          h+='<div style="font-weight:600;font-size:11px">'+ot.num+(verde?' ✓':'')+(ot.urgente?' '+urgBadge(ot,true):'')+'</div>';
           h+='<div style="font-size:9px;font-weight:600;color:#185fa5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+((cNom(ot.clienteId))||'')+'</div>';
           h+='<div style="font-size:9px;opacity:.8;overflow:hidden">'+((ot.descripcion||'').substring(0,22))+'</div>';
           if(bl.extra)h+='<div style="font-size:9px;font-weight:700;color:#7c2fb0">↻ '+(bl.pasada||'Pasada')+'</div>';
@@ -8919,11 +8996,18 @@ const TALLER_PUESTOS_DEF=[
 const TALLER_MOTIVOS=['Falta papel','Cambio de chapas','Puesta a punto / registro','Espera aprobación de color','Mantenimiento','Limpieza','Almuerzo','Otro'];
 function tallerPuestos(){
   const l=S.cotConfig&&Array.isArray(S.cotConfig.tallerPuestos)&&S.cotConfig.tallerPuestos.length?S.cotConfig.tallerPuestos:TALLER_PUESTOS_DEF;
-  return l.filter(x=>x&&x.n);
+  const out=l.filter(x=>x&&x.n);
+  if(!out.some(x=>x.tipo==='ppd'))out.unshift({n:'Pre-prensa',op:'',tipo:'ppd'}); // diseño / armado / CTP: ve sus trabajos pendientes
+  return out;
 }
-function esUsuarioTaller(){try{return /taller/.test(rolUsuario());}catch(e){return false;}}
+// Usuarios por PUESTO (sin nombre de persona, por si cambia el personal): el mail es el nombre del puesto.
+// sm74@ / sm52@ / xerox@ / guillotina@ / doblados@ … → entra directo a su puesto en el Modo Taller.
+// deposito@ → Modo Taller con Movimientos. jefetaller@ → acceso completo (planificación, OTs, aprobar pruebas).
+function _normPuesto(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');}
+function puestoDelUsuario(){const r=_normPuesto(rolUsuario());if(!r||r==='preprensa')return null;return tallerPuestos().find(x=>_normPuesto(x.n)===r)||null;}
+function esUsuarioTaller(){try{const r=rolUsuario();if(r==='jefetaller')return false;return /taller/.test(r)||r==='deposito'||!!puestoDelUsuario();}catch(e){return false;}}
 const _tLS=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k)||'';if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v);}catch(e){}return '';};
-function tallerPuestoAct(){const n=_tLS('gp_tallerPuesto');return tallerPuestos().find(x=>x.n===n)||null;}
+function tallerPuestoAct(){const fijo=puestoDelUsuario();if(fijo)return fijo;const n=_tLS('gp_tallerPuesto');return tallerPuestos().find(x=>x.n===n)||null;}
 function tallerOperario(){const pu=tallerPuestoAct();return _tLS('gp_tallerOp_'+(pu?pu.n:''))||(pu?pu.op:'')||'';}
 // ¿Este paso de la OT le toca a este puesto?
 function _tallerEsDelPuesto(o,p,pu){
@@ -8932,6 +9016,7 @@ function _tallerEsDelPuesto(o,p,pu){
   if(a&&a.tipo==='maq'&&a.nombre===pu.n&&col!=='ppd'&&col!=='ctp')return true;
   if(pu.tipo==='imp')return col==='imp'&&(maqDePaso(o,p)===pu.n||p.nombre.indexOf('('+pu.n+')')>=0);
   if(pu.tipo==='corte')return col==='corte';
+  if(pu.tipo==='ppd')return col==='ppd'||col==='ctp';
   if(pu.tipo==='term')return col==='term'&&!p.esExterno&&!!pu.kw&&new RegExp(pu.kw,'i').test(p.nombre);
   return false;
 }
@@ -8941,20 +9026,23 @@ function _tallerPlan(o,maq){
   for(const f in dias){const d=dias[f];for(const s in d){const b=d[s];if(b&&!b.cont&&!b.bloqueo&&b.otId===o.id){const k=f+' '+s;if(!best||k<best.k)best={k,fecha:f,slot:s};}}}
   return best;
 }
+// Primer bloque de la OT en CUALQUIER máquina (para pre-prensa y guillotina: lo que se imprime antes, se prepara antes)
+function _otPrimerPlan(o){let best=null;Object.keys(S.planificacion||{}).forEach(m=>{const b=_tallerPlan(o,m);if(b&&(!best||b.k<best.k))best=Object.assign({maq:m},b);});return best;}
 function tallerTrabajos(pu){
   const hoy=fmtD(new Date()),out=[];
   (S.ordenes||[]).forEach(o=>{
     if(!o||o.archivada||o.estado==='entregada'||o.estado==='cancelada'||!otAprobada(o))return;
     (o.pasos||[]).forEach((p,idx)=>{
       if(!_tallerEsDelPuesto(o,p,pu))return;
-      const plan=_tallerPlan(o,pu.n);
+      const plan=_tallerPlan(o,pu.n)||((pu.tipo==='ppd'||pu.tipo==='corte')?_otPrimerPlan(o):null);
       // pasos anteriores sin terminar (papel, corte, impresión…): se avisa, pero se puede arrancar igual
       const previos=(o.pasos||[]).slice(0,idx).filter(q=>q&&!q.na&&q.estado!=='na'&&q.estado!=='done'&&!['cc','ent'].includes(pasoCol(q))).map(q=>q.nombre.replace(/\s*\(.*\)$/,''));
       out.push({o,p,idx,plan,hoy:plan&&plan.fecha===hoy,previos});
     });
   });
-  const rk=x=>(x.p.estado==='active'?0:1);
-  out.sort((a,b)=>rk(a)-rk(b)||((b.hoy?1:0)-(a.hoy?1:0))||String(a.plan?a.plan.k:'9999').localeCompare(String(b.plan?b.plan.k:'9999'))||String(a.o.fechaEntrega||a.o.entrega||'9999').localeCompare(String(b.o.fechaEntrega||b.o.entrega||'9999')));
+  const rk=x=>(x.p.estado==='active'?0:1),ru=x=>(x.o.urgente?0:1); // en curso primero; después las URGENTES
+  const re=x=>{const e=_ppEst(x.o);return pu.tipo==='ppd'&&e&&e.esp?1:0;}; // pre-prensa: lo que espera al cliente va abajo
+  out.sort((a,b)=>rk(a)-rk(b)||re(a)-re(b)||ru(a)-ru(b)||((b.hoy?1:0)-(a.hoy?1:0))||String(a.plan?a.plan.k:'9999').localeCompare(String(b.plan?b.plan.k:'9999'))||String(a.o.fechaEntrega||a.o.entrega||'9999').localeCompare(String(b.o.fechaEntrega||b.o.entrega||'9999')));
   return out;
 }
 function rTaller(){
@@ -8964,7 +9052,7 @@ function rTaller(){
   <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
     <div><div style="font-size:22px;font-weight:800;color:#185fa5"><i class="ti ti-tool"></i> Taller</div>
       <div style="font-size:13px;color:#666">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">${(()=>{const m=movPendientes(),n=m.subir.length+m.bajar.length+m.llevar.length+m.traer.length;return `<button onclick="nav('mov')" style="font-size:14px;padding:10px 14px;color:#7b3fa0;border-color:#c9a7e0"><i class="ti ti-arrows-up-down"></i> Movimientos${n?` (${n})`:''}</button>`;})()}${pu?`<button onclick="tallerElegir('')" style="font-size:14px;padding:10px 14px">Cambiar puesto</button>`:''}${esUsuarioTaller()?`<button onclick="doLogout()" style="font-size:14px;padding:10px 14px;color:#a32d2d">Salir</button>`:''}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${(()=>{const m=movPendientes(),n=m.subir.length+m.bajar.length+m.llevar.length+m.traer.length;return `<button onclick="nav('mov')" style="font-size:14px;padding:10px 14px;color:#7b3fa0;border-color:#c9a7e0"><i class="ti ti-arrows-up-down"></i> Movimientos${n?` (${n})`:''}</button>`;})()}${pu&&!puestoDelUsuario()?`<button onclick="tallerElegir('')" style="font-size:14px;padding:10px 14px">Cambiar puesto</button>`:''}${esUsuarioTaller()?`<button onclick="doLogout()" style="font-size:14px;padding:10px 14px;color:#a32d2d">Salir</button>`:''}</div>
   </div>`;
   if(!pu){
     h+=`<div style="font-size:16px;font-weight:700;margin:6px 0 10px">¿En qué puesto estás?</div>
@@ -8990,14 +9078,17 @@ function rTaller(){
     const enPliegos=['imp','corte'].includes(pasoCol(p)); // en terminaciones importa la cantidad, no los pliegos
     const pl=enPliegos?(+a.pliegosTot||+m.pliegos||0):0,cant=(o.itemsOT||[]).reduce((s,x)=>s+(+x.qty||0),0);
     const color=pau?'#c47d16':(act?'#1a7f37':'#185fa5');
-    h+=`<div style="border:2px solid ${color};border-radius:14px;padding:14px;margin-bottom:12px;background:${pau?'#fff8ec':(act?'#f0faf2':'#fff')}">
+    h+=`<div style="border:${o.urgente&&!act?'3px solid #c62828':'2px solid '+color};border-radius:14px;padding:14px;margin-bottom:12px;background:${pau?'#fff8ec':(act?'#f0faf2':(o.urgente?'#fff5f5':'#fff'))}">
       <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-        <div style="min-width:0;flex:1"><div style="font-size:20px;font-weight:800">${cotEsc(o.num)} <span style="font-size:14px;font-weight:600;color:#555">· ${cotEsc(cNom(o.clienteId)||'')}</span></div>
+        <div style="min-width:0;flex:1"><div style="font-size:20px;font-weight:800">${cotEsc(o.num)} <span style="font-size:14px;font-weight:600;color:#555">· ${cotEsc(cNom(o.clienteId)||'')}</span> ${urgBadge(o)}</div>${o.urgente&&o.urgente.motivo?`<div style="font-size:13px;color:#c62828;font-weight:700">${cotEsc(o.urgente.motivo)}</div>`:''}
           <div style="font-size:15px;color:#333;margin-top:2px">${cotEsc(o.nombreCorto||o.descripcion||'')}</div>
           <div style="font-size:14px;color:${color};font-weight:700;margin-top:4px">${cotEsc(p.nombre)}${pau?` · EN PAUSA: ${cotEsc(p.pausa.motivo)} desde ${fmtHora(p.pausa.desde)}`:(act?` · EN CURSO desde ${fmtHora(p.fechaInicio)}${p.operario?' ('+cotEsc(p.operario)+')':''}`:'')}</div>
-          <div style="font-size:13px;color:#666;margin-top:4px">${pl?`Pliegos: <b>${Number(pl).toLocaleString('es-AR')}</b> (c/demasía) · `:''}${cant?`Cantidad: <b>${cant.toLocaleString('es-AR')}</b> · `:''}${it.plan?(it.hoy?`<b style="color:#1a7f37">Planificado HOY ${it.plan.slot}</b>`:`Planificado ${it.plan.fecha.split('-').reverse().join('/')} ${it.plan.slot}`):'Sin planificar'}</div>
+          <div style="font-size:13px;color:#666;margin-top:4px">${pl?`Pliegos: <b>${Number(pl).toLocaleString('es-AR')}</b> (c/demasía) · `:''}${cant?`Cantidad: <b>${cant.toLocaleString('es-AR')}</b> · `:''}${it.plan?(it.hoy?`<b style="color:#1a7f37">${it.plan.maq?'Se imprime HOY '+it.plan.slot+' en '+cotEsc(it.plan.maq):'Planificado HOY '+it.plan.slot}</b>`:`${it.plan.maq?'Se imprime':'Planificado'} ${it.plan.fecha.split('-').reverse().join('/')} ${it.plan.slot}${it.plan.maq?' en '+cotEsc(it.plan.maq):''}`):'Sin planificar'}${(o.entrega)?` · Entrega <b>${o.entrega.split('-').reverse().slice(0,2).join('/')}</b>`:''}</div>
           ${it.previos.length&&!act?`<div style="font-size:13px;color:#a35b00;margin-top:4px"><i class="ti ti-alert-triangle"></i> Todavía falta: ${it.previos.map(cotEsc).join(', ')}</div>`:''}
+          ${pu.tipo==='ppd'?`<div style="margin-top:6px">${_ppEst(o)?ppBadge(o):'<span style="font-size:13px;color:#888">Marcá en qué está:</span>'}${o.pp&&o.pp.nota?`<div style="font-size:13px;color:#555;margin-top:3px">${cotEsc(o.pp.nota)}</div>`:''}${ppBotonesHTML(o,true)}</div>`:''}
+          ${pu.tipo==='imp'&&o.pp&&!o.pruebaOK&&o.arteOK?`<div style="font-size:14px;color:#a32d2d;font-weight:700;margin-top:4px"><i class="ti ti-file-alert"></i> Prueba digital sin aprobar: no arrancar</div>`:''}
           ${pu.tipo==='imp'&&!o.arteOK?`<div style="font-size:14px;color:#a32d2d;font-weight:700;margin-top:4px"><i class="ti ti-palette-off"></i> Arte sin aprobar por el cliente: no arrancar</div>`:''}
+          ${(o.cambios||[]).length?`<div style="font-size:13px;color:#a35b00;font-weight:700;margin-top:4px"><i class="ti ti-arrows-diff"></i> OT MODIFICADA: ${cotEsc((o.cambios[o.cambios.length-1].dif||[]).join(' · '))}${o.cambios.some(c=>!c.autorizado)?' <span style="color:#a32d2d">(cambio sin autorizar: consultá antes de arrancar)</span>':''}</div>`:''}
           ${obsProdAviso(o,pu.tipo==='imp'?'imp':'term',true)}
           ${(o.avisosTaller||[]).filter(x=>!x.visto).length?`<div style="font-size:12px;color:#a32d2d;margin-top:4px"><i class="ti ti-message-report"></i> Hay avisos sin ver por el coordinador</div>`:''}
         </div>
@@ -9288,6 +9379,7 @@ function rRec(){
   h+=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
     <input id="rec-busca" value="${cotEsc(recBusca)}" placeholder="Buscar código o nombre…" oninput="recBusca=this.value;recTablaUpd()" style="flex:1;min-width:200px;font-size:13px;padding:7px 10px">
     <select onchange="recFiltro=this.value;recTablaUpd()" style="font-size:12px;padding:6px"><option value="" ${!recFiltro?'selected':''}>Todos</option><option value="sel" ${recFiltro==='sel'?'selected':''}>Solo con cantidad</option><option value="stock" ${recFiltro==='stock'?'selected':''}>Con stock</option><option value="sinficha" ${recFiltro==='sinficha'?'selected':''}>Sin ficha técnica</option><option value="inact" ${recFiltro==='inact'?'selected':''}>Dados de baja</option></select>
+    <button onclick="recLeerAbrir()" title="Pegá una foto, captura o texto de la solicitud de presupuesto: la IA lee códigos y cantidades y los carga acá" style="color:#7b3fa0;border-color:#c9a8e0;font-weight:700"><i class="ti ti-sparkles"></i>Leer pedido (foto o texto)</button>
     <button onclick="recCargarUltimo()" title="Pone en cada artículo la cantidad del último pedido"><i class="ti ti-history"></i>Cantidades del último pedido</button>
     <button onclick="recLimpiar()"><i class="ti ti-eraser"></i>Limpiar</button>
     ${ultAj?`<span style="font-size:11px;color:#888">Precios al ${_recFmtMes(ultAj.fecha)}${ultAj.pct?` (último ajuste ${ultAj.pct>0?'+':''}${ultAj.pct}%)`:''}</span>`:''}</div>`;
@@ -9361,6 +9453,80 @@ function recCargarUltimo(){
   recTablaUpd();
 }
 function recLimpiar(){recArts(recCli).forEach(a=>delete window._recSel[a.id]);recTablaUpd();}
+// ---- Leer la solicitud de presupuesto con IA (foto / captura / texto) → cantidades en la grilla ----
+window._recLeerImgs=[];
+function recLeerAbrir(){
+  window._recLeerImgs=[];
+  _recModal(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong style="font-size:15px;color:#7b3fa0"><i class="ti ti-sparkles"></i> Leer pedido</strong><button onclick="recModalCerrar()">✕</button></div>
+    <div style="font-size:12px;color:#666;margin-bottom:8px">Pegá acá (Ctrl+V) la foto o captura de la solicitud de presupuesto, o escribí / pegá el texto (ej. <i>TSI 150 x 50, HC 27 x 10</i>). La IA lee los códigos y las cantidades y los carga en la grilla con los precios de hoy. Después revisás y tocás <b>Generar cotización</b>.</div>
+    <textarea id="rec-leer-txt" onpaste="recLeerPaste(event)" placeholder="Texto del pedido (opcional si pegás una imagen)…" style="width:100%;min-height:90px;font-size:13px;padding:8px;border:1px solid rgba(0,0,0,.15);border-radius:8px"></textarea>
+    <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap">
+      <label style="font-size:12px;padding:5px 10px;border:1px solid rgba(0,0,0,.2);border-radius:7px;cursor:pointer"><i class="ti ti-photo"></i> Adjuntar imagen<input type="file" accept="image/*" multiple onchange="recLeerFiles([...this.files]);this.value=''" style="display:none"></label>
+      <span style="font-size:11px;color:#888">hasta 4 imágenes</span>
+    </div>
+    <div id="rec-leer-imgs"></div>
+    <div id="rec-leer-res" style="margin-top:8px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button onclick="recModalCerrar()">Cancelar</button><button id="rec-leer-go" class="bp" onclick="recLeerGo()" style="background:#7b3fa0;border-color:#7b3fa0"><i class="ti ti-sparkles"></i> Leer y cargar</button></div>`);
+  setTimeout(()=>{const t=Q('rec-leer-txt');if(t)t.focus();},50);
+}
+function recLeerImgsRender(){
+  const c=Q('rec-leer-imgs');if(!c)return;
+  c.innerHTML=window._recLeerImgs.map((im,i)=>`<div style="position:relative;display:inline-block;margin:0 6px 6px 0"><img src="${im.dataUrl}" style="height:70px;border:1px solid rgba(0,0,0,.2);border-radius:6px"><button onclick="window._recLeerImgs.splice(${i},1);recLeerImgsRender()" style="position:absolute;top:-8px;right:-8px;background:#a32d2d;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer">✕</button></div>`).join('');
+}
+function recLeerFiles(files){
+  files.filter(f=>/^image\//.test(f.type||'')).forEach(f=>{
+    if(window._recLeerImgs.length>=4)return;
+    const r=new FileReader();
+    r.onload=()=>aiDownscale(r.result,res=>{if(res&&window._recLeerImgs.length<4){window._recLeerImgs.push(res);recLeerImgsRender();}});
+    r.readAsDataURL(f);
+  });
+}
+function recLeerPaste(e){
+  const files=[];for(const it of ((e.clipboardData&&e.clipboardData.items)||[])){if(it&&it.type&&it.type.indexOf('image')===0){const f=it.getAsFile();if(f)files.push(f);}}
+  if(files.length){e.preventDefault();recLeerFiles(files);}
+}
+function _recCodNorm(c){ // "TSI-150" / "tsi150" / "HC 027" → "TSI150" / "HC27"
+  return String(c||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9]/g,'').replace(/([A-Z])0+(\d)/g,'$1$2');
+}
+async function recLeerGo(){
+  const pedido=(Q('rec-leer-txt')||{}).value||'';
+  const imagenes=window._recLeerImgs.map(im=>({mediaType:im.mediaType,data:im.data})).filter(x=>x.data);
+  if(!pedido.trim()&&!imagenes.length){alert('Pegá una imagen o escribí el pedido.');return;}
+  const btn=Q('rec-leer-go');if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Leyendo…';}
+  try{
+    const arts=recArts().filter(a=>a&&a.activo!==false);
+    const cliSig=id=>{const c=recClientes().find(x=>x.id==id);return c?(c.sig||c.nombre||''):'';};
+    const catalogo=arts.map(a=>({c:a.cod||'',n:a.nombre||'',k:a.centro||cliSig(a.clienteId),u:a.unidad||''}));
+    let tok='';try{if(currentUser&&typeof currentUser.getIdToken==='function')tok=await currentUser.getIdToken();}catch(e){}
+    const resp=await fetch('/.netlify/functions/interpretar',{method:'POST',headers:{'content-type':'application/json','authorization':'Bearer '+tok},body:JSON.stringify({modo:'recurrentes',pedido,imagenes,contexto:{catalogo}})});
+    const data=await resp.json().catch(()=>({}));
+    if(!resp.ok){alert('IA: '+(data.error||('error '+resp.status)));return;}
+    recLeerAplicar(data.lineas||[]);
+  }catch(e){alert('No se pudo conectar con la IA. Detalle: '+e.message);}
+  finally{const b=Q('rec-leer-go');if(b){b.disabled=false;b.innerHTML='<i class="ti ti-sparkles"></i> Leer y cargar';}}
+}
+function recLeerAplicar(lineas){
+  const arts=recArts().filter(a=>a&&a.activo!==false);
+  // Primero se busca en el cliente abierto; si el código no está, en los otros (y se pasa a ese cliente si es de ahí)
+  const buscar=cod=>{const n=_recCodNorm(cod);if(!n)return null;
+    return arts.find(a=>String(a.clienteId)===String(recCli)&&_recCodNorm(a.cod)===n)||arts.find(a=>_recCodNorm(a.cod)===n)||null;};
+  const ok=[],no=[],porCli={};
+  lineas.forEach(l=>{const q=+l.cantidad||0;const a=buscar(l.cod);
+    if(a&&q>0){ok.push({a,q});porCli[a.clienteId]=(porCli[a.clienteId]||0)+1;}else no.push(l);});
+  if(!ok.length&&!no.length){alert('No encontré renglones en el pedido.');return;}
+  // Cliente con más renglones encontrados → se abre esa pestaña
+  const cliTop=Object.keys(porCli).sort((x,y)=>porCli[y]-porCli[x])[0];
+  if(cliTop!=null){const c=recClientes().find(x=>String(x.id)===String(cliTop));if(c&&String(c.id)!==String(recCli)){recArts(recCli).forEach(a=>delete window._recSel[a.id]);recCli=c.id;}}
+  ok.forEach(({a,q})=>{window._recSel[a.id]={qty:q};});
+  const otros=ok.filter(x=>String(x.a.clienteId)!==String(recCli));
+  const html=`<div style="font-size:12.5px;background:#f3f8f1;border:1px solid #cfe3c8;border-radius:8px;padding:8px 10px"><b style="color:#1a7f37">${ok.length} ${ok.length!==1?'renglones cargados':'renglón cargado'}</b> con su cantidad y el precio de hoy.</div>`
+    +(otros.length?`<div style="font-size:12px;color:#a35b00;margin-top:6px"><i class="ti ti-alert-triangle"></i> ${otros.length} ${otros.length!==1?'son de otro centro (quedan cargados en su pestaña)':'es de otro centro (queda cargado en su pestaña)'}: ${otros.map(x=>cotEsc(x.a.cod)).join(', ')}</div>`:'')
+    +(no.length?`<div style="font-size:12px;color:#a32d2d;margin-top:6px"><b>${no.length} no encontrado${no.length!==1?'s':''} en el catálogo</b> (cargalos a mano o agregá el artículo):<br>${no.map(l=>'• '+cotEsc(l.cod||'')+(l.cantidad?' x '+cotFmt(l.cantidad):'')+(l.texto?' <span style="color:#888">— '+cotEsc(l.texto)+'</span>':'')).join('<br>')}</div>`:'');
+  recFiltro='sel';render();
+  if(no.length||otros.length){
+    _recModal(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong style="font-size:15px;color:#7b3fa0"><i class="ti ti-sparkles"></i> Pedido leído</strong><button onclick="recModalCerrar()">✕</button></div>${html}<div style="text-align:right;margin-top:10px"><button class="bp" onclick="recModalCerrar()">Revisar en la grilla</button></div>`);
+  }else{recModalCerrar();if(typeof toast==='function')toast(ok.length+' renglones cargados. Revisá y tocá Generar cotización.');}
+}
 // Descripción para la cotización: la de la ficha, con la cantidad nueva al principio (ej. "150 Tal. x 100 hojas…" → "80 Tal. x 100 hojas…")
 function recDescPara(a,q){
   const qt=cotFmt(q);
@@ -10245,7 +10411,7 @@ function om(t,id){
   cm();
   const mods={
     nc:mNC,vc:()=>mVC(id),ec:()=>mEditCli(id),np:mNP,ep:()=>mEditProv(id),vp:()=>mVP(id),ec2:()=>mEditCot(id),
-    nc2:()=>{window._editandoCotId=null;const h=mNC2();setTimeout(()=>initItemsNuevo(),50);return h;},vc2:()=>mVC2(id),
+    nc2:()=>{window._editandoCotId=null;const h=mNC2();setTimeout(()=>{initItemsNuevo();const c=Q('cot-txt');if(c&&!c.value)c.focus();},50);return h;},vc2:()=>mVC2(id),
     not:mNOT,vot:()=>mVOT(id),editOT:()=>mEditOT(id),editEntrega:()=>mEditEntrega(id),extSend:()=>mExtSend(id),extProcs:()=>mExtProcs(id),procAdv:()=>mProcAdv(id),corteMov:()=>mCorte(id),
     asgn:()=>mASGN(id),recursos:mRecursos,
     nrem:()=>mNREM(id),vrem:()=>mVREM(id),
@@ -10759,10 +10925,11 @@ function _renderItems(){
     const hasVars=item.filas.length>1;
     // Ítem principal (fila base = fila 0)
     const f0=item.filas[0]||{qty:0,subtotal:0,precio:0};
-    h+=`<div class="cit-group" data-ii="${ii}" style="margin-bottom:8px;border:0.5px solid rgba(0,0,0,.1);border-radius:8px;overflow:hidden">`;
+    h+=`<div class="cit-group" data-ii="${ii}" ondragover="itemDragOver(event)" ondragleave="this.style.boxShadow=''" ondrop="itemDrop(event,${ii})" style="margin-bottom:8px;border:0.5px solid rgba(0,0,0,.1);border-radius:8px;overflow:hidden">`;
     // Fila 1: nombre corto + cantidades. Fila 2: descripción completa en textarea
     h+=`<div style="padding:6px 7px;background:#fff">`;
-    h+=`<div style="display:grid;grid-template-columns:2fr .8fr 1fr .9fr auto;gap:4px;align-items:center">`;
+    h+=`<div style="display:grid;grid-template-columns:auto 2fr .8fr 1fr .9fr auto;gap:4px;align-items:center">`;
+    h+=`<div draggable="true" ondragstart="itemDragStart(event,${ii})" ondragend="itemDragEnd()" title="Arrastrá para cambiar el orden de los ítems" style="cursor:grab;color:#aaa;padding:0 1px"><i class="ti ti-grip-vertical" style="font-size:16px"></i></div>`;
     h+=`<input placeholder="Nombre del trabajo (corto)" class="in2" data-ii="${ii}" value="${(item.nombre||'').replace(/"/g,'&quot;')}" oninput="onItemNombre(${ii},this.value)" style="font-size:12px;font-weight:600">`;
     h+=`<input placeholder="Cant." type="text" inputmode="decimal" class="iq" data-ii="${ii}" data-fi="0" data-raw="${f0.qty||0}" value="${f0.qty?$n(f0.qty):''}" oninput="moneyFmt(this);onItemQty(${ii},0,this)" style="font-size:12px">`;
     h+=`<input placeholder="Total $" type="text" inputmode="decimal" class="is" data-ii="${ii}" data-fi="0" data-raw="${f0.subtotal||0}" value="${f0.subtotal?$n(f0.subtotal):''}" oninput="moneyFmt(this);onItemSub(${ii},0,this)" title="${f0.manual?'Precio definitivo fijado a mano — el costeo no lo pisa':''}" style="font-size:12px${f0.manual?';border:1.5px solid #1a7f37':''}">`;
@@ -10820,6 +10987,26 @@ function addItemVariante(ii){
   _renderItems();
 }
 // Duplica un ítem completo (nombre, descripción, cantidades y su costeo) justo debajo, para ajustar la cantidad
+// Ordenar los ítems arrastrando (como los procesos): el orden es el que sale en la cotización y el PDF
+let _itemDrag=null;
+function itemDragStart(ev,ii){_leerItemsDOMNuevo();_itemDrag=ii;try{ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain','item'+ii);const g=ev.target.closest('.cit-group');if(g)ev.dataTransfer.setDragImage(g,20,20);}catch(e){}}
+function itemDragOver(ev){
+  if(_itemDrag==null)return;ev.preventDefault();
+  const g=ev.currentTarget,r=g.getBoundingClientRect(),abajo=ev.clientY>r.top+r.height/2;
+  document.querySelectorAll('#ci2 .cit-group').forEach(x=>{if(x!==g)x.style.boxShadow='';});
+  g.style.boxShadow=abajo?'0 3px 0 0 #185fa5':'0 -3px 0 0 #185fa5';
+}
+function itemDrop(ev,ii){
+  ev.preventDefault();
+  document.querySelectorAll('#ci2 .cit-group').forEach(x=>{x.style.boxShadow='';});
+  const src=_itemDrag;_itemDrag=null;if(src==null||src===ii)return;
+  const r=ev.currentTarget.getBoundingClientRect(),abajo=ev.clientY>r.top+r.height/2;
+  const st=_itemsState();const [mov]=st.splice(src,1);
+  let b=ii-(src<ii?1:0);if(abajo)b++;
+  st.splice(b,0,mov);
+  _renderItems();
+}
+function itemDragEnd(){_itemDrag=null;document.querySelectorAll('#ci2 .cit-group').forEach(x=>{x.style.boxShadow='';});}
 function dupItemNuevo(ii){
   _leerItemsDOMNuevo(); // sincroniza lo tipeado en el DOM al estado antes de copiar
   const st=_itemsState();const it=st[ii];if(!it)return;
@@ -11164,7 +11351,7 @@ function mVC2(id){
   if(otsVinc.length>0){h+='<div style="margin:8px 0 4px;padding:8px 12px;background:#f0f4f8;border-radius:7px"><div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px">ÓRDENES DE TRABAJO</div>';otsVinc.forEach(function(o){const bc=o.estado==="lista"?"#3b6d11":o.estado==="en_produccion"?"#185fa5":o.estado==="entregada"?"#666":"#ba7517";h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #dde3ea"><span style="font-weight:700;color:#185fa5;font-size:12px">'+o.num+'</span><span style="font-size:11px;color:#555;flex:1;margin:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(o.descripcion)+'</span><span style="font-size:10px;font-weight:600;color:'+bc+'">'+o.estado.replace("_"," ").toUpperCase()+'</span></div>';});h+='</div>';}
   var _bid=c.id;
   var _btnA=(c.estado==='borrador'||c.estado==='enviada')&&!itemsV.length?`<button class="bs" onclick="chCot(${_bid},'aprobada')"><i class="ti ti-check"></i> Aprobar</button>`:'';
-  var _btnOT=(c.estado==='aprobada'&&!ot)?`<button class="bp" onclick="genOT(${_bid})"><i class="ti ti-clipboard-plus"></i> Generar OT</button>`:'';
+  var _btnOT=(c.estado==='aprobada'&&!ot)?`<button class="bp" onclick="genOTCot(${_bid})"><i class="ti ti-clipboard-plus"></i> Generar OT</button>`:((c.estado==='aprobada'&&ot&&puedeVerFinanzas())?`<button onclick="rehacerOTsCot(${_bid})" title="Se generaron mal: borrarlas y volver a generarlas desde la cotización" style="color:#a35b00;border-color:#e0b070"><i class="ti ti-refresh"></i> Rehacer OTs</button>`:'');
   var _btnOTcomp=(c.estado==='aprobada'&&ot)?`<button class="bp" style="background:#5a7fa0" onclick="omCotNuevaOT(${_bid})"><i class="ti ti-plus"></i> OT complementaria</button>`:'';
   var _btnDup=`<button onclick="dupCot(${_bid})" title="Duplicar esta cotización tal cual"><i class="ti ti-copy"></i> Duplicar</button><button onclick="dupCot(${_bid},true)" title="Copia nueva con fecha de hoy, validez nueva y todo recalculado con las tablas de costos y el dólar actuales" style="background:#e9f6ec;color:#1a7f37;border-color:#8fcf9f"><i class="ti ti-refresh"></i> Duplicar actualizada</button>`;
   // Confirmar aprobación también abajo de todo (no hace falta volver a subir después de elegir las cantidades)
@@ -11279,7 +11466,9 @@ function abrirModalDistribuirOTs(cotId,solo){
     const rv=(typeof _costeoDeItemDesc==='function')?_costeoDeItemDesc(c,it.desc):null;
     const piezas=(rv&&rv.costeo)?cotPiezasPara(rv.costeo,+it.qty||rv.costeo.cantidad):null; // piezas de la cantidad del ítem
     const multiPz=piezas&&piezas.length>1;
-    const filasPz=multiPz?piezas.map((p,k)=>({p,k})):[{p:null,k:null}];
+    // Tercerizado + impresión propia: una fila para lo de afuera y una por cada pieza que se imprime en casa
+    const tercProp=!!(rv&&rv.costeo&&rv.costeo.terc&&rv.costeo.terc.on&&rv.costeo.terc.propias&&piezas&&piezas.length);
+    const filasPz=tercProp?[{p:null,k:null,tercRow:true}].concat(piezas.map((p,k)=>({p,k}))):(multiPz?piezas.map((p,k)=>({p,k})):[{p:null,k:null}]);
     filasPz.forEach(fp=>{
       const rid=_rowN++;
       let maqSug='';
@@ -11298,11 +11487,11 @@ function abrirModalDistribuirOTs(cotId,solo){
       const stkDisp=recArt?recStock(recArt):0;
       window._dotRows.push({rid,ii,piezaIdx:fp.k,piezaNombre:fp.p?(fp.p.nombre||('Pieza '+(fp.k+1))):null,primeraDelItem:fp.k==null||fp.k===0,sinImp,recId:recArt?recArt.id:null,stk:stkDisp,qty:+it.qty||0});
       // Tercerizado: si el costeo ya era tercerizado viene elegido; si no, se puede elegir acá (ej. cotización copiada sin costear)
-      let tercSug=null;try{const co=rv&&rv.costeo;if(co&&co.terc&&co.terc.on)tercSug=String(co.terc.prov||'');}catch(e){}
+      let tercSug=null;try{const co=rv&&rv.costeo;if(co&&co.terc&&co.terc.on&&!(tercProp&&fp.p))tercSug=String(co.terc.prov||'');}catch(e){} // con impresión propia, las piezas propias no van afuera
       const maqOptsIt=[...cotMaqLista(),''].map(m=>`<option value="${m}" ${m===maqSug&&tercSug===null?'selected':''}>${m||(sinImp?'— Sin impresión (solo guillotina) —':'— Sin asignar —')}</option>`).join('')
         +`<option value="__TERC__" ${tercSug!==null?'selected':''}>🏭 Tercerizar (todo afuera)</option>`;
       h+=`<div style="display:grid;grid-template-columns:3fr 1fr 2fr;gap:6px;align-items:center;padding:6px 0;border-bottom:0.5px solid rgba(0,0,0,.05)">`;
-      h+=`<div style="font-size:12px">${fp.p?`<span style="background:#185fa5;color:#fff;border-radius:8px;padding:1px 8px;font-size:10px;font-weight:700;margin-right:6px">${escHtml(fp.p.nombre||('Pieza '+(fp.k+1)))}</span>`:''}<strong>${it.desc}</strong><span style="font-size:10px;color:#888;margin-left:6px">${it.qty?$n(it.qty)+' u.':''}</span>${maqSug?`<span style="font-size:10px;color:#1a7f37;margin-left:6px;font-weight:700"><i class="ti ti-calculator"></i> ${maqSug} (del costeo)</span>`:''}${sinImp?`<span style="font-size:10px;color:#a35b00;margin-left:6px;font-weight:700"><i class="ti ti-scissors"></i> Sin impresión: OT solo de guillotina</span>`:''}</div>`;
+      h+=`<div style="font-size:12px">${fp.tercRow?`<span style="background:#0f6e56;color:#fff;border-radius:8px;padding:1px 8px;font-size:10px;font-weight:700;margin-right:6px">Tercerizado</span>`:''}${fp.p?`<span style="background:#185fa5;color:#fff;border-radius:8px;padding:1px 8px;font-size:10px;font-weight:700;margin-right:6px">${escHtml(fp.p.nombre||('Pieza '+(fp.k+1)))}</span>`:''}<strong>${it.desc}</strong><span style="font-size:10px;color:#888;margin-left:6px">${it.qty?$n(it.qty)+' u.':''}</span>${maqSug?`<span style="font-size:10px;color:#1a7f37;margin-left:6px;font-weight:700"><i class="ti ti-calculator"></i> ${maqSug} (del costeo)</span>`:''}${sinImp?`<span style="font-size:10px;color:#a35b00;margin-left:6px;font-weight:700"><i class="ti ti-scissors"></i> Sin impresión: OT solo de guillotina</span>`:''}</div>`;
       h+=`<input id="dot-ot-${rid}" type="number" min="1" max="20" value="${rid+1}" style="font-size:13px;font-weight:600;text-align:center;padding:4px 6px">`;
       h+=`<div><select id="dot-maq-${rid}" onchange="const i=document.getElementById('dot-prov-${rid}');if(i)i.style.display=this.value==='__TERC__'?'':'none'" style="font-size:12px;padding:4px 6px;width:100%">${maqOptsIt}</select>
         <input id="dot-prov-${rid}" list="dl-dot-ext" value="${cotEsc(tercSug||'')}" placeholder="Proveedor (ej. imprenta)" style="${tercSug!==null?'':'display:none;'}width:100%;margin-top:4px;font-size:12px;padding:4px 6px;border:1px solid #0f6e56;border-radius:6px"></div>`;
@@ -11322,7 +11511,8 @@ function abrirModalDistribuirOTs(cotId,solo){
    h+=`<div style="margin-top:10px;padding:10px 12px;border:1.5px solid #f3d3a8;background:#fffaf2;border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
      <label style="font-size:12px;font-weight:700;color:#7a4a00"><i class="ti ti-calendar-due"></i> Fecha de entrega comprometida</label>
      <input id="dot-entrega" type="date" value="${_sug}" style="font-size:13px;padding:5px 7px">
-     <span style="font-size:11px;color:#888">${+c.plazo>0?`sugerida: hoy + ${c.plazo} días hábiles`:''} · si el cliente pidió otro día, cambiala acá</span></div>`;}
+     <span style="font-size:11px;color:#888">${+c.plazo>0?`sugerida: hoy + ${c.plazo} días hábiles`:''} · si el cliente pidió otro día, cambiala acá</span>
+     <label style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:800;color:#c62828;cursor:pointer" title="Pocos días de producción: se avisa a toda la planta (jefe de taller, pre-prensa, guillotina, logística) y pasa primero en sus listas"><input id="dot-urg" type="checkbox" style="width:16px;height:16px;accent-color:#c62828"> <i class="ti ti-urgent"></i> URGENTE</label></div>`;}
   h+=`<div class="mf"><button onclick="cm()">Cancelar</button><button class="bp" id="btn-confirmar-ots" onclick="confirmarDistribucionOTs(${cotId})"><i class="ti ti-clipboard-plus"></i> Generar OTs</button></div>`;
   const ov=document.createElement('div');ov.className='ov';ov.id='ov';
   const inner=document.createElement('div');inner.className='mod';inner.innerHTML=h;
@@ -11399,7 +11589,7 @@ async function confirmarDistribucionOTs(cotId){
       ['ppd','imp','ent'].forEach(k=>{_obs[k]=(_obs[k]?_obs[k]+'\n':'')+lin;});
       if(_soloStock){pasos.forEach(p=>{if(!['cc','ent'].includes(pasoCol(p))){p.estado='na';p.na=true;}});Object.keys(asignaciones).forEach(k=>delete asignaciones[k]);}
     }
-    S.ordenes.push({obsProd:_obs,sinImp:g.sinImp||undefined,soloStock:_soloStock||undefined,
+    S.ordenes.push({obsProd:_obs,sinImp:g.sinImp||undefined,soloStock:_soloStock||undefined,urgente:(Q('dot-urg')&&Q('dot-urg').checked)?{por:getVendedor()||'',fecha:new Date().toISOString(),motivo:'Pocos días de producción'}:undefined,
       id:idOT,num,baseId,cotId:c.id,clienteId:c.clienteId,
       fecha:_hoyD,
       entrega:_entD,
@@ -11838,10 +12028,15 @@ function otAnalisisTec(o){
 
 function mVOT(id){
   const o=S.ordenes.find(x=>x.id==id);if(!o)return'';
-  let h=`<div class="mt2">${o.num} ${stBadge(o.estado)}${otAprobada(o)?' <span class="badge bg2"><i class="ti ti-circle-check"></i> Aprobada</span>':' <span class="badge br">Sin aprobar</span>'}</div>`;
+  let h=`<div class="mt2">${o.num} ${stBadge(o.estado)}${otAprobada(o)?' <span class="badge bg2"><i class="ti ti-circle-check"></i> Aprobada</span>':' <span class="badge br">Sin aprobar</span>'} ${urgBadge(o)}</div>`;
+  h+=o.urgente
+    ?`<div style="background:#c62828;color:#fff;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span><b><i class="ti ti-urgent"></i> URGENTE</b>${o.urgente.motivo?' · '+escHtml(o.urgente.motivo):''} <span style="opacity:.85;font-size:11px">· marcada ${o.urgente.fecha?new Date(o.urgente.fecha).toLocaleDateString('es-AR'):''}${o.urgente.por?' por '+escHtml(o.urgente.por):''}</span></span><button onclick="otUrgente(${o.id})" style="font-size:11px;padding:3px 9px;background:#fff;color:#c62828;border:none">Quitar urgente</button></div>`
+    :`<div style="text-align:right;margin:-4px 0 8px"><button onclick="otUrgente(${o.id})" title="Avisa a toda la planta (jefe de taller, pre-prensa, guillotina, logística) y la pone primera en sus listas" style="font-size:11px;padding:4px 10px;color:#c62828;border-color:#e8a0a0;font-weight:700"><i class="ti ti-urgent"></i> Marcar URGENTE</button></div>`;
   h+=otAprobada(o)
     ?`<div style="background:#eaf3de;border:1px solid #86efac;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#27500a;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span><i class="ti ti-circle-check"></i> OT aprobada el ${o.aprobadaOT.fecha}${o.aprobadaOT.por?' · '+o.aprobadaOT.por:''}</span><button onclick="aprobarOT(${o.id})" style="font-size:11px;padding:3px 8px">Quitar aprobación</button></div>`
     :`<div style="background:#fcebeb;border:1px solid #f7c1c1;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#791f1f;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span><i class="ti ti-alert-triangle"></i> OT sin aprobar — no se puede comprar papel ni planificar hasta el OK.</span><button class="bs" onclick="aprobarOT(${o.id})" style="font-size:11px;padding:4px 9px"><i class="ti ti-circle-check"></i>Aprobar OT</button></div>`;
+  h+=otCambiosHTML(o);
+  try{h+=ppOTHTML(o);}catch(e){}
   h+=`<div class="kv"><span class="kk">Arte del cliente</span><span class="kval">${arteBadge(o,true)}</span></div>`;
   h+=otTercHTML(o);
   try{h+=otRecStockHTML(o);}catch(e){}
@@ -13140,13 +13335,31 @@ function updateOT(id){
   PROC_TERM_FIJOS.forEach(p=>{const si=Q(`pt-${p.k}-si`)?.value;if(si==='SI')terminacion.push({nombre:p.l,detalle:Q(`pt-${p.k}-det`)?.value||'',provId:Q(`pt-${p.k}-prov`)?.value||''});});
   document.querySelectorAll('#proc-term-extra .costo-row').forEach(row=>{const si=row.querySelector('.pte-si')?.value;if(si==='SI')terminacion.push({nombre:row.dataset.nombre,detalle:row.querySelector('.pte-det')?.value||'',provId:row.querySelector('.pte-prov')?.value||''});});
   const empaque={paq:Q('emp-paq')?.value||'',caja:Q('emp-caja')?.value||'',obs:Q('emp-obs')?.value||''};
+  // CAMBIO DE ESPECIFICACIÓN respecto de lo cotizado (el cliente cambió medida, colores, papel…): se registra, se avisa a la planta
+  // y se decide si se cobra (abre la cotización para ajustar) o se absorbe.
+  const _spec=x=>({desc:String(x.descripcion||'').trim(),mat:[x.m.material,x.m.grs&&x.m.grs+' g',x.m.fx&&x.m.fy?x.m.fx+'x'+x.m.fy:''].filter(Boolean).join(' '),corte:x.m.cax&&x.m.cay?x.m.cax+'x'+x.m.cay:'',poses:String(x.m.poses||''),col:[x.i.colores,x.i.frente&&'F:'+x.i.frente,x.i.dorso&&'D:'+x.i.dorso].filter(Boolean).join(' '),chapas:String(x.i.chapas||''),piezas:String(x.i.piezas||''),term:(x.t||[]).map(z=>z.nombre+(z.detalle?' ('+z.detalle+')':'')).join(', ')});
+  const _lbl={desc:'Descripción',mat:'Papel',corte:'Corte',poses:'Poses',col:'Colores',chapas:'Chapas',piezas:'Cantidad',term:'Terminaciones'};
+  const _antes=_spec({descripcion:o.descripcion,m:o.material||{},i:o.impresion||{},t:o.terminacion}),_desp=_spec({descripcion:Q('otd')?.value||'',m:material,i:impresion,t:terminacion});
+  const _dif=Object.keys(_lbl).filter(k=>_antes[k]!==_desp[k]).map(k=>_lbl[k]+': '+(_antes[k]||'—')+' → '+(_desp[k]||'—'));
+  let _abrirCot=false;
+  if(_dif.length&&(o.cotId!=null||(o.pasos||[]).some(p=>p&&p.estado!=='pending'))){
+    const det=prompt('Cambiaste la especificación de '+o.num+':\n'+_dif.join('\n')+'\n\n¿Qué pidió el cliente / por qué? (lo ve toda la planta en la OT)','');
+    if(det===null)return; // cancelar: no se guarda
+    const cobra=o.cotId!=null&&confirm('¿Este cambio se le COBRA al cliente?\n\nAceptar = Sí: después de guardar se abre la cotización para ajustar el precio.\nCancelar = No: lo absorbemos (queda registrado).');
+    if(!Array.isArray(o.cambios))o.cambios=[];
+    const admin=puedeLiberarPP();
+    o.cambios.push({fecha:new Date().toISOString(),por:getVendedor()||'',dif:_dif.slice(0,12),motivo:String(det).replace(/[<>]/g,'').trim().slice(0,300),cobra:!!cobra,autorizado:admin?{por:getVendedor()||'',fecha:new Date().toISOString()}:null});
+    _abrirCot=!!cobra;
+  }
   Object.assign(o,{
     num:Q('ot-num')?.value||o.num,vendedor:Q('ot-vend')?.value||'',controladaPor:Q('ot-ctrl')?.value||'',
     fecha:Q('ot-ing')?.value||o.fecha,entrega:Q('ote')?.value||'',descripcion:Q('otd')?.value||'',nombreCorto:Q('ot-nomC')?.value||o.nombreCorto||'',
     ordenProcesos:Q('t-orden')?.value||'',material,impresion,terminacion,empaque
   });
   syncPasos(o); // recalcula CTP N/A y Terminación/Externos según el detalle actual
-  sk('ordenes');cm();om('vot',id);
+  sk('ordenes');cm();
+  if(_abrirCot&&S.cotizaciones.some(x=>x.id==o.cotId)){om('ec2',o.cotId);setTimeout(()=>alert('Ajustá el precio del ítem por el cambio de '+o.num+' y guardá la cotización.\nSi ya se la mandaste al cliente, reenviale el PDF.'),300);}
+  else om('vot',id);
 }
 function avP(otId,nom){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos.find(x=>x.nombre===nom);if(!p)return;if(!_arteAntesDeAvanzar(o,p))return;const now=new Date();const h=now.toISOString().slice(0,10);if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}recomputeEstadoOT(o);sk('ordenes');render();}
 function avPN(otId,idx){const o=S.ordenes.find(x=>x.id===otId);if(!o)return;const p=o.pasos[idx];if(!_arteAntesDeAvanzar(o,p))return;const n=Q('np'+idx);if(n&&n.value)p.nota=n.value;const now=new Date();const h=now.toISOString().slice(0,10);if(p.estado==='pending'){p.estado='active';p.fechaInicio=now.toISOString();}else if(p.estado==='active'){p.estado='done';p.fecha=h;p.fechaFin=now.toISOString();autoPlanReal(o,p);}recomputeEstadoOT(o);sk('ordenes');cm();om('vot',otId);}
@@ -13365,7 +13578,136 @@ function omCot(id){
   const c=S.cotizaciones.find(x=>x.id==id);if(!c)return;
   om('vc2',id); // usa el sistema estándar de modales: X arriba, Escape y clic afuera cierran
 }
-function delOT(id){const o=S.ordenes.find(x=>x.id==id);if(!o)return;if(!confirm(`¿Eliminar la OT ${o.num}?\nEsta acción no se puede deshacer.`))return;S.ordenes=S.ordenes.filter(x=>x.id!=id);sk('ordenes');render();}
+// ===== Cambios de especificación respecto de lo cotizado (registrados al editar la OT) =====
+function otCambiosHTML(o){
+  const L=(o&&o.cambios)||[];if(!L.length)return '';
+  const admin=puedeLiberarPP();
+  return `<div style="border:1.5px solid #e0a030;background:#fff8ec;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px">
+    <b style="color:#a35b00"><i class="ti ti-arrows-diff"></i> OT MODIFICADA respecto de lo cotizado</b>
+    ${L.map((c,i)=>`<div style="margin-top:6px;padding-top:6px;border-top:0.5px dashed #e8c58a">
+      <div style="color:#555;font-size:11px">${new Date(c.fecha).toLocaleDateString('es-AR')}${c.por?' · '+escHtml(c.por):''} · ${c.cobra?'<b style="color:#1a7f37">se cobra (cotización ajustada)</b>':'<b style="color:#a35b00">no se cobra (lo absorbemos)</b>'} · ${c.autorizado?`<span style="color:#1a7f37">autorizado${c.autorizado.por&&c.autorizado.por!==c.por?' por '+escHtml(c.autorizado.por):''}</span>`:`<span style="color:#a32d2d;font-weight:700">pendiente de autorización</span>${admin?` <button onclick="otCambioAutorizar(${o.id},${i})" style="font-size:10px;padding:1px 7px;margin-left:4px">Autorizar</button>`:''}`}</div>
+      ${c.motivo?`<div style="font-weight:600;margin-top:2px">${escHtml(c.motivo)}</div>`:''}
+      <div style="color:#7a4a00;font-size:11px;margin-top:2px">${(c.dif||[]).map(escHtml).join('<br>')}</div></div>`).join('')}</div>`;
+}
+function otCambioAutorizar(id,i){if(!puedeLiberarPP()){alert('Los cambios los autorizan los socios o el jefe de taller.');return;}const o=S.ordenes.find(x=>x.id==id);if(!o||!o.cambios||!o.cambios[i])return;o.cambios[i].autorizado={por:getVendedor()||'',fecha:new Date().toISOString()};sk('ordenes');cm();om('vot',id);}
+// ===== ESTADO DE PRE-PRENSA: lo marca el de pre-prensa; dueños y jefe de taller lo ven sin tener que preguntar =====
+const PP_EST=[
+  {k:'revision',l:'Revisando archivos',c:'#185fa5',i:'file-search'},
+  {k:'esp_archivos',l:'Esperando archivos nuevos del cliente',c:'#a32d2d',i:'file-alert',esp:true,nota:'¿Qué está mal o qué falta? (ej. sin sangrado, textos sin curvar, falta el logo)'},
+  {k:'armado',l:'Armando pliego',c:'#185fa5',i:'layout-grid'},
+  {k:'esp_aprob',l:'Enviado al cliente — esperando aprobación',c:'#ba7517',i:'mail-forward',esp:true,nota:'¿Qué se le mandó y a quién? (opcional)'},
+  {k:'cli_ok',l:'Cliente aprobó — prueba digital para revisar',c:'#7b3fa0',i:'printer'},
+  {k:'liberado',l:'Prueba digital aprobada — liberado para producir',c:'#1a7f37',i:'circle-check'}
+];
+function _ppEst(o){return o&&o.pp&&PP_EST.find(x=>x.k===o.pp.est)||null;}
+function _ppDias(o){if(!o||!o.pp||!o.pp.desde)return 0;return Math.floor((Date.now()-new Date(o.pp.desde))/864e5);}
+// Quiénes manejan las OTs: los socios, el jefe de taller (taller@) y pre-prensa (preprensa@). El resto, no.
+function esSocio(){return /^(esteban|juanpablo)$/.test(rolUsuario());}
+function esGenteOT(){return /^(esteban|juanpablo|taller|jefetaller|preprensa)$/.test(rolUsuario());}
+function puedeLiberarPP(){return /^(esteban|juanpablo|taller|jefetaller)$/.test(rolUsuario());} // aprobar la prueba digital: socios y jefe de taller
+function ppBadge(o,chico){
+  const e=_ppEst(o);if(!e)return '';
+  const d=_ppDias(o),dt=e.esp&&d>0?` · hace ${d} día${d>1?'s':''}`:'';
+  return `<span title="Pre-prensa: ${e.l}${o.pp.nota?' — '+escHtml(o.pp.nota):''}${o.pp.por?' · '+escHtml(o.pp.por):''}" style="background:${e.c};color:#fff;border-radius:6px;padding:${chico?'0 5px':'2px 8px'};font-size:${chico?'9px':'11px'};font-weight:700;white-space:nowrap"><i class="ti ti-${e.i}"></i> ${chico?e.l.split(' — ')[0]:e.l}${dt}</span>`;
+}
+function ppSet(id,k){
+  const o=S.ordenes.find(x=>x.id==id);if(!o)return;
+  const e=PP_EST.find(x=>x.k===k);if(!e)return;
+  if(!esGenteOT()){alert('El estado de pre-prensa lo manejan pre-prensa, el jefe de taller y los socios.');return;}
+  if(k==='liberado'&&!puedeLiberarPP()){alert('La prueba digital la aprueban los dueños o el jefe de taller.');return;}
+  let nota='';
+  if(e.nota){const n=prompt(e.l+'\n\n'+e.nota,'');if(n===null)return;nota=String(n).replace(/[<>]/g,'').trim().slice(0,200);}
+  const por=getVendedor()||rolUsuario()||'',ahora=new Date().toISOString();
+  if(!o.pp)o.pp={hist:[]};if(!Array.isArray(o.pp.hist))o.pp.hist=[];
+  o.pp.hist.push({est:k,fecha:ahora,por,nota});if(o.pp.hist.length>40)o.pp.hist=o.pp.hist.slice(-40);
+  Object.assign(o.pp,{est:k,desde:ahora,por,nota});
+  // El cliente aprobó el diseño → queda registrado como arte aprobado (habilita planificar la impresión)
+  if((k==='cli_ok'||k==='liberado')&&!o.arteOK)o.arteOK={fecha:ahora,por:(currentUser&&currentUser.email)||por,modo:'cliente'};
+  if(k==='liberado')o.pruebaOK={fecha:ahora,por};
+  else if(o.pruebaOK&&['esp_archivos','armado','esp_aprob'].includes(k))delete o.pruebaOK; // volvió atrás: hay que revisar de nuevo
+  sk('ordenes');
+  if(document.querySelector('.mod')&&document.querySelector('.mod').innerHTML.includes('ppSet('+id))updModal(mVOT(id));else render();
+}
+// Botonera de estados (en la OT y en el panel del puesto Pre-prensa)
+function ppBotonesHTML(o,grande){
+  const cur=o.pp&&o.pp.est;
+  return `<div style="display:flex;gap:${grande?8:5}px;flex-wrap:wrap;margin-top:6px">${PP_EST.filter(e=>e.k!=='liberado'||puedeLiberarPP()).map(e=>`<button onclick="event.stopPropagation();ppSet(${o.id},'${e.k}')" style="font-size:${grande?13:11}px;padding:${grande?'8px 12px':'3px 8px'};border-radius:${grande?10:6}px;border:1.5px solid ${e.c};background:${cur===e.k?e.c:'#fff'};color:${cur===e.k?'#fff':e.c};font-weight:700;cursor:pointer"><i class="ti ti-${e.i}"></i> ${e.k==='liberado'?'Aprobar prueba digital':e.l}</button>`).join('')}</div>`;
+}
+function ppOTHTML(o){
+  const tienePP=(o.pasos||[]).some(p=>pasoCol(p)==='ppd'&&!p.na&&p.estado!=='na');
+  if(!tienePP&&!o.pp)return '';
+  const e=_ppEst(o);
+  return `<div style="border:1px solid rgba(0,0,0,.1);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px">
+    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><b style="color:#555"><i class="ti ti-palette"></i> Pre-prensa</b>${e?ppBadge(o):'<span style="color:#888">sin estado (todavía no lo tomó pre-prensa)</span>'}</div>
+    ${o.pp&&o.pp.nota?`<div style="margin-top:4px;color:#555">${escHtml(o.pp.nota)}</div>`:''}
+    ${o.pruebaOK?`<div style="margin-top:4px;color:#1a7f37;font-weight:700"><i class="ti ti-circle-check"></i> Prueba digital aprobada ${new Date(o.pruebaOK.fecha).toLocaleDateString('es-AR')}${o.pruebaOK.por?' · '+escHtml(o.pruebaOK.por):''} — liberado para producir</div>`:''}
+    ${ppBotonesHTML(o,false)}
+    ${(o.pp&&o.pp.hist&&o.pp.hist.length>1)?`<details style="margin-top:6px"><summary style="font-size:11px;color:#888;cursor:pointer">Historial</summary>${o.pp.hist.slice().reverse().map(x=>{const ee=PP_EST.find(z=>z.k===x.est);return `<div style="font-size:11px;color:#666">${new Date(x.fecha).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} · ${ee?ee.l:x.est}${x.por?' · '+escHtml(x.por):''}${x.nota?' — '+escHtml(x.nota):''}</div>`;}).join('')}</details>`:''}
+  </div>`;
+}
+// Panel de control: dónde está cada trabajo en pre-prensa (lo que espera al cliente, con los días)
+function ppDashHTML(){
+  const L=(S.ordenes||[]).filter(o=>o&&!o.archivada&&o.estado!=='entregada'&&o.estado!=='cancelada'&&o.pp&&o.pp.est&&o.pp.est!=='liberado');
+  if(!L.length)return '';
+  const ord=o=>{const e=_ppEst(o);return (o.urgente?0:10)+(e&&e.esp?0:5);};
+  L.sort((a,b)=>ord(a)-ord(b)||_ppDias(b)-_ppDias(a));
+  return `<div style="border:1.5px solid #c9a8e0;background:#faf6fd;border-radius:10px;padding:9px 12px;margin-bottom:12px;font-size:12px"><b style="color:#7b3fa0"><i class="ti ti-palette"></i> Pre-prensa (${L.length})</b>
+    ${L.map(o=>`<div onclick="om('vot',${o.id})" style="cursor:pointer;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0;border-top:0.5px solid rgba(123,63,160,.15);margin-top:4px"><b>${escHtml(o.num)}</b> ${urgBadge(o,true)} <span style="color:#555">${escHtml(cNom(o.clienteId)||'')} · ${escHtml(o.nombreCorto||String(o.descripcion||'').slice(0,40))}</span> ${ppBadge(o,true)}${o.pp.nota?` <span style="color:#888;font-size:11px">${escHtml(o.pp.nota)}</span>`:''}</div>`).join('')}</div>`;
+}
+// ===== URGENTE: marca visible en toda la planta (taller, pre-prensa, guillotina, planificación, logística) =====
+function urgBadge(o,chico){return o&&o.urgente?`<span title="URGENTE${o.urgente.motivo?': '+escHtml(o.urgente.motivo):''}" style="background:#c62828;color:#fff;border-radius:6px;padding:${chico?'0 5px':'2px 8px'};font-size:${chico?'9px':'11px'};font-weight:800;letter-spacing:.3px;white-space:nowrap"><i class="ti ti-urgent"></i> URGENTE</span>`:'';}
+function otUrgente(id){
+  const o=S.ordenes.find(x=>x.id==id);if(!o)return;
+  if(!esGenteOT()&&!puedeVerFinanzas()){alert('Marcar urgente lo hacen los socios, el jefe de taller o pre-prensa.');return;}
+  if(o.urgente){if(!confirm('¿Quitar la marca de URGENTE de '+o.num+'?'))return;delete o.urgente;}
+  else{const m=prompt('Marcar '+o.num+' como URGENTE.\nMotivo (opcional, lo ve toda la planta):','');if(m===null)return;
+    o.urgente={por:getVendedor()||'',fecha:new Date().toISOString(),motivo:String(m).replace(/[<>]/g,'').trim().slice(0,120)};}
+  sk('ordenes');cm();om('vot',id);render();
+}
+// Borrar una OT dejando todo limpio: planificación, ficha, stock del cliente. Si la cotización queda sin OTs, se ofrece volver a generarla.
+function _otBorrarLimpio(o){
+  S.ordenes=S.ordenes.filter(x=>x.id!=o.id);
+  // Planificación: bloques de esta OT
+  let pl=false;const P=S.planificacion||{};
+  Object.keys(P).forEach(m=>Object.keys(P[m]||{}).forEach(f=>Object.keys(P[m][f]||{}).forEach(s=>{const b=P[m][f][s];if(b&&b.otId===o.id){delete P[m][f][s];pl=true;}})));
+  if(pl)sk('planificacion');
+  // Ficha: se desvincula (la ficha queda para la OT nueva de la misma cotización, con sus datos de entrega y facturación)
+  let fi=false;(S.fichas||[]).forEach(f=>{if(!f)return;
+    if(Array.isArray(f.otIds)&&f.otIds.includes(o.id)){f.otIds=f.otIds.filter(x=>x!==o.id);fi=true;}
+    if(f.otId===o.id){f.otId=(f.otIds&&f.otIds[0])||null;fi=true;}
+    if(f.costosOT&&f.costosOT[o.id]){delete f.costosOT[o.id];fi=true;}});
+  if(fi)sk('fichas');
+  // Stock del cliente (artículos recurrentes): lo que salía de stock para esta OT vuelve al stock
+  (o.itemsOT||[]).forEach(it=>{if(it&&it.recId!=null&&+it.deStock>0&&typeof _recArt==='function'){const a=_recArt(it.recId);if(a)_recStockMov(a,'entrada',+it.deStock,o.num,'vuelve a stock: se borró la OT');}});
+  sk('ordenes');
+}
+function delOT(id){
+  const o=S.ordenes.find(x=>x.id==id);if(!o)return;
+  const empez=(o.pasos||[]).some(p=>p&&(p.estado==='done'||p.estado==='active')&&!['ppd'].includes(pasoCol(p)));
+  if(!confirm(`¿Eliminar la OT ${o.num}?${empez?'\n\nOjo: ya tiene pasos de producción iniciados o terminados.':''}\nSe quita también de la planificación. No se puede deshacer.`))return;
+  _otBorrarLimpio(o);
+  const c=o.cotId!=null?S.cotizaciones.find(x=>x.id==o.cotId):null;
+  cm();render();
+  if(c&&!S.ordenes.some(x=>x.cotId==c.id)&&confirm(`La cotización ${c.num||''} quedó sin OT.\n¿Querés volver a generarla ahora?`))genOTCot(c.id);
+}
+// Generar la(s) OT de una cotización aprobada: varios ítems o varias piezas → se distribuye (cada pieza con su máquina)
+async function genOTCot(id){
+  const c=S.cotizaciones.find(x=>x.id==id);if(!c)return;
+  if(c.estado!=='aprobada'){c.estado='aprobada';sk('cotizaciones');}
+  let multi=(c.items||[]).length>1;
+  if(!multi){try{const rv0=_costeoDeItemDesc(c,(c.items&&c.items[0]||{}).desc);if(rv0&&rv0.costeo&&cotPiezasPara(rv0.costeo,(c.items[0]&&+c.items[0].qty)||rv0.costeo.cantidad).length>1)multi=true;}catch(e){}}
+  if(multi||((c.items||[]).length===1)){cm();abrirModalDistribuirOTs(id);return;} // también 1 ítem: así se elige máquina, entrega y tercerizado
+  await genOT(id,false,null,true);cm();render();
+}
+// Rehacer las OTs de una cotización (se generaron mal): se borran y se vuelven a distribuir
+function rehacerOTsCot(id){
+  const c=S.cotizaciones.find(x=>x.id==id);if(!c)return;
+  const ots=S.ordenes.filter(o=>o.cotId==c.id);
+  const emp=ots.filter(o=>(o.pasos||[]).some(p=>p&&(p.estado==='done'||p.estado==='active')&&pasoCol(p)!=='ppd'));
+  if(!confirm(`Rehacer las OTs de ${c.num||'la cotización'}:\n${ots.map(o=>'• '+o.num+' — '+(o.nombreCorto||o.descripcion||'')).join('\n')}\n\nSe borran (también de la planificación) y se vuelven a generar desde la cotización.${emp.length?'\n\nOjo: '+emp.map(o=>o.num).join(', ')+' ya '+(emp.length>1?'tienen':'tiene')+' producción iniciada.':''}\n¿Seguir?`))return;
+  ots.forEach(_otBorrarLimpio);
+  genOTCot(id);
+}
 function delRem(id){const r=S.remitos.find(x=>x.id==id);if(!r)return;if(!confirm(`¿Eliminar el remito ${r.num}?\nEsta acción no se puede deshacer.`))return;S.remitos=S.remitos.filter(x=>x.id!=id);sk('remitos');render();}
 
 init();

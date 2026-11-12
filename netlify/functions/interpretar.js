@@ -78,6 +78,13 @@ exports.handler = async (event) => {
     return { statusCode: 413, headers: H, body: JSON.stringify({ error: 'Las imágenes son demasiado grandes o de un formato no admitido (JPG, PNG, GIF, WEBP; máx. 1,5 MB cada una).' }) };
   if (!pedido.trim() && !imagenes.length) return { statusCode: 400, headers: H, body: JSON.stringify({ error: 'Falta el texto del pedido o una imagen' }) };
 
+  // MODO ARTÍCULOS RECURRENTES: leer una solicitud de presupuesto / orden de compra (foto, planilla o texto)
+  // y devolver solo CÓDIGO + CANTIDAD de cada renglón, usando el catálogo del cliente como referencia.
+  const modoRec = body.modo === 'recurrentes';
+  const catRec = modoRec ? (Array.isArray(c0.catalogo) ? c0.catalogo : []).slice(0, 500).map(a => ({
+    c: String((a && a.c) || '').slice(0, 20), n: String((a && a.n) || '').slice(0, 70), k: String((a && a.k) || '').slice(0, 10), u: String((a && a.u) || '').slice(0, 20)
+  })) : [];
+
   const system = `Sos el asistente de una imprenta argentina (COMA Grupo Impresor). Te paso el pedido de un cliente (mail, WhatsApp o texto suelto) y devolvés SOLO un JSON válido, sin texto extra ni markdown, con esta forma exacta:
 {"tipoTrabajo": "string", "items": [{"nombre": "string", "descripcion": "string", "cantidades": [numero], "medidaAbierta": {"ancho": numero, "alto": numero}, "medidaCerrada": "string", "material": "string", "gramaje": numero, "colores": "string", "maquina": "string", "procesos": ["string"]}]}
 
@@ -137,6 +144,24 @@ Reglas:
     }
   };
 
+  const systemRec = `Sos el asistente de una imprenta argentina. Te paso una solicitud de presupuesto u orden de compra de un sanatorio (foto, captura de planilla o texto) con formularios recurrentes identificados por CÓDIGO (ej. "HC 27", "TSI 150", "CMTSI 12", "DU 015") y una cantidad. Devolvé cada renglón pedido con la herramienta.
+Reglas:
+- cod: el código TAL CUAL figura en el catálogo de abajo (mismo prefijo y número). Si en el pedido figura con otro formato ("TSI-150", "tsi150", "HC027"), devolvé el del catálogo. Si el renglón no tiene código pero el nombre coincide claramente con un artículo del catálogo, usá ese código. Si no lo encontrás en el catálogo, devolvé el código o nombre tal cual figura y encontrado=false.
+- cantidad: el número de unidades pedidas en la unidad del catálogo (normalmente talonarios, blocks o unidades). Ej.: "TSI 150 x 50" = 50. Si dice "50 tal." = 50. No conviertas a hojas.
+- centro: la sigla del centro si se deduce (TP, TMC, TSI, CMTSI, DUP).
+- Un renglón por artículo; no agrupes ni inventes renglones que no estén pedidos. Ignorá totales, firmas y encabezados.
+Catálogo (c=código, n=nombre, k=centro, u=unidad): ${JSON.stringify(catRec)}`;
+  const toolRec = {
+    name: 'cargar_pedido_recurrente',
+    description: 'Renglones pedidos: código del catálogo y cantidad.',
+    input_schema: { type: 'object', properties: {
+      centro: { type: 'string' },
+      lineas: { type: 'array', items: { type: 'object', properties: {
+        cod: { type: 'string' }, cantidad: { type: 'number' }, texto: { type: 'string', description: 'El renglón tal cual se lee en el pedido' }, encontrado: { type: 'boolean' }
+      }, required: ['cod', 'cantidad'] } }
+    }, required: ['lineas'] }
+  };
+
   // Tiempo máximo de espera de la IA (si no, la pantalla quedaba "Interpretando…" indefinidamente)
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 25000);
@@ -145,12 +170,12 @@ Reglas:
       method: 'POST', signal: ctrl.signal,
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model, max_tokens: 8000, system,
-        tools: [tool],
-        tool_choice: { type: 'tool', name: 'cargar_cotizacion' },
+        model, max_tokens: 8000, system: modoRec ? systemRec : system,
+        tools: [modoRec ? toolRec : tool],
+        tool_choice: { type: 'tool', name: modoRec ? 'cargar_pedido_recurrente' : 'cargar_cotizacion' },
         messages: [{ role: 'user', content: [
           ...imagenes.map(im => ({ type: 'image', source: { type: 'base64', media_type: im.mediaType, data: im.data } })),
-          { type: 'text', text: pedido.trim() || 'Interpretá el pedido del cliente a partir de la(s) imagen(es) adjunta(s) (por ejemplo una tabla de Excel con cantidades, medidas y materiales).' }
+          { type: 'text', text: pedido.trim() || (modoRec ? 'Leé los códigos y cantidades pedidos en la(s) imagen(es) adjunta(s).' : 'Interpretá el pedido del cliente a partir de la(s) imagen(es) adjunta(s) (por ejemplo una tabla de Excel con cantidades, medidas y materiales).') }
         ] }]
       })
     });
@@ -164,6 +189,7 @@ Reglas:
     if (!block || !block.input) return { statusCode: 502, headers: H, body: JSON.stringify({ error: 'La IA no devolvió datos estructurados' }) };
     // Garantizar que items siempre sea una lista (el front recorre data.items)
     const out = block.input || {};
+    if (modoRec) { if (!Array.isArray(out.lineas)) out.lineas = []; return { statusCode: 200, headers: H, body: JSON.stringify(out) }; }
     if (!Array.isArray(out.items)) out.items = (out.items && typeof out.items === 'object') ? [out.items] : [];
     return { statusCode: 200, headers: H, body: JSON.stringify(out) };
   } catch (e) {
