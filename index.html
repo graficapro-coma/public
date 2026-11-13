@@ -5441,7 +5441,7 @@ function rCotizador(){
         <strong style="font-size:11px;color:#7b3fa0"><i class="ti ti-tool"></i> Procesos de esta pieza <span style="font-weight:400;color:#999;font-size:10px">(solo de "${escHtml(p.nombre||'esta pieza')}" — se trasladan a su OT)</span></strong>
         <button onclick="cotPzProcAdd(${k})" style="font-size:10px;color:#7b3fa0;border-color:#7b3fa0"><i class="ti ti-plus"></i> Agregar proceso</button>
       </div>
-      ${(p.procesos&&p.procesos.length)?`<table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="text-align:left;color:#888;font-size:9px;text-transform:uppercase"><th>Proceso</th><th style="width:120px">Proveedor</th><th style="width:130px">Se cobra por</th><th style="text-align:right;width:66px">Millares</th><th style="text-align:right;width:96px">Costo</th><th style="width:22px"></th></tr>${_procRows}</table>`:'<div style="font-size:10px;color:#aaa">Sin procesos propios de esta pieza.</div>'}
+      ${(p.procesos&&p.procesos.length)?`<table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="text-align:left;color:#888;font-size:9px;text-transform:uppercase"><th>Proceso</th><th style="width:120px">Proveedor</th><th style="width:130px">Se cobra por</th><th style="text-align:right;width:66px">Millares</th><th style="text-align:right;width:96px">Costo</th><th style="width:54px"></th></tr>${_procRows}</table>`:'<div style="font-size:10px;color:#aaa">Sin procesos propios de esta pieza.</div>'}
     </div>
     <div style="display:flex;justify-content:flex-end;margin-top:8px">
       <button onclick="cotPzAddDespues(${k})" title="Agrega un pliego nuevo debajo de este (interior, insert, sticker…)" style="font-size:11px;padding:4px 10px;color:#185fa5;border-color:#185fa5"><i class="ti ti-plus"></i> Agregar otro pliego</button>
@@ -5460,7 +5460,7 @@ function rCotizador(){
     <strong style="font-size:12px">Procesos y servicios <span style="font-weight:400;color:#888;font-size:10px">(comunes a todas las piezas · arrastrá <i class="ti ti-grip-vertical"></i> para ordenarlos como va el trabajo)</span></strong></div>
   <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
   <tr style="text-align:left;color:#888;font-size:10px;text-transform:uppercase">
-    <th style="width:22px"></th><th>Proceso</th><th style="width:118px">Proveedor</th><th style="width:158px">Cantidad calculada por</th><th style="width:84px;text-align:right">Millares</th><th style="width:108px;text-align:right">Costo</th><th style="width:34px"></th></tr>`;
+    <th style="width:22px"></th><th>Proceso</th><th style="width:118px">Proveedor</th><th style="width:158px">Cantidad calculada por</th><th style="width:84px;text-align:right">Millares</th><th style="width:108px;text-align:right">Costo</th><th style="width:58px"></th></tr>`;
   // Mismas formas de calcular en las filas de tabla y en las manuales
   const _kgC=cotFmt(Math.max(1,+cotCfg().kgPorCaja||20));
   const _modos=[['pliegos','mill. de pliegos (todas las piezas)'],['unidades','mill. de unidades'],['peso',`cajas por peso (1 c/${_kgC} kg)`],['pu','$ por unidad'],['unidad','x cantidad (escala)'],['fijo','manual (monto fijo)']];
@@ -9396,7 +9396,8 @@ function recTablaUpd(){
   if(recFiltro==='sel')l=l.filter(a=>(window._recSel[a.id]||{}).qty>0);
   if(recFiltro==='sinficha')l=l.filter(a=>!a.desc);
   if(recFiltro==='stock')l=l.filter(a=>recStock(a)>0);
-  if(q)l=l.filter(a=>(String(a.cod||'')+' '+a.nombre+' '+(a.desc||'')).toLowerCase().includes(q));
+  if(q){const qc=_recCodNorm(q); // "tsi12", "TSI 12", "hc34", "du1" encuentran el código aunque falten espacios o ceros
+    l=l.filter(a=>(String(a.cod||'')+' '+a.nombre+' '+(a.desc||'')).toLowerCase().includes(q)||(qc&&_recCodNorm(a.cod).startsWith(qc)));}
   l=l.slice().sort((x,y)=>String(x.cod||'zz').localeCompare(String(y.cod||'zz'),'es',{numeric:true})||String(x.nombre).localeCompare(String(y.nombre)));
   if(!l.length){tb.innerHTML=`<tr><td colspan="7"><div class="empty" style="padding:16px">Ningún artículo en esta vista</div></td></tr>`;recPieUpd();return;}
   const T={lista:['','de la lista'],interp:['#ba7517','entre dos cantidades de la lista'],estim:['#c05600','estimado: esa cantidad no está en la lista'],sin:['#a32d2d','sin precio en la lista'],manual:['#1a7f37','escrito a mano']};
@@ -10284,7 +10285,7 @@ function rBalAño(){
 function acCli(iid,hid,ph){
   const sorted=alfa(S.clientes);
   const opts=sorted.map(c=>`<div class="aco" onmousedown="selCli('${iid}','${hid}',${c.id},'${c.nombre.replace(/'/g,"\\'")}')"><strong>${c.nombre}</strong>${c.fantasia?`<small style="color:#888"> · ${c.fantasia}</small>`:''}${c.cuit?`<small>${c.cuit}</small>`:''}</div>`).join('');
-  return `<div class="acw" style="display:flex;gap:5px;align-items:flex-start"><div style="flex:1;position:relative"><input class="aci" id="${iid}" placeholder="${ph||'Buscar cliente...'}" autocomplete="off" oninput="filtCli('${iid}','${hid}')" onfocus="Q('dd-${iid}').classList.add('open')" onblur="setTimeout(()=>Q('dd-${iid}').classList.remove('open'),200)"><input type="hidden" id="${hid}"><div class="acd" id="dd-${iid}">${opts}</div></div><button type="button" title="Nuevo cliente" onclick="omNewCli('${iid}','${hid}')" style="padding:5px 8px;flex-shrink:0;white-space:nowrap"><i class="ti ti-user-plus"></i></button></div>`;
+  return `<div class="acw" style="display:flex;gap:5px;align-items:flex-start"><div style="flex:1;position:relative"><input class="aci" id="${iid}" placeholder="${ph||'Buscar cliente...'}" autocomplete="off" oninput="filtCli('${iid}','${hid}')" onmousedown="Q('dd-${iid}').classList.add('open')" onkeydown="if(event.key==='ArrowDown')Q('dd-${iid}').classList.add('open')" onblur="setTimeout(()=>Q('dd-${iid}').classList.remove('open'),200)"><input type="hidden" id="${hid}"><div class="acd" id="dd-${iid}">${opts}</div></div><button type="button" title="Nuevo cliente" onclick="omNewCli('${iid}','${hid}')" style="padding:5px 8px;flex-shrink:0;white-space:nowrap"><i class="ti ti-user-plus"></i></button></div>`;
 }
 function selCli(ii,hi,id,nom){Q(ii).value=nom;Q(hi).value=id;Q('dd-'+ii).classList.remove('open');}
 function filtCli(ii,hi){
